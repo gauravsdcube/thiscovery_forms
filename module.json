@@ -1,0 +1,21 @@
+{
+  "id": "thiscovery-forms",
+  "name": "Thiscovery Forms",
+  "description": "Create and manage forms for spaces and the network. Members can fill forms from the stream or side menu. Supports anonymous guest fill, multi-page surveys, and save-and-resume with a shareable code.",
+  "keywords": ["form", "survey", "thiscovery-forms", "thiscovery"],
+  "version": "1.0.0",
+  "humhub": {
+    "minVersion": "1.18"
+  },
+  "authors": [
+    {
+      "name": "D Cube Consulting",
+      "email": "info@dcubeconsulting.co.uk",
+      "homepage": "https://dcubeconsulting.co.uk",
+      "role": "Copyright holder / Developer"
+    }
+  ],
+  "homepage": "https://dcubeconsulting.co.uk",
+  "license": "AGPL-3.0-or-later",
+  "copyright": "Copyright (c) 2026 D Cube Consulting. All rights reserved."
+}

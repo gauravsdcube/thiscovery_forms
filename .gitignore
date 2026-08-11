@@ -1,0 +1,17 @@
+# Published HumHub asset copies
+resources/assets/
+*.pub
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+
+# Local / runtime
+/runtime/
+*.log
+.env
+.env.*
