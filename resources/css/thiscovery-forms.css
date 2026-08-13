@@ -654,6 +654,27 @@
     box-shadow: 0 8px 24px rgba(15, 23, 42, .03);
 }
 
+.cf-fill-hero {
+    margin: 0 0 1.15rem;
+    padding-bottom: 1.05rem;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.cf-fill-hero__title {
+    margin: 0 0 .55rem;
+    font-size: 1.55rem;
+    font-weight: 750;
+    line-height: 1.25;
+    color: #0f172a;
+}
+
+.cf-fill-hero__desc {
+    margin: 0;
+    color: #475569;
+    font-size: .98rem;
+    line-height: 1.55;
+}
+
 .cf-question {
     padding: 1.15rem 0;
     border-bottom: 1px solid #f1f5f9;

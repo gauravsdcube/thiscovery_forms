@@ -156,6 +156,22 @@ class SubmitForm extends Model
                             break;
                         }
                     }
+                    $maxSelect = $field->getMaxSelect();
+                    if ($maxSelect !== null && count($value) > $maxSelect) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" allows at most {max} selections.', [
+                            'label' => $field->label,
+                            'max' => $maxSelect,
+                        ]));
+                    }
+                    $exclusiveList = $field->getExclusiveOptions();
+                    $selected = array_map('strval', $value);
+                    $hit = array_values(array_intersect($exclusiveList, $selected));
+                    if ($hit && count($selected) > 1) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" cannot combine "{option}" with other choices.', [
+                            'label' => $field->label,
+                            'option' => implode(', ', $hit),
+                        ]));
+                    }
                     break;
                 case FormField::TYPE_RANKING:
                     if (!is_array($value)) {

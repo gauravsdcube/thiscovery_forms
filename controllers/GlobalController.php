@@ -79,6 +79,7 @@ class GlobalController extends Controller
         $form = new CustomForm();
         $form->status = CustomForm::STATUS_DRAFT;
         $form->answers_visibility = CustomForm::ANSWERS_MANAGERS;
+        $form->allow_edit = 1;
         $form->content->visibility = \humhub\modules\content\models\Content::VISIBILITY_PUBLIC;
 
         return $this->handleEdit($form, true);

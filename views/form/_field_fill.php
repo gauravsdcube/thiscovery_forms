@@ -118,8 +118,19 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
                 <?php endforeach; ?>
             </div>
         <?php elseif ($field->type === FormField::TYPE_CHECKBOX): ?>
-            <?php $selected = is_array($value) ? $value : []; ?>
-            <div class="cf-choice-list">
+            <?php
+            $selected = is_array($value) ? $value : [];
+            $maxSelect = $field->getMaxSelect();
+            $exclusiveOptions = $field->getExclusiveOptions();
+            $listAttrs = ['class' => 'cf-choice-list'];
+            if ($maxSelect) {
+                $listAttrs['data-cf-max-select'] = (int)$maxSelect;
+            }
+            if ($exclusiveOptions) {
+                $listAttrs['data-cf-exclusive'] = implode('|', $exclusiveOptions);
+            }
+            ?>
+            <div <?= \yii\helpers\Html::renderTagAttributes($listAttrs) ?>>
                 <?php foreach ($choiceOptions as $opt): ?>
                     <label class="cf-choice">
                         <?= Html::checkbox($inputName . '[]', in_array($opt, $selected, true), ['value' => $opt]) ?>
@@ -242,7 +253,16 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
                 ]) ?>
             </div>
         <?php else: ?>
-            <?= Html::textInput($inputName, is_array($value) ? '' : $value, [
+            <?php
+            $textValue = is_array($value) ? '' : (string)$value;
+            if ($textValue === '') {
+                $prefill = $field->getPrefillValue();
+                if ($prefill !== null) {
+                    $textValue = $prefill;
+                }
+            }
+            ?>
+            <?= Html::textInput($inputName, $textValue, [
                 'class' => 'form-control cf-input',
                 'id' => $inputId,
                 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Your answer'),

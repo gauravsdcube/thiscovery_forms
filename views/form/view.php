@@ -113,6 +113,12 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
     <?php endif; ?>
 
     <div class="cf-fill-body thiscovery-forms-fill">
+        <header class="cf-fill-hero">
+            <h1 class="cf-fill-hero__title"><?= Html::encode($formModel->title) ?></h1>
+            <?php if (trim((string)$formModel->description) !== ''): ?>
+                <div class="cf-fill-hero__desc"><?= nl2br(Html::encode($formModel->description)) ?></div>
+            <?php endif; ?>
+        </header>
         <?php if ($formModel->isClosed()): ?>
             <div class="alert alert-info"><?= Yii::t('ThiscoveryFormsModule.base', 'This form is closed and no longer accepts submissions.') ?></div>
         <?php elseif ($formModel->isDraft()): ?>

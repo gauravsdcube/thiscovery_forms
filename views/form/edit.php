@@ -125,7 +125,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                     $i = 0;
                     foreach ($fieldList as $field):
                         echo $this->render('_field_row', [
-                            'key' => $field->id ?: ('n' . $i),
+                            'key' => $field->id ? ('id' . (int)$field->id) : ('n' . $i),
                             'field' => $field,
                             'allFields' => $fieldList,
                             'collapsed' => true,
@@ -200,12 +200,19 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Allow anonymous submissions') ?>
                         </label>
                         <label>
+                            <?= Html::activeCheckbox($formModel, 'allow_edit', ['label' => false]) ?>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Allow respondents to edit their answers') ?>
+                        </label>
+                        <label>
                             <?= Html::activeCheckbox($formModel, 'show_in_menu', ['label' => false]) ?>
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Show in side menu') ?>
                         </label>
                     </div>
                     <p class="cf-hint text-muted">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Anonymous mode does not store who submitted the form. Guests can fill the form when this is enabled.') ?>
+                    </p>
+                    <p class="cf-hint text-muted">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'If respondents cannot edit, they will see a confirmation after submitting and cannot change that response. Form managers can still update answers.') ?>
                     </p>
                 </div>
             </div>
@@ -274,7 +281,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
 
     <script type="text/template" id="cf-field-template">
         <?= $this->render('_field_row', [
-            'key' => '__INDEX__',
+            'key' => 'n__INDEX__',
             'field' => new FormField([
                 'type' => FormField::TYPE_TEXT,
                 'label' => '',

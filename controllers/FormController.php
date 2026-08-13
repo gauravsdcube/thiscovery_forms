@@ -56,6 +56,7 @@ class FormController extends ContentContainerController
 
         $form->status = CustomForm::STATUS_DRAFT;
         $form->answers_visibility = CustomForm::ANSWERS_MANAGERS;
+        $form->allow_edit = 1;
 
         return $this->handleEdit($form, true);
     }

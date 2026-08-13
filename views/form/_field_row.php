@@ -59,6 +59,7 @@ $operatorLabels = FormField::getOperatorLabels();
 ?>
 <div class="cf-field-card thiscovery-forms-field-row<?= $collapsed ? ' is-collapsed' : ' is-expanded' ?>" data-cf-key="<?= Html::encode($key) ?>" data-cf-type="<?= Html::encode($type) ?>">
     <?= Html::hiddenInput($namePrefix . '[id]', $field->id ?: '') ?>
+    <?= Html::hiddenInput($namePrefix . '[sort_order]', (int)$field->sort_order, ['data-cf-sort-order' => true]) ?>
 
     <div class="cf-field-card__header" data-cf-toggle-card>
         <div class="cf-field-card__handle" data-cf-drag-handle title="<?= Yii::t('ThiscoveryFormsModule.base', 'Drag to reorder') ?>">
@@ -159,6 +160,29 @@ $operatorLabels = FormField::getOperatorLabels();
                     ]) ?>
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Randomize choice order per respondent') ?>
                 </label>
+            </div>
+            <div class="row g-3 mt-1<?= $type === FormField::TYPE_CHECKBOX ? '' : ' d-none' ?>" data-cf-max-select-wrap>
+                <div class="col-md-6">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Maximum selections') ?>
+                        <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                    </label>
+                    <?= Html::input('number', $namePrefix . '[max_select]', $field->getMaxSelect(), [
+                        'class' => 'form-control',
+                        'min' => 1,
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'No limit'),
+                        'data-cf-max-select' => true,
+                    ]) ?>
+                </div>
+                <div class="col-md-6">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Exclusive option') ?>
+                        <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                    </label>
+                    <?= Html::textInput($namePrefix . '[exclusive_option]', $field->getExclusiveOption(), [
+                        'class' => 'form-control',
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. None of these'),
+                        'data-cf-exclusive-option' => true,
+                    ]) ?>
+                </div>
             </div>
             <div class="cf-field-note<?= $type === FormField::TYPE_RANKING ? '' : ' d-none' ?>" data-cf-ranking-note>
                 <i class="fa fa-info-circle" aria-hidden="true"></i>

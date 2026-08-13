@@ -8,7 +8,7 @@ Lean HumHub module for creating forms at **space** and **network (global)** leve
 
 - Field types: text, textarea, number, email, date, dropdown, radio, checkbox, file, rating, ranking, rich text, HTML, page breaks
 - Conditional field visibility and multi-page branching
-- Per-form: multiple submissions, anonymous submissions, side-menu visibility, answers visibility
+- Per-form: multiple submissions, anonymous submissions, respondent edit after submit, side-menu visibility, answers visibility
 - Soft states: Draft → Open → Closed
 - Custom thank-you content and CSS
 - Stream card linking to the form

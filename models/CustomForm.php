@@ -31,6 +31,7 @@ use yii\db\ActiveQuery;
  * @property int $status
  * @property int $allow_multiple
  * @property int $allow_anonymous
+ * @property int $allow_edit
  * @property int $show_in_menu
  * @property string $answers_visibility
  *
@@ -66,7 +67,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['title'], 'string', 'max' => 255],
             [['description', 'thank_you_content', 'custom_css'], 'string'],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
-            [['allow_multiple', 'show_in_menu', 'allow_anonymous'], 'boolean'],
+            [['allow_multiple', 'show_in_menu', 'allow_anonymous', 'allow_edit'], 'boolean'],
+            [['allow_edit'], 'default', 'value' => 1],
             [['answers_visibility'], 'in', 'range' => [
                 self::ANSWERS_MANAGERS,
                 self::ANSWERS_RESPONDENTS,
@@ -85,6 +87,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'status' => Yii::t('ThiscoveryFormsModule.base', 'Status'),
             'allow_multiple' => Yii::t('ThiscoveryFormsModule.base', 'Allow multiple submissions'),
             'allow_anonymous' => Yii::t('ThiscoveryFormsModule.base', 'Allow anonymous submissions'),
+            'allow_edit' => Yii::t('ThiscoveryFormsModule.base', 'Allow respondents to edit their answers'),
             'show_in_menu' => Yii::t('ThiscoveryFormsModule.base', 'Show in side menu'),
             'answers_visibility' => Yii::t('ThiscoveryFormsModule.base', 'Who can view answers'),
         ];
@@ -376,8 +379,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
         return false;
     }
 
+    public function allowsEdit(): bool
+    {
+        return (bool)$this->allow_edit;
+    }
+
     public function canEditOwnAnswer(FormAnswer $answer, $user = null): bool
     {
+        if (!$this->allowsEdit()) {
+            return false;
+        }
+
         if ($this->allowsAnonymous() || $answer->isAnonymous()) {
             return false;
         }
@@ -487,10 +499,32 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $sort = 0;
         $createdMap = []; // tempKey => id for condition wiring
 
+        // PHP reorders numeric $_POST keys (fields[22] before fields[1]).
+        // Walk rows in the builder's posted sort_order, then original sequence.
+        $orderedRows = [];
+        $seq = 0;
         foreach ($rows as $tempKey => $row) {
             if (!is_array($row)) {
                 continue;
             }
+            $postedSort = $row['sort_order'] ?? '';
+            $orderedRows[] = [
+                'key' => (string)$tempKey,
+                'row' => $row,
+                'sort' => ($postedSort !== '' && $postedSort !== null) ? (int)$postedSort : PHP_INT_MAX,
+                'seq' => $seq++,
+            ];
+        }
+        usort($orderedRows, static function (array $a, array $b): int {
+            if ($a['sort'] !== $b['sort']) {
+                return $a['sort'] <=> $b['sort'];
+            }
+            return $a['seq'] <=> $b['seq'];
+        });
+
+        foreach ($orderedRows as $item) {
+            $tempKey = $item['key'];
+            $row = $item['row'];
             $type = (string)($row['type'] ?? '');
             if ($type === '' || !isset(FormField::getTypeLabels()[$type])) {
                 continue;
@@ -561,9 +595,26 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 ]);
                 $field->required = !empty($row['html_collect']) && !empty($row['html_required']);
             } elseif (FormField::isChoiceType($type)) {
-                $field->setOptionsFromText($row['options'] ?? '', !empty($row['randomize']));
+                $maxSelect = null;
+                if (array_key_exists('max_select', $row) && $row['max_select'] !== '' && $row['max_select'] !== null) {
+                    $maxSelect = (int)$row['max_select'];
+                }
+                $exclusive = array_key_exists('exclusive_option', $row)
+                    ? (string)$row['exclusive_option']
+                    : null;
+                $field->setOptionsFromText(
+                    $row['options'] ?? '',
+                    !empty($row['randomize']),
+                    $maxSelect,
+                    $exclusive
+                );
             } else {
-                $field->options_json = null;
+                $prefill = array_key_exists('prefill_profile', $row)
+                    ? trim((string)$row['prefill_profile'])
+                    : $field->getPrefillProfileAttribute();
+                $field->options_json = $prefill
+                    ? json_encode(['prefillProfile' => $prefill], JSON_UNESCAPED_UNICODE)
+                    : null;
             }
 
             // conditions applied in second pass

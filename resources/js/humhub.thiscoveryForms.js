@@ -11,11 +11,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             OPTION_TYPES = module.config.optionTypes;
         }
 
-        var fieldIndex = $root.find('.thiscovery-forms-field-row').length;
+        var fieldIndex = 0;
 
         var refreshIndexes = function () {
             $root.find('.thiscovery-forms-field-row').each(function (i) {
                 $(this).find('[data-cf-index]').text(String(i + 1));
+                $(this).find('[data-cf-sort-order]').val(String(i));
             });
             $root.find('[data-cf-empty]').toggleClass('d-none', $root.find('.thiscovery-forms-field-row').length > 0);
         };
@@ -40,6 +41,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $row.find('[data-cf-html-panel]').toggleClass('d-none', !isHtml);
             $row.find('[data-cf-ranking-note]').toggleClass('d-none', !isRanking);
             $row.find('[data-cf-choice-note]').toggleClass('d-none', !isChoice);
+            $row.find('[data-cf-max-select-wrap]').toggleClass('d-none', type !== 'checkbox');
             $row.find('[data-cf-options-hint-ranking]').toggleClass('d-none', !isRanking);
             $row.find('[data-cf-options-hint-choice]').toggleClass('d-none', isRanking);
             $row.find('[data-cf-required-wrap]').toggleClass('d-none', hideRequired);
@@ -213,6 +215,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
 
         $root.on('submit', 'form.cf-studio__form', function () {
+            refreshIndexes();
             syncRichEditors();
         });
 
@@ -834,10 +837,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return next < pagesConfig.length ? next : null;
         };
 
-        var showPage = function (idx) {
+        var showPage = function (idx, options) {
+            options = options || {};
+            var pageChanged = idx !== currentPage;
             currentPage = idx;
-            $root.find('[data-cf-page]').removeClass('is-active');
-            $root.find('[data-cf-page="' + idx + '"]').addClass('is-active');
+            var $targetPage = $root.find('[data-cf-page="' + idx + '"]');
+            if (pageChanged || !$targetPage.hasClass('is-active')) {
+                $root.find('[data-cf-page]').removeClass('is-active');
+                $targetPage.addClass('is-active');
+            }
 
             var isLast = resolveNextPage(idx) === null;
             // Skip empty trailing logic: if next pages empty, treat as last when no next with content
@@ -865,9 +873,16 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 label.replace('{current}', String(idx + 1)).replace('{total}', String(pagesConfig.length))
             );
 
-            try {
-                window.scrollTo({ top: $root.offset().top - 20, behavior: 'smooth' });
-            } catch (e) {}
+            // Only scroll when the visible page actually changes (Next/Back).
+            // evaluate() calls showPage on every answer to refresh Next/Submit — scrolling
+            // there jumps the user back to the top of the form after each question.
+            var shouldScroll = options.scroll === true || (options.scroll !== false && pageChanged);
+            if (shouldScroll) {
+                try {
+                    var top = $root.offset() ? $root.offset().top - 20 : 0;
+                    window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
+                } catch (e) {}
+            }
         };
 
         var validateCurrentPage = function () {
@@ -949,6 +964,62 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         };
 
         initRanking();
+
+        var parseExclusive = function ($list) {
+            var raw = String($list.attr('data-cf-exclusive') || '');
+            if (!raw) {
+                return [];
+            }
+            return raw.split('|').map(function (s) { return $.trim(s); }).filter(Boolean);
+        };
+
+        var applyCheckboxLimits = function ($list) {
+            if (!$list || !$list.length) {
+                return;
+            }
+            var max = parseInt($list.attr('data-cf-max-select') || '0', 10);
+            var selected = $list.find('input[type="checkbox"]:checked').length;
+            $list.find('input[type="checkbox"]').each(function () {
+                if (this.checked) {
+                    this.disabled = false;
+                    return;
+                }
+                this.disabled = max > 0 && selected >= max;
+            });
+        };
+
+        $root.find('.cf-choice-list[data-cf-max-select], .cf-choice-list[data-cf-exclusive]').each(function () {
+            applyCheckboxLimits($(this));
+        });
+
+        $root.on('click', '.cf-choice-list[data-cf-max-select] input[type="checkbox"], .cf-choice-list[data-cf-exclusive] input[type="checkbox"]', function (e) {
+            var $list = $(this).closest('.cf-choice-list');
+            var exclusiveList = parseExclusive($list);
+            var max = parseInt($list.attr('data-cf-max-select') || '0', 10);
+            var val = String(this.value);
+            var willCheck = !this.checked;
+            var isExclusive = exclusiveList.indexOf(val) !== -1;
+
+            if (willCheck && isExclusive) {
+                $list.find('input[type="checkbox"]').not(this).prop('checked', false);
+            } else if (willCheck && exclusiveList.length) {
+                $list.find('input[type="checkbox"]').filter(function () {
+                    return exclusiveList.indexOf(String(this.value)) !== -1;
+                }).prop('checked', false);
+            }
+
+            if (willCheck && max > 0) {
+                var selected = $list.find('input[type="checkbox"]:checked').length;
+                if (selected >= max) {
+                    e.preventDefault();
+                    return;
+                }
+            }
+        });
+
+        $root.on('change', '.cf-choice-list[data-cf-max-select] input[type="checkbox"], .cf-choice-list[data-cf-exclusive] input[type="checkbox"]', function () {
+            applyCheckboxLimits($(this).closest('.cf-choice-list'));
+        });
 
         if (multiPage) {
             $root.on('click', '[data-cf-page-next]', function (e) {

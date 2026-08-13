@@ -24,6 +24,10 @@ trait FillResumeTrait
     protected function assertFillAccess(CustomForm $form): void
     {
         if (Yii::$app->user->isGuest) {
+            if (!$form->allowsAnonymous()) {
+                Yii::$app->user->loginRequired();
+                Yii::$app->end();
+            }
             \humhub\modules\thiscoveryForms\helpers\GuestAccess::assertCanView($form);
             if (!$form->isGlobal() && !$form->content->canView()) {
                 throw new ForbiddenHttpException(Yii::t(

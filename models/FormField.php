@@ -205,7 +205,82 @@ class FormField extends ActiveRecord
         return !empty($decoded['randomize']);
     }
 
-    public function setOptionsFromText($text, bool $randomize = false): void
+    /**
+     * Maximum number of checkbox selections, or null when unlimited.
+     */
+    public function getMaxSelect(): ?int
+    {
+        if ($this->type !== self::TYPE_CHECKBOX || !$this->options_json) {
+            return null;
+        }
+        $decoded = json_decode($this->options_json, true);
+        if (!is_array($decoded) || empty($decoded['maxSelect'])) {
+            return null;
+        }
+        $max = (int)$decoded['maxSelect'];
+        return $max > 0 ? $max : null;
+    }
+
+    /**
+     * Checkbox option that cannot be combined with others (e.g. "None of these").
+     * Pipe-separated values in exclusiveOption are treated as multiple exclusive choices.
+     */
+    public function getExclusiveOption(): ?string
+    {
+        $list = $this->getExclusiveOptions();
+        return $list[0] ?? null;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getExclusiveOptions(): array
+    {
+        if ($this->type !== self::TYPE_CHECKBOX || !$this->options_json) {
+            return [];
+        }
+        $decoded = json_decode($this->options_json, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        if (!empty($decoded['exclusiveOptions']) && is_array($decoded['exclusiveOptions'])) {
+            return array_values(array_filter(array_map('strval', $decoded['exclusiveOptions']), 'strlen'));
+        }
+        $exclusive = trim((string)($decoded['exclusiveOption'] ?? ''));
+        if ($exclusive === '') {
+            return [];
+        }
+        return array_values(array_filter(array_map('trim', explode('|', $exclusive)), 'strlen'));
+    }
+
+    public function getPrefillProfileAttribute(): ?string
+    {
+        if (!$this->options_json) {
+            return null;
+        }
+        $decoded = json_decode($this->options_json, true);
+        if (!is_array($decoded)) {
+            return null;
+        }
+        $name = trim((string)($decoded['prefillProfile'] ?? ''));
+        return $name !== '' ? $name : null;
+    }
+
+    public function getPrefillValue($user = null): ?string
+    {
+        $attr = $this->getPrefillProfileAttribute();
+        if ($attr === null) {
+            return null;
+        }
+        $user = $user ?: Yii::$app->user->identity;
+        if (!$user || empty($user->profile)) {
+            return null;
+        }
+        $val = trim((string)($user->profile->{$attr} ?? ''));
+        return $val !== '' ? $val : null;
+    }
+
+    public function setOptionsFromText($text, bool $randomize = false, ?int $maxSelect = null, ?string $exclusiveOption = null): void
     {
         $lines = preg_split('/\r\n|\r|\n/', (string)$text) ?: [];
         $options = [];
@@ -216,16 +291,39 @@ class FormField extends ActiveRecord
             }
         }
 
-        if (!$options) {
-            $this->options_json = $randomize ? json_encode(['options' => [], 'randomize' => true], JSON_UNESCAPED_UNICODE) : null;
+        $prev = json_decode((string)$this->options_json, true);
+        if (!is_array($prev)) {
+            $prev = [];
+        }
+
+        if ($maxSelect === null && array_key_exists('maxSelect', $prev)) {
+            $maxSelect = (int)$prev['maxSelect'];
+        }
+        if ($exclusiveOption === null && !empty($prev['exclusiveOption'])) {
+            $exclusiveOption = (string)$prev['exclusiveOption'];
+        }
+
+        $maxSelect = ($maxSelect !== null && $maxSelect > 0) ? $maxSelect : null;
+        $exclusiveOption = trim((string)$exclusiveOption);
+        $exclusiveOption = $exclusiveOption !== '' ? $exclusiveOption : null;
+
+        if (!$options && !$randomize && $maxSelect === null && $exclusiveOption === null) {
+            $this->options_json = null;
             return;
         }
 
-        if ($randomize) {
-            $this->options_json = json_encode([
-                'options' => $options,
-                'randomize' => true,
-            ], JSON_UNESCAPED_UNICODE);
+        if ($randomize || $maxSelect !== null || $exclusiveOption !== null) {
+            $payload = ['options' => $options];
+            if ($randomize) {
+                $payload['randomize'] = true;
+            }
+            if ($maxSelect !== null) {
+                $payload['maxSelect'] = $maxSelect;
+            }
+            if ($exclusiveOption !== null) {
+                $payload['exclusiveOption'] = $exclusiveOption;
+            }
+            $this->options_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
         } else {
             $this->options_json = json_encode($options, JSON_UNESCAPED_UNICODE);
         }

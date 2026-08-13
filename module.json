@@ -3,7 +3,7 @@
   "name": "Thiscovery Forms",
   "description": "Create and manage forms for spaces and the network. Members can fill forms from the stream or side menu. Supports anonymous guest fill, multi-page surveys, and save-and-resume with a shareable code.",
   "keywords": ["form", "survey", "thiscovery-forms", "thiscovery"],
-  "version": "1.0.0",
+  "version": "1.1.0",
   "humhub": {
     "minVersion": "1.18"
   },
