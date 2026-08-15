@@ -20,23 +20,30 @@ use yii\web\Response;
 class FormController extends ContentContainerController
 {
     use FillResumeTrait;
+    use StudioTrait;
+    use ProgrammeTrait;
 
     protected function getAccessRules()
     {
         return [
-            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume']],
+            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json']],
         ];
+    }
+
+    protected function prepareNewForm(): CustomForm
+    {
+        return new CustomForm($this->contentContainer);
     }
 
     public function actionIndex()
     {
         $probe = new CustomForm($this->contentContainer);
-        if (!$probe->canCreate() && !$probe->canManage() && !CustomForm::find()->contentContainer($this->contentContainer)->count()) {
+        if (!$probe->canCreate() && !$probe->canManage() && !CustomForm::findLive()->contentContainer($this->contentContainer)->count()) {
             throw new ForbiddenHttpException();
         }
 
         $provider = new ActiveDataProvider([
-            'query' => CustomForm::find()->contentContainer($this->contentContainer)->readable()->with('fields'),
+            'query' => CustomForm::findLive()->contentContainer($this->contentContainer)->readable()->with('fields'),
             'pagination' => ['pageSize' => 20],
         ]);
 
@@ -44,21 +51,10 @@ class FormController extends ContentContainerController
             'dataProvider' => $provider,
             'contentContainer' => $this->contentContainer,
             'canCreate' => $probe->canCreate(),
+            'templates' => $probe->canCreate() || $probe->canManage()
+                ? CustomForm::findAvailableTemplates($this->contentContainer)
+                : [],
         ]);
-    }
-
-    public function actionCreate()
-    {
-        $form = new CustomForm($this->contentContainer);
-        if (!$form->canCreate()) {
-            throw new ForbiddenHttpException();
-        }
-
-        $form->status = CustomForm::STATUS_DRAFT;
-        $form->answers_visibility = CustomForm::ANSWERS_MANAGERS;
-        $form->allow_edit = 1;
-
-        return $this->handleEdit($form, true);
     }
 
     public function actionEdit($id)
@@ -71,7 +67,7 @@ class FormController extends ContentContainerController
         return $this->handleEdit($form, false);
     }
 
-    protected function handleEdit(CustomForm $form, bool $isNew)
+    protected function handleEdit(CustomForm $form, bool $isNew, array $seedFields = [])
     {
         $request = Yii::$app->request;
 
@@ -98,7 +94,7 @@ class FormController extends ContentContainerController
             'formModel' => $form,
             'isNew' => $isNew,
             'contentContainer' => $this->contentContainer,
-            'fields' => $isNew ? [] : $form->fields,
+            'fields' => $isNew ? $seedFields : $form->fields,
         ]);
     }
 
@@ -160,7 +156,7 @@ class FormController extends ContentContainerController
             'existing' => $existing,
             'contentContainer' => $this->contentContainer,
             'savedDraft' => null,
-        ], $extra));
+        ], $this->fillViewExtras($form, $this->fillContext($form)), $extra));
     }
 
     public function actionEditAnswer($id, $answerId)
@@ -196,8 +192,10 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException();
         }
 
-        $anonymous = $form->allowsAnonymous();
         $submit->loadValuesFromRequest(Yii::$app->request->post());
+        $ctx = $this->fillContext($form);
+        $this->applyFillContext($form, $submit, $ctx);
+        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous);
 
@@ -206,9 +204,7 @@ class FormController extends ContentContainerController
             return $this->renderFillView($form, $submit, $existing);
         }
 
-        if ($anonymous) {
-            $form->markGuestAnswered();
-        }
+        $this->afterCompleteSave($form, $ctx, $answer, $anonymous);
 
         if ($wasNewComplete && !$anonymous) {
             $this->notifySubmission($form, $answer);
@@ -254,7 +250,7 @@ class FormController extends ContentContainerController
         }
 
         $provider = new ActiveDataProvider([
-            'query' => $form->getAnswers()->with(['user', 'answerFields']),
+            'query' => $form->getAnswers()->with(['user', 'answerFields', 'wave', 'round', 'panelMember']),
             'pagination' => ['pageSize' => 30],
         ]);
 
@@ -286,7 +282,7 @@ class FormController extends ContentContainerController
         $probe = new CustomForm($this->contentContainer);
         if (!$probe->canManage() && !$probe->canCreate()) {
             $hasVisible = false;
-            foreach (CustomForm::find()->contentContainer($this->contentContainer)->all() as $form) {
+            foreach (CustomForm::findLive()->contentContainer($this->contentContainer)->all() as $form) {
                 if ($form->canViewAnswers()) {
                     $hasVisible = true;
                     break;
@@ -297,7 +293,7 @@ class FormController extends ContentContainerController
             }
         }
 
-        $forms = CustomForm::find()->contentContainer($this->contentContainer)->all();
+        $forms = CustomForm::findLive()->contentContainer($this->contentContainer)->all();
         $visible = array_values(array_filter($forms, static fn(CustomForm $f) => $f->canViewAnswers() || $f->canManage()));
         $stats = (new DashboardService())->getOverview($visible);
 

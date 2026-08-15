@@ -7,6 +7,9 @@ use humhub\modules\thiscoveryForms\models\FormAnswer;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\SubmitForm;
 use humhub\modules\thiscoveryForms\services\FormPager;
+use humhub\modules\thiscoveryForms\services\HtmlSanitizer;
+use humhub\modules\thiscoveryForms\services\TranslationService;
+use humhub\modules\thiscoveryForms\services\VariableSubstitutor;
 use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
 use yii\helpers\Json;
@@ -16,8 +19,12 @@ use yii\helpers\Json;
 /** @var FormAnswer|null $existing */
 /** @var FormAnswer|null $savedDraft */
 /** @var $contentContainer */
+/** @var \humhub\modules\thiscoveryForms\services\FillContext|null $fillContext */
+/** @var string $panelToken */
 
 $savedDraft = $savedDraft ?? null;
+$fillContext = $fillContext ?? null;
+$panelToken = $panelToken ?? (string)Yii::$app->request->get('token', '');
 
 ThiscoveryFormsAsset::register($this);
 
@@ -26,16 +33,29 @@ $pages = $pager['pages'];
 $pageKeyIndex = $pager['pageKeyIndex'];
 
 $pagePayload = [];
+$pipe = new VariableSubstitutor();
+$user = Yii::$app->user->identity;
 foreach ($pages as $page) {
     $branches = [];
     if ($page['break'] instanceof FormField) {
         $branches = $page['break']->getPageBreakConfig()['branches'];
+    }
+    $fieldLogic = [];
+    foreach ($page['items'] as $item) {
+        $logic = $item->getLogic();
+        if (!empty($logic['rules'])) {
+            $fieldLogic[] = [
+                'fieldId' => (int)$item->id,
+                'logic' => $logic,
+            ];
+        }
     }
     $pagePayload[] = [
         'index' => $page['index'],
         'pageKey' => $page['pageKey'],
         'title' => $page['title'],
         'branches' => $branches,
+        'fieldLogic' => $fieldLogic,
         'fieldIds' => array_map(static fn(FormField $f) => (int)$f->id, $page['items']),
     ];
 }
@@ -60,8 +80,11 @@ $canSubmit = $isDraft
     ? $formModel->isOpen()
     : ($existing
         ? ($formModel->canEditOwnAnswer($existing) || $formModel->canManage())
-        : $formModel->canAnswer());
-$canSaveProgress = $canSubmit && $formModel->isOpen() && (!$existing || $isDraft);
+        : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member))));
+if ($fillContext && $fillContext->blockReason && !$formModel->canManage() && !($existing && $existing->isComplete() && ($formModel->canEditOwnAnswer($existing) || $formModel->canManage()))) {
+    $canSubmit = $existing && $existing->isInProgress() ? $canSubmit : false;
+}
+$canSaveProgress = $canSubmit && $formModel->isOpen() && (!$existing || $isDraft) && !$formModel->isPoll();
 
 $answerableCount = 0;
 foreach ($formModel->fields as $f) {
@@ -74,7 +97,7 @@ $questionNum = 0;
 $customCss = $formModel->getSafeCustomCss();
 $alreadyAnsweredAnon = $formModel->allowsAnonymous()
     && !$formModel->allow_multiple
-    && $formModel->hasGuestAnswered()
+    && $formModel->hasGuestAnswered($fillContext?->wave?->id, $fillContext?->round?->id)
     && !$isDraft;
 $showToolbar = $formModel->canManage() || $formModel->canViewAnswers();
 $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resume_code : '';
@@ -115,10 +138,46 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
     <div class="cf-fill-body thiscovery-forms-fill">
         <header class="cf-fill-hero">
             <h1 class="cf-fill-hero__title"><?= Html::encode($formModel->title) ?></h1>
+            <?php
+            $enabledLangs = $formModel->getEnabledLanguages();
+            if (count($enabledLangs) > 1):
+                $langLabels = TranslationService::languageLabels();
+                $currentLang = $fillContext->language ?? $formModel->getSourceLanguage();
+            ?>
+                <div class="cf-lang-switch" role="navigation" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>">
+                    <?php foreach ($enabledLangs as $code): ?>
+                        <a class="cf-lang-switch__item<?= $code === $currentLang ? ' is-active' : '' ?>"
+                           href="<?= Html::encode(Url::toFillLanguage($formModel, $code)) ?>">
+                            <?= Html::encode($langLabels[$code] ?? $code) ?>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            <?php endif; ?>
             <?php if (trim((string)$formModel->description) !== ''): ?>
                 <div class="cf-fill-hero__desc"><?= nl2br(Html::encode($formModel->description)) ?></div>
             <?php endif; ?>
         </header>
+        <?php if ($fillContext && $fillContext->wave): ?>
+            <div class="alert alert-info cf-wave-banner">
+                <?= Html::encode($fillContext->wave->getDisplayTitle()) ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($fillContext && $fillContext->round): ?>
+            <div class="alert alert-info cf-round-banner">
+                <?= Html::encode($fillContext->round->getDisplayTitle()) ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($fillContext && $fillContext->roundSummaryHtml): ?>
+            <div class="cf-round-summary richtext-output">
+                <?= (new HtmlSanitizer())->sanitize($fillContext->roundSummaryHtml) ?>
+            </div>
+        <?php endif; ?>
+        <?php if ($fillContext && $fillContext->previousRoundAnswer): ?>
+            <div class="cf-prev-answer">
+                <strong><?= Yii::t('ThiscoveryFormsModule.base', 'Your previous answer') ?></strong>
+                <p class="text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'You can revise it in this round.') ?></p>
+            </div>
+        <?php endif; ?>
         <?php if ($formModel->isClosed()): ?>
             <div class="alert alert-info"><?= Yii::t('ThiscoveryFormsModule.base', 'This form is closed and no longer accepts submissions.') ?></div>
         <?php elseif ($formModel->isDraft()): ?>
@@ -212,6 +271,9 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
             <?php if ($resumeCode): ?>
                 <?= Html::hiddenInput('resume_code', $resumeCode) ?>
             <?php endif; ?>
+            <?php if ($panelToken !== ''): ?>
+                <?= Html::hiddenInput('panel_token', $panelToken) ?>
+            <?php endif; ?>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
 
             <?php foreach ($pages as $page): ?>
@@ -220,7 +282,8 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
                     <?php if (!empty($page['title'])): ?>
-                        <h2 class="cf-form-page__title"><?= Html::encode($page['title']) ?></h2>
+                        <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields); ?>
+                        <h2 class="cf-form-page__title" data-cf-pipe="<?= Html::encode((string)$page['title']) ?>"><?= $pageTitle ?></h2>
                     <?php endif; ?>
 
                     <?php foreach ($page['items'] as $field): ?>
@@ -235,7 +298,19 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
                         if ($field->collectsAnswer()) {
                             $attrs['data-cf-answerable'] = '1';
                         }
-                        if ($field->hasCondition()) {
+                        $logic = $field->getLogic();
+                        if (!empty($logic['rules'])) {
+                            $attrs['data-cf-logic'] = Json::encode($logic);
+                        }
+                        $frozen = $fillContext && in_array((int)$field->id, $fillContext->frozenFieldIds, true);
+                        if ($frozen) {
+                            $attrs['data-cf-frozen'] = '1';
+                            $prev = $fillContext->previousRoundAnswer;
+                            if ($prev) {
+                                $value = $prev->getValuesMap()[$field->id] ?? $value;
+                            }
+                        }
+                        if ($field->hasCondition() && $field->condition_field_id) {
                             $attrs['data-cf-depends'] = $field->condition_field_id;
                             $attrs['data-cf-operator'] = $field->condition_operator;
                             $attrs['data-cf-value'] = $field->condition_value;
@@ -252,6 +327,8 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
                                 'formModel' => $formModel,
                                 'allValues' => $submit->values,
                                 'allFields' => $formModel->fields,
+                                'justifications' => $submit->justifications,
+                                'frozen' => !empty($frozen),
                             ]) ?>
                         </div>
                     <?php endforeach; ?>
@@ -323,7 +400,7 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
                 <h3><?= Yii::t('ThiscoveryFormsModule.base', 'You have already submitted this form.') ?></h3>
             </div>
         <?php elseif ($formModel->isOpen()): ?>
-            <div class="alert alert-warning"><?= Yii::t('ThiscoveryFormsModule.base', 'You are not allowed to submit this form.') ?></div>
+            <div class="alert alert-warning"><?= Html::encode($fillContext?->blockReason ?? Yii::t('ThiscoveryFormsModule.base', 'You are not allowed to submit this form.')) ?></div>
         <?php endif; ?>
     </div>
 </div>

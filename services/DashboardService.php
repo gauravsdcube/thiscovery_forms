@@ -7,6 +7,7 @@ use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
 use humhub\modules\thiscoveryForms\models\FormAnswerField;
 use humhub\modules\thiscoveryForms\models\FormField;
+use humhub\modules\thiscoveryForms\models\FormPanelMember;
 use yii\db\Expression;
 use yii\db\Query;
 
@@ -18,6 +19,12 @@ class DashboardService
         FormField::TYPE_CHECKBOX,
         FormField::TYPE_RATING,
         FormField::TYPE_RANKING,
+        FormField::TYPE_GRID_SINGLE,
+        FormField::TYPE_GRID_MULTI,
+        FormField::TYPE_BEST_WORST,
+        FormField::TYPE_MAXDIFF,
+        FormField::TYPE_DRILLDOWN,
+        FormField::TYPE_IMAGE_AREA,
     ];
 
     /**
@@ -133,7 +140,55 @@ class DashboardService
             'timeline' => $this->getTimeline([$formId], 14),
             'structured' => $this->getStructuredBreakdowns($form),
             'fieldResponseRates' => $this->getFieldResponseRates($form, $totalAnswers),
+            'waves' => $form->isLongitudinal() ? $this->getWaveStats($form) : [],
+            'rounds' => $form->isConsensus() ? $this->getRoundStats($form) : [],
         ];
+    }
+
+    public function getWaveStats(CustomForm $form): array
+    {
+        $panelId = (int)$form->getSetting('panel_id', 0);
+        $memberCount = $panelId
+            ? (int)FormPanelMember::find()->where(['panel_id' => $panelId, 'status' => FormPanelMember::STATUS_ACTIVE])->count()
+            : 0;
+        $out = [];
+        $prevCompleted = null;
+        foreach ($form->waves as $wave) {
+            $completed = (int)FormAnswer::find()
+                ->where(['form_id' => $form->id, 'wave_id' => $wave->id, 'status' => FormAnswer::STATUS_COMPLETE])
+                ->count();
+            $dropOff = ($prevCompleted !== null && $prevCompleted > 0)
+                ? round((1 - ($completed / $prevCompleted)) * 100)
+                : null;
+            $out[] = [
+                'title' => $wave->getDisplayTitle(),
+                'status' => $wave->status,
+                'completed' => $completed,
+                'memberCount' => $memberCount,
+                'rate' => $memberCount > 0 ? (int)round(($completed / $memberCount) * 100) : 0,
+                'dropOff' => $dropOff,
+            ];
+            $prevCompleted = $completed;
+        }
+        return $out;
+    }
+
+    public function getRoundStats(CustomForm $form): array
+    {
+        $out = [];
+        foreach ($form->rounds as $round) {
+            $completed = (int)FormAnswer::find()
+                ->where(['form_id' => $form->id, 'round_id' => $round->id, 'status' => FormAnswer::STATUS_COMPLETE])
+                ->count();
+            $out[] = [
+                'title' => $round->getDisplayTitle(),
+                'status' => $round->status,
+                'completed' => $completed,
+                'published' => $round->hasPublishedSummary(),
+                'frozen' => count($round->getFrozenFieldIds()),
+            ];
+        }
+        return $out;
     }
 
     /**
@@ -289,6 +344,42 @@ class DashboardService
                 continue;
             }
 
+            if (in_array($field->type, [FormField::TYPE_GRID_SINGLE, FormField::TYPE_GRID_MULTI], true)) {
+                $chart = $this->gridChart($field, $form);
+                if ($chart) {
+                    $charts[] = $chart;
+                }
+                continue;
+            }
+            if ($field->type === FormField::TYPE_BEST_WORST) {
+                $chart = $this->bestWorstChart($field, $form);
+                if ($chart) {
+                    $charts[] = $chart;
+                }
+                continue;
+            }
+            if ($field->type === FormField::TYPE_MAXDIFF) {
+                $chart = $this->maxDiffChart($field, $form);
+                if ($chart) {
+                    $charts[] = $chart;
+                }
+                continue;
+            }
+            if ($field->type === FormField::TYPE_IMAGE_AREA) {
+                $chart = $this->imageAreaChart($field, $form);
+                if ($chart) {
+                    $charts[] = $chart;
+                }
+                continue;
+            }
+            if ($field->type === FormField::TYPE_DRILLDOWN) {
+                $chart = $this->pathChart($field, $form);
+                if ($chart) {
+                    $charts[] = $chart;
+                }
+                continue;
+            }
+
             $options = $field->getOptions();
             $counts = array_fill_keys($options, 0);
             $other = 0;
@@ -343,6 +434,269 @@ class DashboardService
         }
 
         return $charts;
+    }
+
+    public function getPollResults(CustomForm $form): array
+    {
+        $charts = $this->getStructuredBreakdowns($form);
+        $chart = $charts[0] ?? null;
+        $options = [];
+        $total = 0;
+        $label = '';
+        if ($chart) {
+            $label = (string)($chart['label'] ?? '');
+            $labels = $chart['labels'] ?? [];
+            $data = $chart['data'] ?? [];
+            $total = (int)($chart['total'] ?? array_sum($data));
+            foreach ($labels as $i => $optLabel) {
+                $options[] = [
+                    'label' => (string)$optLabel,
+                    'count' => (int)($data[$i] ?? 0),
+                ];
+            }
+        } else {
+            $question = $form->getPollQuestion();
+            if ($question) {
+                $label = $question->label;
+                foreach ($question->getOptions() as $opt) {
+                    $options[] = ['label' => $opt, 'count' => 0];
+                }
+            }
+        }
+
+        return [
+            'label' => $label,
+            'options' => $options,
+            'total' => $total,
+        ];
+    }
+
+    private function fieldRawValues(CustomForm $form, FormField $field): array
+    {
+        return (new Query())
+            ->from(['af' => FormAnswerField::tableName()])
+            ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
+            ->select(['af.value'])
+            ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'af.field_id' => $field->id])
+            ->column();
+    }
+
+    private function decodeJson($raw)
+    {
+        $decoded = json_decode((string)$raw, true);
+        return (json_last_error() === JSON_ERROR_NONE) ? $decoded : null;
+    }
+
+    private function gridChart(FormField $field, CustomForm $form): ?array
+    {
+        $cfg = $field->getGridConfig();
+        $rows = $cfg['rows'];
+        $cols = $cfg['columns'];
+        if (!$rows || !$cols) {
+            return null;
+        }
+        $totals = [];
+        foreach ($rows as $row) {
+            $totals[$row] = array_fill_keys($cols, 0);
+        }
+        $n = 0;
+        foreach ($this->fieldRawValues($form, $field) as $raw) {
+            $decoded = $this->decodeJson($raw);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            $n++;
+            foreach ($rows as $row) {
+                $cell = $decoded[$row] ?? null;
+                $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [$cell] : []);
+                foreach ($picked as $col) {
+                    if (isset($totals[$row][(string)$col])) {
+                        $totals[$row][(string)$col]++;
+                    }
+                }
+            }
+        }
+        if ($n === 0) {
+            return null;
+        }
+        $datasets = [];
+        foreach ($cols as $col) {
+            $series = [];
+            foreach ($rows as $row) {
+                $series[] = (int)($totals[$row][$col] ?? 0);
+            }
+            $datasets[] = ['label' => $col, 'data' => $series];
+        }
+        return [
+            'fieldId' => $field->id,
+            'label' => $field->label,
+            'type' => $field->type,
+            'chartType' => 'ranking',
+            'labels' => $rows,
+            'datasets' => $datasets,
+            'total' => $n,
+        ];
+    }
+
+    private function bestWorstChart(FormField $field, CustomForm $form): ?array
+    {
+        $items = $field->getItemsConfig()['items'];
+        if (!$items) {
+            return null;
+        }
+        $best = array_fill_keys($items, 0);
+        $worst = array_fill_keys($items, 0);
+        $n = 0;
+        foreach ($this->fieldRawValues($form, $field) as $raw) {
+            $decoded = $this->decodeJson($raw);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            $n++;
+            $b = (string)($decoded['best'] ?? '');
+            $w = (string)($decoded['worst'] ?? '');
+            if (isset($best[$b])) {
+                $best[$b]++;
+            }
+            if (isset($worst[$w])) {
+                $worst[$w]++;
+            }
+        }
+        if ($n === 0) {
+            return null;
+        }
+        return [
+            'fieldId' => $field->id,
+            'label' => $field->label,
+            'type' => $field->type,
+            'chartType' => 'ranking',
+            'labels' => $items,
+            'datasets' => [
+                ['label' => 'Best', 'data' => array_values($best)],
+                ['label' => 'Worst', 'data' => array_values($worst)],
+            ],
+            'total' => $n,
+        ];
+    }
+
+    private function maxDiffChart(FormField $field, CustomForm $form): ?array
+    {
+        $items = $field->getItemsConfig()['items'];
+        if (!$items) {
+            return null;
+        }
+        $pairs = [];
+        $n = 0;
+        foreach ($this->fieldRawValues($form, $field) as $raw) {
+            $decoded = $this->decodeJson($raw);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            $n++;
+            $sets = $decoded['sets'] ?? $decoded;
+            if (!is_array($sets)) {
+                continue;
+            }
+            foreach ($sets as $pair) {
+                if (is_array($pair)) {
+                    $pairs[] = $pair;
+                }
+            }
+        }
+        if ($n === 0) {
+            return null;
+        }
+        $scores = (new MaxDiffDesigner())->scores($items, $pairs);
+        $labels = [];
+        $data = [];
+        foreach ($scores as $item => $row) {
+            $labels[] = $item;
+            $data[] = (int)$row['score'];
+        }
+        return [
+            'fieldId' => $field->id,
+            'label' => $field->label,
+            'type' => $field->type,
+            'chartType' => 'bar',
+            'labels' => $labels,
+            'data' => $data,
+            'total' => $n,
+        ];
+    }
+
+    private function imageAreaChart(FormField $field, CustomForm $form): ?array
+    {
+        $cfg = $field->getImageAreaConfig();
+        $labels = [];
+        $counts = [];
+        foreach ($cfg['regions'] as $region) {
+            $label = (string)($region['label'] ?? $region['id'] ?? '');
+            $labels[] = $label;
+            $counts[$label] = 0;
+        }
+        $n = 0;
+        foreach ($this->fieldRawValues($form, $field) as $raw) {
+            $decoded = $this->decodeJson($raw);
+            if (!is_array($decoded)) {
+                continue;
+            }
+            $n++;
+            $picked = $decoded['regions'] ?? $decoded;
+            if (!is_array($picked)) {
+                continue;
+            }
+            $byId = [];
+            foreach ($cfg['regions'] as $region) {
+                $byId[(string)($region['id'] ?? '')] = (string)($region['label'] ?? '');
+            }
+            foreach ($picked as $id) {
+                $label = $byId[(string)$id] ?? (string)$id;
+                if (isset($counts[$label])) {
+                    $counts[$label]++;
+                }
+            }
+        }
+        if ($n === 0) {
+            return null;
+        }
+        return [
+            'fieldId' => $field->id,
+            'label' => $field->label,
+            'type' => $field->type,
+            'chartType' => 'bar',
+            'labels' => $labels,
+            'data' => array_values($counts),
+            'total' => $n,
+        ];
+    }
+
+    private function pathChart(FormField $field, CustomForm $form): ?array
+    {
+        $counts = [];
+        $n = 0;
+        foreach ($this->fieldRawValues($form, $field) as $raw) {
+            $decoded = $this->decodeJson($raw);
+            $path = is_array($decoded) ? $decoded : [(string)$raw];
+            $path = array_values(array_filter(array_map('strval', $path), 'strlen'));
+            if (!$path) {
+                continue;
+            }
+            $n++;
+            $key = implode(' › ', $path);
+            $counts[$key] = ($counts[$key] ?? 0) + 1;
+        }
+        if ($n === 0) {
+            return null;
+        }
+        return [
+            'fieldId' => $field->id,
+            'label' => $field->label,
+            'type' => $field->type,
+            'chartType' => 'bar',
+            'labels' => array_keys($counts),
+            'data' => array_values($counts),
+            'total' => $n,
+        ];
     }
 
     public function getFieldResponseRates(CustomForm $form, int $totalAnswers): array

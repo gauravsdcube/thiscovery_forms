@@ -55,7 +55,7 @@ class AdminController extends Controller
             || Yii::$app->user->isAdmin()
             || Yii::$app->user->can(ManageModules::class);
 
-        $query = CustomForm::find()->joinWith('content')
+        $query = CustomForm::findLive()->joinWith('content')
             ->andWhere(['content.contentcontainer_id' => null]);
 
         if (!$canManage) {

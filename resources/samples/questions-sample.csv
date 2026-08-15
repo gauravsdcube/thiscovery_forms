@@ -1,0 +1,20 @@
+type,label,help,required,options
+radio,How did you hear about this study?,Please choose one.,1,"Search
+A friend or colleague
+NHS staff
+Social media
+Other"
+checkbox,Which topics interest you?,Select all that apply.,0,"Access to care
+Communication
+Waiting times
+Support after treatment"
+rating,Overall how would you rate this service?,1 is poor and 5 is excellent,1,
+dropdown,Age group,,0,"Under 18
+18-24
+25-34
+35-44
+45-54
+55-64
+65 or over
+Prefer not to say"
+textarea,Is there anything else you would like to tell us?,Optional.,0,

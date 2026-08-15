@@ -17,14 +17,31 @@ use yii\helpers\Html;
 /** @var array $allValues */
 /** @var FormField[] $allFields */
 
+$allFields = $allFields ?? [];
+$allValues = $allValues ?? [];
 $userId = (int)(Yii::$app->user->id ?? 0);
 $inputName = 'SubmitForm[values][' . $field->id . ']';
 $inputId = 'cf-input-' . $field->id;
-$choiceOptions = FormField::isChoiceType($field->type) ? $field->getShuffledOptions($userId) : [];
+$fieldsById = [];
+foreach ($allFields as $f) {
+    $fieldsById[(int)$f->id] = $f;
+}
+$pipe = new VariableSubstitutor();
+$user = Yii::$app->user->identity;
+$labelText = $pipe->substitutePlain($field->label, $user, $formModel, $allValues, $allFields);
+$helpText = $field->help_text
+    ? $pipe->substitutePlain((string)$field->help_text, $user, $formModel, $allValues, $allFields)
+    : '';
+$choiceOptions = FormField::isCarryForwardType($field->type)
+    ? $field->getEffectiveOptions($allValues, $fieldsById, $userId)
+    : (FormField::isChoiceType($field->type) ? $field->getShuffledOptions($userId) : []);
 
-if ($field->type === FormField::TYPE_RICH_TEXT): ?>
-    <div class="cf-rich-block richtext-output">
-        <?= RichText::convert($field->getRichTextContent(), RichText::FORMAT_HTML) ?>
+if ($field->type === FormField::TYPE_RICH_TEXT):
+    $richHtml = RichText::convert($field->getRichTextContent(), RichText::FORMAT_HTML);
+    $richHtml = $pipe->substitute($richHtml, $user, $formModel, $allValues, $allFields);
+    ?>
+    <div class="cf-rich-block richtext-output" data-cf-pipe-html="<?= Html::encode($field->getRichTextContent()) ?>">
+        <?= $richHtml ?>
     </div>
 <?php elseif ($field->type === FormField::TYPE_HTML):
     $htmlCfg = $field->getHtmlConfig();
@@ -44,12 +61,12 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
                 <span class="cf-question__required"><?= Yii::t('ThiscoveryFormsModule.base', 'Required') ?></span>
             <?php endif; ?>
         </div>
-        <div class="cf-question__label">
-            <?= Html::encode($field->label) ?>
+        <div class="cf-question__label" data-cf-pipe="<?= Html::encode($field->label) ?>">
+            <?= $labelText ?>
             <?php if ($htmlCfg['required']): ?><span class="text-danger">*</span><?php endif; ?>
         </div>
     <?php endif; ?>
-    <div class="cf-html-block" data-cf-html-block="<?= (int)$field->id ?>" data-cf-html-var="<?= Html::encode($htmlCfg['variable']) ?>">
+    <div class="cf-html-block" data-cf-html-block="<?= (int)$field->id ?>" data-cf-html-var="<?= Html::encode($htmlCfg['variable']) ?>" data-cf-pipe-html="<?= Html::encode($htmlCfg['html']) ?>">
         <?= $html ?>
         <?php if ($htmlCfg['collect']): ?>
             <?php
@@ -69,16 +86,19 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
         <?php endif; ?>
     </div>
 
-    <label class="cf-question__label" for="<?= Html::encode($inputId) ?>">
-        <?= Html::encode($field->label) ?>
+    <label class="cf-question__label" for="<?= Html::encode($inputId) ?>" data-cf-pipe="<?= Html::encode($field->label) ?>">
+        <?= $labelText ?>
         <?php if ($field->required): ?><span class="text-danger">*</span><?php endif; ?>
     </label>
 
     <?php if ($field->help_text): ?>
-        <p class="cf-question__help"><?= Html::encode($field->help_text) ?></p>
+        <p class="cf-question__help" data-cf-pipe="<?= Html::encode($field->help_text) ?>"><?= $helpText ?></p>
+    <?php endif; ?>
+    <?php if (!empty($frozen)): ?>
+        <p class="cf-frozen-note"><?= Yii::t('ThiscoveryFormsModule.base', 'This item reached consensus and cannot be changed.') ?></p>
     <?php endif; ?>
 
-    <div class="cf-question__control">
+    <div class="cf-question__control<?= !empty($frozen) ? ' is-frozen' : '' ?>">
         <?php if ($field->type === FormField::TYPE_TEXTAREA): ?>
             <?= Html::textarea($inputName, is_array($value) ? '' : $value, [
                 'class' => 'form-control cf-input',
@@ -103,13 +123,33 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
                 'id' => $inputId,
             ]) ?>
         <?php elseif ($field->type === FormField::TYPE_DROPDOWN): ?>
-            <?= Html::dropDownList($inputName, is_array($value) ? null : $value, array_combine($choiceOptions, $choiceOptions) ?: [], [
+            <?php
+            $carry = $field->getCarryForward();
+            $dropAttrs = [
                 'class' => 'form-control cf-input',
                 'id' => $inputId,
                 'prompt' => Yii::t('ThiscoveryFormsModule.base', 'Please select'),
-            ]) ?>
+            ];
+            if ($carry['from'] !== '') {
+                $src = $fieldsById[(int)$carry['from']] ?? null;
+                $dropAttrs['data-cf-carry-from'] = $carry['from'];
+                $dropAttrs['data-cf-carry-mode'] = $carry['mode'];
+                $dropAttrs['data-cf-carry-options'] = json_encode($src ? $src->getOptions() : [], JSON_UNESCAPED_UNICODE);
+            }
+            ?>
+            <?= Html::dropDownList($inputName, is_array($value) ? null : $value, array_combine($choiceOptions, $choiceOptions) ?: [], $dropAttrs) ?>
         <?php elseif ($field->type === FormField::TYPE_RADIO): ?>
-            <div class="cf-choice-list">
+            <?php
+            $carry = $field->getCarryForward();
+            $listAttrs = ['class' => 'cf-choice-list'];
+            if ($carry['from'] !== '') {
+                $src = $fieldsById[(int)$carry['from']] ?? null;
+                $listAttrs['data-cf-carry-from'] = $carry['from'];
+                $listAttrs['data-cf-carry-mode'] = $carry['mode'];
+                $listAttrs['data-cf-carry-options'] = json_encode($src ? $src->getOptions() : [], JSON_UNESCAPED_UNICODE);
+            }
+            ?>
+            <div <?= \yii\helpers\Html::renderTagAttributes($listAttrs) ?>>
                 <?php foreach ($choiceOptions as $opt): ?>
                     <label class="cf-choice">
                         <?= Html::radio($inputName, (string)$value === (string)$opt, ['value' => $opt]) ?>
@@ -128,6 +168,13 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
             }
             if ($exclusiveOptions) {
                 $listAttrs['data-cf-exclusive'] = implode('|', $exclusiveOptions);
+            }
+            $carry = $field->getCarryForward();
+            if ($carry['from'] !== '') {
+                $src = $fieldsById[(int)$carry['from']] ?? null;
+                $listAttrs['data-cf-carry-from'] = $carry['from'];
+                $listAttrs['data-cf-carry-mode'] = $carry['mode'];
+                $listAttrs['data-cf-carry-options'] = json_encode($src ? $src->getOptions() : [], JSON_UNESCAPED_UNICODE);
             }
             ?>
             <div <?= \yii\helpers\Html::renderTagAttributes($listAttrs) ?>>
@@ -252,6 +299,148 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
                     'options' => ['style' => 'margin-top:8px'],
                 ]) ?>
             </div>
+        <?php elseif ($field->type === FormField::TYPE_GRID_SINGLE || $field->type === FormField::TYPE_GRID_MULTI): ?>
+            <?php
+            $grid = $field->getGridConfig();
+            $multi = $field->type === FormField::TYPE_GRID_MULTI;
+            $gridValue = is_array($value) ? $value : [];
+            ?>
+            <div class="cf-grid-wrap" data-cf-grid="<?= $multi ? 'multi' : 'single' ?>">
+                <table class="cf-grid">
+                    <thead>
+                    <tr>
+                        <th></th>
+                        <?php foreach ($grid['columns'] as $col): ?>
+                            <th><?= Html::encode($col) ?></th>
+                        <?php endforeach; ?>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($grid['rows'] as $rowLabel): ?>
+                        <?php
+                        $cell = $gridValue[$rowLabel] ?? null;
+                        $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
+                        ?>
+                        <tr>
+                            <th><?= Html::encode($rowLabel) ?></th>
+                            <?php foreach ($grid['columns'] as $col): ?>
+                                <td>
+                                    <?php if ($multi): ?>
+                                        <?= Html::checkbox($inputName . '[' . $rowLabel . '][]', in_array($col, $picked, true), ['value' => $col]) ?>
+                                    <?php else: ?>
+                                        <?= Html::radio($inputName . '[' . $rowLabel . ']', in_array($col, $picked, true), ['value' => $col]) ?>
+                                    <?php endif; ?>
+                                </td>
+                            <?php endforeach; ?>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php elseif ($field->type === FormField::TYPE_BEST_WORST): ?>
+            <?php
+            $items = $field->getItemsConfig()['items'];
+            $bw = is_array($value) ? $value : [];
+            $best = (string)($bw['best'] ?? '');
+            $worst = (string)($bw['worst'] ?? '');
+            ?>
+            <div class="cf-best-worst" data-cf-best-worst>
+                <table class="cf-grid">
+                    <thead>
+                    <tr>
+                        <th><?= Yii::t('ThiscoveryFormsModule.base', 'Best') ?></th>
+                        <th></th>
+                        <th><?= Yii::t('ThiscoveryFormsModule.base', 'Worst') ?></th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <?php foreach ($items as $item): ?>
+                        <tr>
+                            <td><?= Html::radio($inputName . '[best]', $best === $item, ['value' => $item]) ?></td>
+                            <td><?= Html::encode($item) ?></td>
+                            <td><?= Html::radio($inputName . '[worst]', $worst === $item, ['value' => $item]) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php elseif ($field->type === FormField::TYPE_MAXDIFF): ?>
+            <?php
+            $md = $field->getItemsConfig();
+            $mdValue = is_array($value) ? ($value['sets'] ?? $value) : [];
+            ?>
+            <div class="cf-maxdiff" data-cf-maxdiff>
+                <?php foreach ($md['sets'] as $si => $set): ?>
+                    <?php
+                    $pair = is_array($mdValue[$si] ?? null) ? $mdValue[$si] : [];
+                    $best = (string)($pair['best'] ?? '');
+                    $worst = (string)($pair['worst'] ?? '');
+                    ?>
+                    <div class="cf-maxdiff-set">
+                        <div class="cf-maxdiff-set__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Set {n}', ['n' => $si + 1]) ?></div>
+                        <table class="cf-grid">
+                            <thead>
+                            <tr>
+                                <th><?= Yii::t('ThiscoveryFormsModule.base', 'Best') ?></th>
+                                <th></th>
+                                <th><?= Yii::t('ThiscoveryFormsModule.base', 'Worst') ?></th>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($set as $item): ?>
+                                <tr>
+                                    <td><?= Html::radio($inputName . '[sets][' . $si . '][best]', $best === (string)$item, ['value' => $item]) ?></td>
+                                    <td><?= Html::encode($item) ?></td>
+                                    <td><?= Html::radio($inputName . '[sets][' . $si . '][worst]', $worst === (string)$item, ['value' => $item]) ?></td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        </table>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php elseif ($field->type === FormField::TYPE_DRILLDOWN): ?>
+            <?php
+            $path = is_array($value) ? array_values(array_map('strval', $value)) : [];
+            ?>
+            <div class="cf-drilldown" data-cf-drilldown data-cf-tree="<?= Html::encode(json_encode($field->getDrilldownTree(), JSON_UNESCAPED_UNICODE)) ?>">
+                <div data-cf-drilldown-levels></div>
+                <?= Html::hiddenInput($inputName, json_encode($path, JSON_UNESCAPED_UNICODE), ['data-cf-drilldown-value' => true]) ?>
+            </div>
+        <?php elseif ($field->type === FormField::TYPE_IMAGE_AREA): ?>
+            <?php
+            $img = $field->getImageAreaConfig();
+            $picked = [];
+            if (is_array($value)) {
+                $picked = $value['regions'] ?? (array_is_list($value) ? $value : []);
+            }
+            $picked = array_map('strval', is_array($picked) ? $picked : []);
+            ?>
+            <div class="cf-hotspot" data-cf-hotspot data-cf-multi="<?= !empty($img['multi']) ? '1' : '0' ?>">
+                <div class="cf-hotspot-stage">
+                    <?php if ($img['src'] !== ''): ?>
+                        <img src="<?= Html::encode($img['src']) ?>" alt="">
+                    <?php endif; ?>
+                    <div class="cf-hotspot-overlay">
+                        <?php foreach ($img['regions'] as $region): ?>
+                            <?php
+                            $rid = (string)($region['id'] ?? '');
+                            $selected = in_array($rid, $picked, true);
+                            ?>
+                            <button type="button"
+                                    class="cf-hotspot-region<?= $selected ? ' is-selected' : '' ?>"
+                                    data-cf-region="<?= Html::encode($rid) ?>"
+                                    style="left:<?= (float)($region['x'] ?? 0) ?>%;top:<?= (float)($region['y'] ?? 0) ?>%;width:<?= (float)($region['w'] ?? 10) ?>%;height:<?= (float)($region['h'] ?? 10) ?>%;"
+                                    title="<?= Html::encode((string)($region['label'] ?? '')) ?>">
+                                <span><?= Html::encode((string)($region['label'] ?? '')) ?></span>
+                            </button>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
+                <?= Html::hiddenInput($inputName, json_encode(['regions' => $picked], JSON_UNESCAPED_UNICODE), [
+                    'data-cf-hotspot-value' => true,
+                ]) ?>
+            </div>
         <?php else: ?>
             <?php
             $textValue = is_array($value) ? '' : (string)$value;
@@ -267,6 +456,29 @@ if ($field->type === FormField::TYPE_RICH_TEXT): ?>
                 'id' => $inputId,
                 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Your answer'),
             ]) ?>
+        <?php endif; ?>
+        <?php
+        $justMode = $field->getEffectiveJustification($formModel);
+        $justifications = $justifications ?? [];
+        $justValue = (string)($justifications[$field->id] ?? '');
+        if ($justMode !== FormField::JUSTIFY_NONE):
+        ?>
+            <div class="cf-justify">
+                <label class="cf-label" for="<?= Html::encode($inputId) ?>-just">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Why did you choose this?') ?>
+                    <?php if ($justMode === FormField::JUSTIFY_REQUIRED): ?>
+                        <span class="cf-required">*</span>
+                    <?php else: ?>
+                        <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                    <?php endif; ?>
+                </label>
+                <?= Html::textarea('SubmitForm[justifications][' . $field->id . ']', $justValue, [
+                    'class' => 'form-control',
+                    'id' => $inputId . '-just',
+                    'rows' => 3,
+                    'required' => $justMode === FormField::JUSTIFY_REQUIRED,
+                ]) ?>
+            </div>
         <?php endif; ?>
     </div>
 <?php endif; ?>

@@ -137,6 +137,15 @@ class Events
         }
     }
 
+    public static function onHourlyCron(): void
+    {
+        try {
+            (new \humhub\modules\thiscoveryForms\services\WaveService())->dispatchDueInvites();
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms hourly cron failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
+    }
+
     public static function onIntegrityCheck($event): void
     {
         /** @var IntegrityController $integrity */

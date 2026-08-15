@@ -1,0 +1,101 @@
+{
+    "format": "thiscovery-forms-questions",
+    "version": 1,
+    "kind": "survey",
+    "title": "Sample service feedback",
+    "fields": [
+        {
+            "type": "rich_text",
+            "label": "Welcome",
+            "help_text": "",
+            "required": "",
+            "rich_content": "<p>Thank you for taking part. This sample file shows how to import questions. You can edit or delete anything after import.</p>"
+        },
+        {
+            "type": "radio",
+            "label": "How did you hear about this study?",
+            "help_text": "Please choose one.",
+            "required": "1",
+            "options": [
+                "Search",
+                "A friend or colleague",
+                "NHS staff",
+                "Social media",
+                "Other"
+            ]
+        },
+        {
+            "type": "checkbox",
+            "label": "Which topics interest you?",
+            "help_text": "Select all that apply.",
+            "required": "",
+            "options": [
+                "Access to care",
+                "Communication",
+                "Waiting times",
+                "Support after treatment",
+                "None of these"
+            ],
+            "exclusive_option": "None of these"
+        },
+        {
+            "type": "rating",
+            "label": "Overall, how would you rate this service?",
+            "help_text": "",
+            "required": "1",
+            "rating_min": 1,
+            "rating_max": 5,
+            "rating_step": 1,
+            "rating_low_label": "Poor",
+            "rating_high_label": "Excellent"
+        },
+        {
+            "type": "page_break",
+            "label": "Page break",
+            "help_text": "",
+            "required": "",
+            "page_key": "about-you",
+            "page_title": "About you"
+        },
+        {
+            "type": "dropdown",
+            "label": "Age group",
+            "help_text": "",
+            "required": "",
+            "options": [
+                "Under 18",
+                "18–24",
+                "25–34",
+                "35–44",
+                "45–54",
+                "55–64",
+                "65 or over",
+                "Prefer not to say"
+            ]
+        },
+        {
+            "type": "grid_single",
+            "label": "How much do you agree with the following?",
+            "help_text": "Choose one answer in each row.",
+            "required": "",
+            "grid_rows": [
+                "I understood what was being asked of me",
+                "I had enough time to take part",
+                "I would take part again"
+            ],
+            "grid_columns": [
+                "Strongly disagree",
+                "Disagree",
+                "Neutral",
+                "Agree",
+                "Strongly agree"
+            ]
+        },
+        {
+            "type": "textarea",
+            "label": "Is there anything else you would like to tell us?",
+            "help_text": "Optional.",
+            "required": ""
+        }
+    ]
+}

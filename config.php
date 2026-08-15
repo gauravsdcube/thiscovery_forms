@@ -5,6 +5,7 @@
  * @license AGPL-3.0-or-later
  */
 
+use humhub\commands\CronController;
 use humhub\commands\IntegrityController;
 use humhub\modules\admin\widgets\AdminMenu;
 use humhub\modules\thiscoveryForms\Events;
@@ -23,6 +24,7 @@ return [
         ['class' => AdminMenu::class, 'event' => AdminMenu::EVENT_INIT, 'callback' => [Events::class, 'onAdminMenuInit']],
         ['class' => User::class, 'event' => User::EVENT_BEFORE_DELETE, 'callback' => [Events::class, 'onUserDelete']],
         ['class' => IntegrityController::class, 'event' => IntegrityController::EVENT_ON_RUN, 'callback' => [Events::class, 'onIntegrityCheck']],
+        ['class' => CronController::class, 'event' => CronController::EVENT_ON_HOURLY_RUN, 'callback' => [Events::class, 'onHourlyCron']],
     ],
     'urlManagerRules' => [
         'thiscovery-forms/global/view/<id:\d+>' => 'thiscovery-forms/global/view',

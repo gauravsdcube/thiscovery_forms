@@ -63,8 +63,12 @@ $total = (int)$dataProvider->getTotalCount();
                     : null;
 
                 $valueMap = [];
+                $justMap = [];
                 foreach ($answer->answerFields as $af) {
                     $valueMap[(int)$af->field_id] = $af->getDisplayValue();
+                    if (trim((string)$af->justification) !== '') {
+                        $justMap[(int)$af->field_id] = (string)$af->justification;
+                    }
                 }
                 $answeredCount = 0;
                 $answerableTotal = 0;
@@ -100,6 +104,12 @@ $total = (int)$dataProvider->getTotalCount();
                         </div>
                         <div class="cf-answer-card__badges">
                             <span class="cf-answer-card__chip">#<?= (int)$seq ?></span>
+                            <?php if ($answer->wave): ?>
+                                <span class="cf-answer-card__chip"><?= Html::encode($answer->wave->getDisplayTitle()) ?></span>
+                            <?php endif; ?>
+                            <?php if ($answer->round): ?>
+                                <span class="cf-answer-card__chip"><?= Html::encode($answer->round->getDisplayTitle()) ?></span>
+                            <?php endif; ?>
                             <span class="cf-answer-card__chip">
                                 <?= Yii::t('ThiscoveryFormsModule.base', '{answered}/{total} fields', [
                                     'answered' => $answeredCount,
@@ -129,6 +139,11 @@ $total = (int)$dataProvider->getTotalCount();
                                                 <span class="cf-answer-field__blank"><?= Yii::t('ThiscoveryFormsModule.base', 'No answer') ?></span>
                                             <?php else: ?>
                                                 <?= nl2br(Html::encode($afValue)) ?>
+                                                <?php if (!empty($justMap[(int)$field->id])): ?>
+                                                    <div class="cf-answer-just">
+                                                        <?= nl2br(Html::encode($justMap[(int)$field->id])) ?>
+                                                    </div>
+                                                <?php endif; ?>
                                             <?php endif; ?>
                                         </div>
                                     </div>

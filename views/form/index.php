@@ -11,9 +11,12 @@ use yii\widgets\LinkPager;
 /** @var $dataProvider yii\data\ActiveDataProvider */
 /** @var $contentContainer humhub\modules\content\components\ContentContainerActiveRecord|null */
 /** @var $canCreate bool */
+/** @var CustomForm[] $templates */
 
 ThiscoveryFormsAsset::register($this);
 $statusLabels = CustomForm::getStatusLabels();
+$kindLabels = CustomForm::getKindLabels();
+$templates = $templates ?? [];
 ?>
 
 <div class="cf-list-page">
@@ -126,6 +129,7 @@ $statusLabels = CustomForm::getStatusLabels();
                         <td class="cf-form-table__form-col">
                             <div class="cf-form-row__title">
                                 <?= Html::a(Html::encode($formModel->title), Url::toView($formModel)) ?>
+                                <span class="cf-form-row__chip"><?= Html::encode($kindLabels[$formModel->kind] ?? $formModel->kind) ?></span>
                                 <?php if ($formModel->show_in_menu): ?>
                                     <span class="cf-form-row__chip" title="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'In menu')) ?>">
                                         <i class="fa fa-bars"></i>
@@ -153,5 +157,28 @@ $statusLabels = CustomForm::getStatusLabels();
         <div class="cf-list-pager">
             <?= LinkPager::widget(['pagination' => $dataProvider->pagination]) ?>
         </div>
+    <?php endif; ?>
+
+    <?php if (!empty($templates)): ?>
+        <h2 class="cf-create-wizard__h"><?= Yii::t('ThiscoveryFormsModule.base', 'Templates') ?></h2>
+        <ul class="cf-template-list">
+            <?php foreach ($templates as $template): ?>
+                <li>
+                    <a href="<?= Html::encode(Url::toEdit($template)) ?>">
+                        <strong><?= Html::encode($template->title) ?></strong>
+                        <span class="text-muted">
+                            <?= Html::encode($kindLabels[$template->kind] ?? $template->kind) ?>
+                            · <?= Yii::t('ThiscoveryFormsModule.base', '{n} fields', ['n' => count($template->fields)]) ?>
+                        </span>
+                    </a>
+                    <?php if ($canCreate): ?>
+                        · <?= Html::a(
+                            Yii::t('ThiscoveryFormsModule.base', 'Use template'),
+                            Url::toCreate($contentContainer, ['template' => $template->id])
+                        ) ?>
+                    <?php endif; ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
     <?php endif; ?>
 </div>

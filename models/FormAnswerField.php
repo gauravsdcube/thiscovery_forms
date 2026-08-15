@@ -11,6 +11,7 @@ use yii\db\ActiveQuery;
  * @property int $answer_id
  * @property int $field_id
  * @property string|null $value
+ * @property string|null $justification
  *
  * @property-read FormAnswer $answer
  * @property-read FormField $field
@@ -27,7 +28,7 @@ class FormAnswerField extends ActiveRecord
         return [
             [['answer_id', 'field_id'], 'required'],
             [['answer_id', 'field_id'], 'integer'],
-            [['value'], 'string'],
+            [['value', 'justification'], 'string'],
         ];
     }
 
@@ -59,6 +60,18 @@ class FormAnswerField extends ActiveRecord
                 return implode(', ', $parts);
             }
             return (string)$this->value;
+        }
+
+        if ($field && in_array($field->type, [
+            FormField::TYPE_GRID_SINGLE,
+            FormField::TYPE_GRID_MULTI,
+            FormField::TYPE_BEST_WORST,
+            FormField::TYPE_MAXDIFF,
+            FormField::TYPE_DRILLDOWN,
+            FormField::TYPE_IMAGE_AREA,
+        ], true)) {
+            return (new \humhub\modules\thiscoveryForms\services\VariableSubstitutor())
+                ->formatAnswer($decoded !== null && json_last_error() === JSON_ERROR_NONE ? $decoded : $this->value, $field, true);
         }
 
         if ($field && $field->type === FormField::TYPE_RATING) {

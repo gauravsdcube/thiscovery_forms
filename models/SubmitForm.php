@@ -18,6 +18,21 @@ class SubmitForm extends Model
     /** @var array fieldId => value */
     public $values = [];
 
+    /** @var array fieldId => justification text */
+    public $justifications = [];
+
+    /** @var int|null */
+    public $waveId;
+
+    /** @var int|null */
+    public $roundId;
+
+    /** @var int|null */
+    public $panelMemberId;
+
+    /** @var float */
+    public $weight = 1;
+
     public function rules()
     {
         return [
@@ -65,6 +80,22 @@ class SubmitForm extends Model
                 $this->values[$field->id] = is_array($val) ? array_values(array_map('strval', $val)) : [];
                 continue;
             }
+            if (in_array($field->type, [
+                FormField::TYPE_GRID_SINGLE,
+                FormField::TYPE_GRID_MULTI,
+                FormField::TYPE_BEST_WORST,
+                FormField::TYPE_MAXDIFF,
+                FormField::TYPE_DRILLDOWN,
+                FormField::TYPE_IMAGE_AREA,
+            ], true)) {
+                $val = $fieldPost[$key] ?? [];
+                if (is_string($val)) {
+                    $decoded = json_decode($val, true);
+                    $val = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $val;
+                }
+                $this->values[$field->id] = $val;
+                continue;
+            }
             if ($field->type === FormField::TYPE_HTML) {
                 $val = $fieldPost[$key] ?? '';
                 if (is_array($val)) {
@@ -77,12 +108,25 @@ class SubmitForm extends Model
             $this->values[$field->id] = isset($fieldPost[$key]) ? $fieldPost[$key] : '';
         }
 
+        $justPost = $post['SubmitForm']['justifications'] ?? ($post['justifications'] ?? []);
+        if (!is_array($justPost)) {
+            $justPost = [];
+        }
+        $this->justifications = [];
+        foreach ($this->form->fields as $field) {
+            if (!$field->supportsJustification()) {
+                continue;
+            }
+            $this->justifications[$field->id] = trim((string)($justPost[(string)$field->id] ?? ''));
+        }
+
         return true;
     }
 
     public function loadFromAnswer(FormAnswer $answer): void
     {
         $this->values = $answer->getValuesMap();
+        $this->justifications = $answer->getJustificationsMap();
     }
 
     public function validateFields(): void
@@ -91,12 +135,12 @@ class SubmitForm extends Model
             if (!$field->collectsAnswer()) {
                 continue;
             }
-            if (!$field->isConditionMet($this->values)) {
+            if (!$field->isVisible($this->values)) {
                 continue;
             }
 
             $value = $this->values[$field->id] ?? null;
-            $empty = $value === null || $value === '' || $value === [] ;
+            $empty = $this->isEmptyValue($value);
 
             $required = $field->required;
             if ($field->type === FormField::TYPE_HTML) {
@@ -220,6 +264,32 @@ class SubmitForm extends Model
                         ]));
                     }
                     break;
+                case FormField::TYPE_GRID_SINGLE:
+                case FormField::TYPE_GRID_MULTI:
+                    $this->validateGrid($field, $value);
+                    break;
+                case FormField::TYPE_BEST_WORST:
+                    $this->validateBestWorst($field, $value);
+                    break;
+                case FormField::TYPE_MAXDIFF:
+                    $this->validateMaxDiff($field, $value);
+                    break;
+                case FormField::TYPE_DRILLDOWN:
+                    $this->validateDrilldown($field, $value);
+                    break;
+                case FormField::TYPE_IMAGE_AREA:
+                    $this->validateImageArea($field, $value);
+                    break;
+            }
+
+            $justMode = $field->getEffectiveJustification($this->form);
+            if ($justMode === FormField::JUSTIFY_REQUIRED && $this->scenario !== self::SCENARIO_DRAFT) {
+                $just = trim((string)($this->justifications[$field->id] ?? ''));
+                if ($just === '') {
+                    $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please add a comment for "{label}".', [
+                        'label' => $field->label,
+                    ]));
+                }
             }
         }
     }
@@ -243,6 +313,18 @@ class SubmitForm extends Model
 
         $answer = $existing ?: new FormAnswer();
         $answer->form_id = $this->form->id;
+        if ($this->waveId) {
+            $answer->wave_id = $this->waveId;
+        }
+        if ($this->roundId) {
+            $answer->round_id = $this->roundId;
+        }
+        if ($this->panelMemberId) {
+            $answer->panel_member_id = $this->panelMemberId;
+        }
+        if ($this->weight !== null) {
+            $answer->weight = $this->weight;
+        }
         if ($anonymous) {
             $answer->forceAnonymous = true;
             $answer->created_by = null;
@@ -274,20 +356,27 @@ class SubmitForm extends Model
             if (!$field->collectsAnswer()) {
                 continue;
             }
-            $visible = $field->isConditionMet($this->values);
+            $visible = $field->isVisible($this->values);
             $value = $visible ? ($this->values[$field->id] ?? null) : null;
 
-            if (!$visible || $value === null || $value === '' || $value === []) {
+            if (!$visible || $this->isEmptyValue($value)) {
                 if (isset($existingFields[$field->id])) {
                     $existingFields[$field->id]->delete();
                 }
                 continue;
             }
 
+            if ($field->type === FormField::TYPE_IMAGE_AREA) {
+                $value = $this->scoreImageArea($field, is_array($value) ? $value : []);
+            }
+
             $af = $existingFields[$field->id] ?? new FormAnswerField();
             $af->answer_id = $answer->id;
             $af->field_id = $field->id;
-            $af->value = is_array($value) ? json_encode(array_values($value), JSON_UNESCAPED_UNICODE) : (string)$value;
+            $af->value = $this->encodeValue($value);
+            $af->justification = $field->supportsJustification()
+                ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)
+                : null;
 
             if (!$af->save()) {
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
@@ -306,5 +395,186 @@ class SubmitForm extends Model
         }
 
         return $answer;
+    }
+
+    private function isEmptyValue($value): bool
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return true;
+        }
+        if (is_array($value)) {
+            $filtered = array_filter($value, function ($v) {
+                if ($v === null || $v === '' || $v === []) {
+                    return false;
+                }
+                if (is_array($v)) {
+                    return !$this->isEmptyValue($v);
+                }
+                return true;
+            });
+            return $filtered === [];
+        }
+        return false;
+    }
+
+    private function encodeValue($value): string
+    {
+        if (!is_array($value)) {
+            return (string)$value;
+        }
+        if (array_is_list($value)) {
+            return json_encode(array_values($value), JSON_UNESCAPED_UNICODE);
+        }
+        return json_encode($value, JSON_UNESCAPED_UNICODE);
+    }
+
+    private function invalid(FormField $field): void
+    {
+        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid value.', [
+            'label' => $field->label,
+        ]));
+    }
+
+    private function validateGrid(FormField $field, $value): void
+    {
+        if (!is_array($value)) {
+            $this->invalid($field);
+            return;
+        }
+        $cfg = $field->getGridConfig();
+        $rows = $cfg['rows'];
+        $cols = $cfg['columns'];
+        $multi = $field->type === FormField::TYPE_GRID_MULTI;
+        foreach ($rows as $rowLabel) {
+            $cell = $value[$rowLabel] ?? null;
+            if ($cell === null || $cell === '' || $cell === []) {
+                if ($field->required) {
+                    $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required.', [
+                        'label' => $field->label,
+                    ]));
+                    return;
+                }
+                continue;
+            }
+            $picked = $multi ? (is_array($cell) ? $cell : [$cell]) : [$cell];
+            foreach ($picked as $col) {
+                if (!in_array((string)$col, $cols, true)) {
+                    $this->invalid($field);
+                    return;
+                }
+            }
+        }
+    }
+
+    private function validateBestWorst(FormField $field, $value): void
+    {
+        if (!is_array($value)) {
+            $this->invalid($field);
+            return;
+        }
+        $items = $field->getItemsConfig()['items'];
+        $best = (string)($value['best'] ?? '');
+        $worst = (string)($value['worst'] ?? '');
+        if ($best === '' || $worst === '' || $best === $worst) {
+            $this->invalid($field);
+            return;
+        }
+        if (!in_array($best, $items, true) || !in_array($worst, $items, true)) {
+            $this->invalid($field);
+        }
+    }
+
+    private function validateMaxDiff(FormField $field, $value): void
+    {
+        if (!is_array($value)) {
+            $this->invalid($field);
+            return;
+        }
+        $sets = $field->getItemsConfig()['sets'];
+        $answers = $value['sets'] ?? $value;
+        if (!is_array($answers)) {
+            $this->invalid($field);
+            return;
+        }
+        foreach ($sets as $i => $set) {
+            $pair = $answers[$i] ?? null;
+            if (!is_array($pair)) {
+                $this->invalid($field);
+                return;
+            }
+            $best = (string)($pair['best'] ?? '');
+            $worst = (string)($pair['worst'] ?? '');
+            if ($best === '' || $worst === '' || $best === $worst) {
+                $this->invalid($field);
+                return;
+            }
+            $set = array_map('strval', $set);
+            if (!in_array($best, $set, true) || !in_array($worst, $set, true)) {
+                $this->invalid($field);
+                return;
+            }
+        }
+    }
+
+    private function validateDrilldown(FormField $field, $value): void
+    {
+        $path = is_array($value) ? array_values(array_map('strval', $value)) : [];
+        $path = array_values(array_filter($path, 'strlen'));
+        if (!$path || !FormField::pathExistsInTree($field->getDrilldownTree(), $path)) {
+            $this->invalid($field);
+        }
+    }
+
+    private function validateImageArea(FormField $field, $value): void
+    {
+        $cfg = $field->getImageAreaConfig();
+        $ids = [];
+        foreach ($cfg['regions'] as $region) {
+            $ids[] = (string)($region['id'] ?? '');
+        }
+        $picked = [];
+        if (is_array($value)) {
+            $picked = $value['regions'] ?? (array_is_list($value) ? $value : []);
+        }
+        if (!is_array($picked) || !$picked) {
+            $this->invalid($field);
+            return;
+        }
+        foreach ($picked as $id) {
+            if (is_array($id) || !in_array((string)$id, $ids, true)) {
+                $this->invalid($field);
+                return;
+            }
+        }
+        if (!$cfg['multi'] && count($picked) > 1) {
+            $this->invalid($field);
+        }
+    }
+
+    private function scoreImageArea(FormField $field, array $value): array
+    {
+        $cfg = $field->getImageAreaConfig();
+        $picked = $value['regions'] ?? (array_is_list($value) ? $value : []);
+        if (!is_array($picked)) {
+            $picked = [];
+        }
+        $picked = array_values(array_map('strval', $picked));
+        $score = 0;
+        if ($cfg['mode'] === 'evaluate') {
+            foreach ($cfg['regions'] as $region) {
+                $id = (string)($region['id'] ?? '');
+                if (!in_array($id, $picked, true)) {
+                    continue;
+                }
+                $score += (int)($region['score'] ?? 0);
+                if (!empty($region['correct']) && (int)($region['score'] ?? 0) === 0) {
+                    $score += 1;
+                }
+            }
+        }
+        return [
+            'regions' => $picked,
+            'score' => $score,
+        ];
     }
 }

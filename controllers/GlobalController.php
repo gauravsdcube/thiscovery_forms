@@ -24,6 +24,8 @@ use yii\web\Response;
 class GlobalController extends Controller
 {
     use FillResumeTrait;
+    use StudioTrait;
+    use ProgrammeTrait;
 
     public $subLayout = '@thiscovery-forms/views/layouts/default';
 
@@ -39,6 +41,12 @@ class GlobalController extends Controller
             ['login', 'actions' => [
                 'index', 'create', 'edit', 'edit-answer', 'answers',
                 'dashboard', 'overview', 'export', 'delete',
+                'save-template', 'export-questions', 'import-questions', 'sample-questions',
+                'library-list', 'library-save', 'library-delete', 'library-insert',
+                'panel-save', 'panel-add-member', 'panel-remove-member', 'panel-invite',
+                'wave-save', 'wave-status',
+                'round-save', 'round-status', 'round-publish', 'round-delphi',
+                'translations-save', 'export-translations', 'import-translations',
             ]],
         ];
     }
@@ -52,7 +60,7 @@ class GlobalController extends Controller
             throw new ForbiddenHttpException();
         }
 
-        $query = CustomForm::find()->joinWith('content')
+        $query = CustomForm::findLive()->joinWith('content')
             ->andWhere(['content.contentcontainer_id' => null]);
 
         if (!$canManage) {
@@ -67,22 +75,17 @@ class GlobalController extends Controller
         return $this->render('index', [
             'dataProvider' => $provider,
             'canCreate' => Yii::$app->user->can(CreateGlobalForm::class),
+            'templates' => Yii::$app->user->can(CreateGlobalForm::class)
+                ? CustomForm::findAvailableTemplates(null)
+                : [],
         ]);
     }
 
-    public function actionCreate()
+    protected function prepareNewForm(): CustomForm
     {
-        if (!Yii::$app->user->can(CreateGlobalForm::class)) {
-            throw new ForbiddenHttpException();
-        }
-
         $form = new CustomForm();
-        $form->status = CustomForm::STATUS_DRAFT;
-        $form->answers_visibility = CustomForm::ANSWERS_MANAGERS;
-        $form->allow_edit = 1;
         $form->content->visibility = \humhub\modules\content\models\Content::VISIBILITY_PUBLIC;
-
-        return $this->handleEdit($form, true);
+        return $form;
     }
 
     public function actionEdit($id)
@@ -95,7 +98,7 @@ class GlobalController extends Controller
         return $this->handleEdit($form, false);
     }
 
-    protected function handleEdit(CustomForm $form, bool $isNew)
+    protected function handleEdit(CustomForm $form, bool $isNew, array $seedFields = [])
     {
         $request = Yii::$app->request;
 
@@ -122,7 +125,7 @@ class GlobalController extends Controller
             'formModel' => $form,
             'isNew' => $isNew,
             'contentContainer' => null,
-            'fields' => $isNew ? [] : $form->fields,
+            'fields' => $isNew ? $seedFields : $form->fields,
         ]);
     }
 
@@ -204,7 +207,7 @@ class GlobalController extends Controller
             'existing' => $existing,
             'contentContainer' => null,
             'savedDraft' => null,
-        ], $extra));
+        ], $this->fillViewExtras($form, $this->fillContext($form)), $extra));
     }
 
     public function actionEditAnswer($id, $answerId)
@@ -239,8 +242,10 @@ class GlobalController extends Controller
             throw new ForbiddenHttpException();
         }
 
-        $anonymous = $form->allowsAnonymous();
         $submit->loadValuesFromRequest(Yii::$app->request->post());
+        $ctx = $this->fillContext($form);
+        $this->applyFillContext($form, $submit, $ctx);
+        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous);
 
@@ -249,32 +254,35 @@ class GlobalController extends Controller
             return $this->renderFillView($form, $submit, $existing);
         }
 
-        if ($anonymous) {
-            $form->markGuestAnswered();
-        }
+        $this->afterCompleteSave($form, $ctx, $answer, $anonymous);
 
         if ($wasNewComplete && !$anonymous) {
-            try {
-                $identity = Yii::$app->user->getIdentity();
-                $targets = array_filter(
-                    $form->getNotificationTargets(),
-                    static fn($user) => $identity && (int)$user->id !== (int)$identity->id
-                );
-                if ($targets && $identity) {
-                    Yii::createObject(['class' => FormAnsweredNotification::class])
-                        ->from($identity)
-                        ->about($answer)
-                        ->sendBulk($targets);
-                }
-            } catch (\Throwable $e) {
-                Yii::error('Thiscovery Forms notification failed: ' . $e->getMessage(), 'thiscovery-forms');
-            }
+            $this->notifySubmission($form, $answer);
         }
 
         return $this->render('@thiscovery-forms/views/form/thankyou', [
             'formModel' => $form,
             'contentContainer' => null,
         ]);
+    }
+
+    protected function notifySubmission(CustomForm $form, FormAnswer $answer): void
+    {
+        try {
+            $identity = Yii::$app->user->getIdentity();
+            $targets = array_filter(
+                $form->getNotificationTargets(),
+                static fn($user) => $identity && (int)$user->id !== (int)$identity->id
+            );
+            if ($targets && $identity) {
+                Yii::createObject(['class' => FormAnsweredNotification::class])
+                    ->from($identity)
+                    ->about($answer)
+                    ->sendBulk($targets);
+            }
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms notification failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
     }
 
     public function actionAnswers($id)
@@ -285,7 +293,7 @@ class GlobalController extends Controller
         }
 
         $provider = new ActiveDataProvider([
-            'query' => $form->getAnswers()->with(['user', 'answerFields']),
+            'query' => $form->getAnswers()->with(['user', 'answerFields', 'wave', 'round', 'panelMember']),
             'pagination' => ['pageSize' => 30],
         ]);
 
@@ -319,7 +327,7 @@ class GlobalController extends Controller
             throw new ForbiddenHttpException();
         }
 
-        $forms = CustomForm::find()->joinWith('content')
+        $forms = CustomForm::findLive()->joinWith('content')
             ->andWhere(['content.contentcontainer_id' => null])
             ->all();
         $stats = (new DashboardService())->getOverview($forms);

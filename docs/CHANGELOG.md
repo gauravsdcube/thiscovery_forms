@@ -2,6 +2,43 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.5.0 (August 15, 2026)
+
+- Git release of form kinds and studio (library, templates, question import/export), compound logic and research types, longitudinal and consensus programmes, and translation overlay with export/import (1.2.0–1.4.3)
+
+## 1.4.3 (August 14, 2026)
+
+- Enh: Export all source questions for translation (CSV or JSON) and import overlays back in multiple languages from the Translations tab
+
+## 1.4.2 (August 14, 2026)
+
+- Enh: Sample JSON and CSV question files can be downloaded from the Share tab
+- Fix: CSV question import keeps options that span more than one line
+
+## 1.4.1 (August 14, 2026)
+
+- Enh: Email panel members automatically when a later wave opens (Wave 2 onwards), including scheduled start times
+
+## 1.4.0 (August 14, 2026)
+
+- Enh: Longitudinal surveys — hybrid panel (signed-in users or email tokens), waves on the same form, invite emails, wave completion and drop-off on the dashboard
+- Enh: Consensus / Delphi — rounds, published summaries, identity modes, optional/required comments, weighted votes, freeze items that reach a threshold
+- Enh: Translation overlay with a language switcher on the fill page (source language plus extra locales such as Welsh)
+
+## 1.3.0 (August 14, 2026)
+
+- Enh: Compound logic (AND/OR) with show, hide, skip question, skip page, go to page, and go to end
+- Enh: Answer piping on labels, help text, page titles, rich text, and HTML; carry-forward choices from earlier questions
+- Enh: Research question types — grid (single/multi), best–worst, MaxDiff, drill-down, and image area select/evaluate
+- Enh: Dashboards and CSV export cover the new structured answer types
+
+## 1.2.0 (August 14, 2026)
+
+- Enh: Form kinds — Survey, Quick poll, Feedback, Longitudinal, Consensus — chosen on create
+- Enh: Quick polls are a one-question form, vote inline on the stream, and embed on engagement pages
+- Enh: Question and block library, save a form as a template, create from a template
+- Enh: Import and export questions as JSON or CSV
+
 ## 1.1.0 (August 13, 2026)
 
 - Enh: Per-form setting to allow or prevent respondents editing a completed submission (managers can still update answers)

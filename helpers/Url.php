@@ -4,6 +4,7 @@ namespace humhub\modules\thiscoveryForms\helpers;
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use Yii;
 use yii\helpers\Url as BaseUrl;
 
 class Url
@@ -85,13 +86,13 @@ class Url
         return $form->content->container->createUrl('/thiscovery-forms/form/edit', ['id' => $form->id]);
     }
 
-    public static function toCreate($container = null): string
+    public static function toCreate($container = null, array $params = []): string
     {
         if ($container === null) {
-            return BaseUrl::to(['/thiscovery-forms/global/create']);
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/create'], $params));
         }
 
-        return $container->createUrl('/thiscovery-forms/form/create');
+        return $container->createUrl('/thiscovery-forms/form/create', $params);
     }
 
     public static function toIndex($container = null): string
@@ -158,5 +159,138 @@ class Url
         }
 
         return $container->createUrl('/thiscovery-forms/form/overview');
+    }
+
+    public static function toSubmitJson(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/submit-json', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/submit-json', ['id' => $form->id]);
+    }
+
+    public static function toSaveTemplate(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/save-template', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/save-template', ['id' => $form->id]);
+    }
+
+    public static function toExportQuestions(CustomForm $form, string $format = 'json'): string
+    {
+        $params = ['id' => $form->id, 'format' => $format];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/export-questions'], $params));
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/export-questions', $params);
+    }
+
+    public static function toSampleQuestions($container = null, string $format = 'json'): string
+    {
+        $params = ['format' => $format];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/sample-questions'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/sample-questions', $params);
+    }
+
+    public static function toImportQuestions(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/import-questions', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/import-questions', ['id' => $form->id]);
+    }
+
+    public static function toExportTranslations(CustomForm $form, string $format = 'csv'): string
+    {
+        $params = ['id' => $form->id, 'format' => $format];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/export-translations'], $params));
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/export-translations', $params);
+    }
+
+    public static function toImportTranslations(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/import-translations', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/import-translations', ['id' => $form->id]);
+    }
+
+    public static function toLibraryList($container = null): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/library-list']);
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/library-list');
+    }
+
+    public static function toLibrarySave($container = null): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/library-save']);
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/library-save');
+    }
+
+    public static function toLibraryDelete($container = null): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/library-delete']);
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/library-delete');
+    }
+
+    public static function toLibraryInsert($container = null): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/library-insert']);
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/library-insert');
+    }
+
+    public static function toPanelInvite(CustomForm $form, string $token, $scheme = true): string
+    {
+        $url = self::toView($form, $scheme);
+        $sep = str_contains($url, '?') ? '&' : '?';
+        return $url . $sep . 'token=' . urlencode($token);
+    }
+
+    public static function studioAction(CustomForm $form, string $action): string
+    {
+        $route = $form->isGlobal()
+            ? '/thiscovery-forms/global/' . $action
+            : '/thiscovery-forms/form/' . $action;
+        $params = ['id' => $form->id];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge([$route], $params));
+        }
+        return $form->content->container->createUrl($route, $params);
+    }
+
+    public static function toFillLanguage(CustomForm $form, string $lang): string
+    {
+        $url = self::toView($form);
+        $sep = str_contains($url, '?') ? '&' : '?';
+        $token = (string)Yii::$app->request->get('token', '');
+        $extra = 'lang=' . urlencode($lang);
+        if ($token !== '') {
+            $extra .= '&token=' . urlencode($token);
+        }
+        return $url . $sep . $extra;
     }
 }

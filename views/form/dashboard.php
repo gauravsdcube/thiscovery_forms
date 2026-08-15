@@ -68,6 +68,60 @@ JS
         </div>
     </div>
 
+    <?php if (!empty($stats['waves'])): ?>
+        <div class="cf-dash-panel">
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Waves') ?></h3>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Wave') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Completed') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Panel') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Completion') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Drop-off vs previous') ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($stats['waves'] as $wave): ?>
+                    <tr>
+                        <td><?= Html::encode($wave['title']) ?></td>
+                        <td><?= (int)$wave['completed'] ?></td>
+                        <td><?= (int)$wave['memberCount'] ?></td>
+                        <td><?= (int)$wave['rate'] ?>%</td>
+                        <td><?= $wave['dropOff'] === null ? '—' : ((int)$wave['dropOff'] . '%') ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!empty($stats['rounds'])): ?>
+        <div class="cf-dash-panel">
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Rounds') ?></h3>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Round') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Responses') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Summary') ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($stats['rounds'] as $round): ?>
+                    <tr>
+                        <td><?= Html::encode($round['title']) ?></td>
+                        <td><?= (int)$round['completed'] ?></td>
+                        <td><?= !empty($round['published'])
+                            ? Yii::t('ThiscoveryFormsModule.base', 'Published')
+                            : Yii::t('ThiscoveryFormsModule.base', 'Not published') ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+
     <div class="cf-dash-panel">
         <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Submissions over time') ?></h3>
         <div class="cf-chart-wrap cf-chart-wrap--timeline">
@@ -97,7 +151,7 @@ JS
     <?php if (!empty($stats['structured'])): ?>
         <div class="cf-dash-panel">
             <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Structured question breakdown') ?></h3>
-            <p class="cf-dash-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Pie charts for single-choice fields; bars for multi-select checkboxes.') ?></p>
+            <p class="cf-dash-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Charts for choice, grid, ranking, MaxDiff, drill-down, and image-area questions.') ?></p>
             <div class="cf-chart-grid">
                 <?php foreach ($stats['structured'] as $chart): ?>
                     <div class="cf-chart-card">
@@ -115,7 +169,7 @@ JS
         </div>
     <?php elseif ($stats['totalAnswers'] > 0): ?>
         <div class="cf-dash-panel">
-            <p class="text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'No dropdown, radio, or checkbox fields to chart yet.') ?></p>
+            <p class="text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'No structured questions to chart yet.') ?></p>
         </div>
     <?php else: ?>
         <div class="cf-dash-panel">

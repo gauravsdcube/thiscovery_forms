@@ -6,7 +6,10 @@ use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
 use humhub\modules\thiscoveryForms\models\SubmitForm;
+use humhub\modules\thiscoveryForms\services\FillContext;
+use humhub\modules\thiscoveryForms\services\FillContextService;
 use humhub\modules\thiscoveryForms\services\ResumeService;
+use humhub\modules\thiscoveryForms\services\TranslationService;
 use Yii;
 use yii\web\ForbiddenHttpException;
 use yii\web\Response;
@@ -21,9 +24,32 @@ trait FillResumeTrait
         return new ResumeService();
     }
 
+    protected function fillContext(CustomForm $form): FillContext
+    {
+        return (new FillContextService())->resolve($form);
+    }
+
+    protected function applyFillContext(CustomForm $form, SubmitForm $submit, FillContext $ctx): void
+    {
+        $submit->waveId = $ctx->wave->id ?? null;
+        $submit->roundId = $ctx->round->id ?? null;
+        $submit->panelMemberId = $ctx->member->id ?? null;
+        $submit->weight = $ctx->member ? (float)$ctx->member->weight : 1;
+    }
+
     protected function assertFillAccess(CustomForm $form): void
     {
+        $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
+        $ctx = $this->fillContext($form);
+        $tokenOk = $token !== '' && $ctx->tokenAccess && $ctx->member;
+
         if (Yii::$app->user->isGuest) {
+            if ($tokenOk) {
+                if ($form->isDraft() && !$form->canManage()) {
+                    throw new ForbiddenHttpException(Yii::t('ThiscoveryFormsModule.base', 'This form is still a draft.'));
+                }
+                return;
+            }
             if (!$form->allowsAnonymous()) {
                 Yii::$app->user->loginRequired();
                 Yii::$app->end();
@@ -35,7 +61,7 @@ trait FillResumeTrait
                     'This form is not publicly accessible in this space.'
                 ));
             }
-        } elseif (!$form->content->canView()) {
+        } elseif (!$form->content->canView() && !$tokenOk) {
             throw new ForbiddenHttpException();
         }
 
@@ -56,7 +82,7 @@ trait FillResumeTrait
     }
 
     /**
-     * Load draft for fill: resume code wins, else logged-in user's in-progress answer.
+     * Load draft for fill: resume code wins, else scoped wave/round answer, else logged-in user's answer.
      */
     protected function resolveFillExisting(CustomForm $form, SubmitForm $submit): ?FormAnswer
     {
@@ -64,6 +90,21 @@ trait FillResumeTrait
         if ($draft) {
             $submit->loadFromAnswer($draft);
             return $draft;
+        }
+
+        $ctx = $this->fillContext($form);
+        if ($form->isLongitudinal() || $form->isConsensus()) {
+            $column = $form->isLongitudinal() ? 'wave_id' : 'round_id';
+            $scopeId = $form->isLongitudinal() ? ($ctx->wave->id ?? null) : ($ctx->round->id ?? null);
+            $scoped = (new FillContextService())->findScopedAnswer($form, $ctx, $scopeId, $column);
+            if ($scoped) {
+                $submit->loadFromAnswer($scoped);
+                return $scoped;
+            }
+            if ($form->isConsensus() && $ctx->previousRoundAnswer) {
+                $submit->loadFromAnswer($ctx->previousRoundAnswer);
+            }
+            return null;
         }
 
         if (!$form->allow_multiple && !$form->allowsAnonymous()) {
@@ -84,6 +125,16 @@ trait FillResumeTrait
 
     protected function canContinueDraft(CustomForm $form, ?FormAnswer $existing): bool
     {
+        $ctx = $this->fillContext($form);
+        if ($form->isLongitudinal() || $form->isConsensus()) {
+            if ($ctx->blockReason && !$form->canManage()) {
+                return false;
+            }
+            if (!$existing) {
+                return $form->isOpen() && ($form->canAnswer() || $ctx->tokenAccess || $ctx->member);
+            }
+        }
+
         if (!$existing) {
             return $form->canAnswer();
         }
@@ -98,6 +149,10 @@ trait FillResumeTrait
                 $user = Yii::$app->user->getIdentity();
                 return $user && (int)$existing->created_by === (int)$user->id && $form->isOpen();
             }
+            $ctx = $this->fillContext($form);
+            if ($ctx->member && (int)$existing->panel_member_id === (int)$ctx->member->id) {
+                return $form->isOpen();
+            }
             return false;
         }
 
@@ -110,8 +165,10 @@ trait FillResumeTrait
             throw new ForbiddenHttpException();
         }
 
-        $anonymous = $form->allowsAnonymous();
         $submit->loadValuesFromRequest(Yii::$app->request->post());
+        $ctx = $this->fillContext($form);
+        $this->applyFillContext($form, $submit, $ctx);
+        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $email = trim((string)Yii::$app->request->post('resume_email', ''));
         $page = Yii::$app->request->post('current_page');
         $currentPage = ($page !== null && $page !== '') ? (int)$page : null;
@@ -238,4 +295,24 @@ trait FillResumeTrait
         ?FormAnswer $existing,
         array $extra = []
     );
+
+    protected function fillViewExtras(CustomForm $form, FillContext $ctx): array
+    {
+        (new TranslationService())->overlay($form, $ctx->language);
+        $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
+        return [
+            'fillContext' => $ctx,
+            'panelToken' => $ctx->tokenAccess ? ($ctx->member->token ?? $token) : $token,
+        ];
+    }
+
+    protected function afterCompleteSave(CustomForm $form, FillContext $ctx, $answer, bool $anonymous): void
+    {
+        if ($anonymous) {
+            $form->markGuestAnswered($ctx->wave->id ?? null, $ctx->round->id ?? null);
+        }
+        if ($ctx->member) {
+            $ctx->member->markConsent();
+        }
+    }
 }
