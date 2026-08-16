@@ -19,6 +19,7 @@ class FormCloneService
         $target->title = $overrides['title'] ?? $source->title;
         $target->description = $source->description;
         $target->thank_you_content = $source->thank_you_content;
+        $target->already_submitted_message = $source->already_submitted_message;
         $target->custom_css = $source->custom_css;
         $target->kind = $overrides['kind'] ?? $source->kind;
         $settings = $source->getSettings();
@@ -28,6 +29,7 @@ class FormCloneService
         $target->allow_multiple = $source->allow_multiple;
         $target->allow_anonymous = $source->allow_anonymous;
         $target->allow_edit = $source->allow_edit;
+        $target->allow_resume = $source->allow_resume;
         $target->show_in_menu = $overrides['show_in_menu'] ?? 0;
         $target->status = $overrides['status'] ?? CustomForm::STATUS_DRAFT;
         $target->is_template = $overrides['is_template'] ?? 0;
@@ -52,6 +54,9 @@ class FormCloneService
 
         unset($source->fields, $target->fields);
         (new TranslationService())->copyOnto($source, $target);
+        if ($source->isProject()) {
+            (new ApprovalWorkflowService())->copyStages($source, $target);
+        }
         return true;
     }
 

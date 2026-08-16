@@ -12,7 +12,7 @@ use yii\helpers\Html;
 
 ThiscoveryFormsAsset::register($this);
 
-$kinds = CustomForm::getKindLabels();
+$kinds = CustomForm::getEnabledKindLabels();
 $descriptions = CustomForm::getKindDescriptions();
 $icons = [
     CustomForm::KIND_SURVEY => 'fa-wpforms',
@@ -20,6 +20,7 @@ $icons = [
     CustomForm::KIND_FEEDBACK => 'fa-commenting-o',
     CustomForm::KIND_LONGITUDINAL => 'fa-line-chart',
     CustomForm::KIND_CONSENSUS => 'fa-balance-scale',
+    CustomForm::KIND_PROJECT => 'fa-folder-open',
 ];
 ?>
 
@@ -36,13 +37,19 @@ $icons = [
     </div>
 
     <div class="cf-kind-grid">
-        <?php foreach ($kinds as $kind => $label): ?>
-            <a class="cf-kind-card" href="<?= Html::encode(Url::toCreate($contentContainer, ['kind' => $kind])) ?>">
-                <span class="cf-kind-card__icon"><i class="fa <?= Html::encode($icons[$kind] ?? 'fa-wpforms') ?>"></i></span>
-                <h3 class="cf-kind-card__title"><?= Html::encode($label) ?></h3>
-                <p class="cf-kind-card__desc"><?= Html::encode($descriptions[$kind] ?? '') ?></p>
-            </a>
-        <?php endforeach; ?>
+        <?php if (!$kinds): ?>
+            <p class="alert alert-warning">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'No form types are enabled. Ask an administrator to enable them in module settings.') ?>
+            </p>
+        <?php else: ?>
+            <?php foreach ($kinds as $kind => $label): ?>
+                <a class="cf-kind-card" href="<?= Html::encode(Url::toCreate($contentContainer, ['kind' => $kind])) ?>">
+                    <span class="cf-kind-card__icon"><i class="fa <?= Html::encode($icons[$kind] ?? 'fa-wpforms') ?>"></i></span>
+                    <h3 class="cf-kind-card__title"><?= Html::encode($label) ?></h3>
+                    <p class="cf-kind-card__desc"><?= Html::encode($descriptions[$kind] ?? '') ?></p>
+                </a>
+            <?php endforeach; ?>
+        <?php endif; ?>
     </div>
 
     <?php if (!empty($templates)): ?>

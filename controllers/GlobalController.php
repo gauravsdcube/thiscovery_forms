@@ -26,6 +26,7 @@ class GlobalController extends Controller
     use FillResumeTrait;
     use StudioTrait;
     use ProgrammeTrait;
+    use ApprovalTrait;
 
     public $subLayout = '@thiscovery-forms/views/layouts/default';
 
@@ -47,6 +48,8 @@ class GlobalController extends Controller
                 'wave-save', 'wave-status',
                 'round-save', 'round-status', 'round-publish', 'round-delphi',
                 'translations-save', 'export-translations', 'import-translations',
+                'stage-save', 'stage-delete', 'stage-move',
+                'catalogue', 'project', 'answer-approve', 'answer-changes', 'answer-archive',
             ]],
         ];
     }
@@ -228,12 +231,12 @@ class GlobalController extends Controller
             return $this->handleSubmit($form, $submit, $answer);
         }
 
-        return $this->renderFillView($form, $submit, $answer);
+        return $this->renderFillView($form, $submit, $answer, ['editingAnswer' => true]);
     }
 
     protected function handleSubmit(CustomForm $form, SubmitForm $submit, ?FormAnswer $existing)
     {
-        $draft = $this->resolveDraftFromRequest($form);
+        $draft = $form->allowsResume() ? $this->resolveDraftFromRequest($form) : null;
         if ($draft) {
             $existing = $draft;
         }
@@ -251,18 +254,21 @@ class GlobalController extends Controller
 
         if (!$answer) {
             Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
-            return $this->renderFillView($form, $submit, $existing);
+            return $this->renderFillView($form, $submit, $existing, [
+                'editingAnswer' => $existing && $existing->isComplete(),
+            ]);
         }
 
         $this->afterCompleteSave($form, $ctx, $answer, $anonymous);
 
-        if ($wasNewComplete && !$anonymous) {
+        if ($wasNewComplete && !$anonymous && !$form->isProject()) {
             $this->notifySubmission($form, $answer);
         }
 
         return $this->render('@thiscovery-forms/views/form/thankyou', [
             'formModel' => $form,
             'contentContainer' => null,
+            'answer' => $form->isProject() ? $answer : null,
         ]);
     }
 
@@ -293,7 +299,7 @@ class GlobalController extends Controller
         }
 
         $provider = new ActiveDataProvider([
-            'query' => $form->getAnswers()->with(['user', 'answerFields', 'wave', 'round', 'panelMember']),
+            'query' => $form->getAnswers()->with(['user', 'answerFields', 'wave', 'round', 'panelMember', 'currentStage']),
             'pagination' => ['pageSize' => 30],
         ]);
 

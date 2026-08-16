@@ -197,13 +197,13 @@ class LogicEngine
         if (is_array($raw)) {
             $list = $this->flatten($raw);
             if ($op === FormField::OP_CHECKED) {
-                return $expected !== '' ? in_array($expected, $list, true) : $list !== [];
+                return $expected !== '' ? $this->listIncludes($list, $expected) : $list !== [];
             }
             if ($op === FormField::OP_EQUALS) {
-                return in_array($expected, $list, true);
+                return $this->listIncludes($list, $expected);
             }
             if ($op === FormField::OP_NOT_EQUALS) {
-                return !in_array($expected, $list, true);
+                return !$this->listIncludes($list, $expected);
             }
             if ($op === FormField::OP_CONTAINS) {
                 if ($expected === '') {
@@ -222,9 +222,9 @@ class LogicEngine
         $value = (string)$raw;
         switch ($op) {
             case FormField::OP_EQUALS:
-                return $value === $expected;
+                return FormField::choiceValueMatchesOption($value, $expected);
             case FormField::OP_NOT_EQUALS:
-                return $value !== $expected;
+                return !FormField::choiceValueMatchesOption($value, $expected);
             case FormField::OP_CONTAINS:
                 return $expected !== '' && mb_stripos($value, $expected) !== false;
             case FormField::OP_CHECKED:
@@ -254,5 +254,18 @@ class LogicEngine
         };
         $walk($raw);
         return $out;
+    }
+
+    /**
+     * @param string[] $list
+     */
+    private function listIncludes(array $list, string $expected): bool
+    {
+        foreach ($list as $item) {
+            if (FormField::choiceValueMatchesOption((string)$item, $expected)) {
+                return true;
+            }
+        }
+        return false;
     }
 }

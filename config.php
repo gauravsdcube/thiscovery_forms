@@ -29,5 +29,7 @@ return [
     'urlManagerRules' => [
         'thiscovery-forms/global/view/<id:\d+>' => 'thiscovery-forms/global/view',
         'thiscovery-forms/global/edit/<id:\d+>' => 'thiscovery-forms/global/edit',
+        'thiscovery-forms/global/project/<id:\d+>/<answerId:\d+>' => 'thiscovery-forms/global/project',
+        'thiscovery-forms/global/catalogue/<id:\d+>' => 'thiscovery-forms/global/catalogue',
     ],
 ];

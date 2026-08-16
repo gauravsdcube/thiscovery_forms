@@ -262,23 +262,58 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             initRichEditors($row);
         };
 
-        var initRichEditors = function ($scope) {
-            var $targets = ($scope && $scope.length) ? $scope.find('[data-ui-widget], .ProsemirrorEditor') : $();
-            if (!$targets.length && $scope && $scope.is('[data-cf-rich-editor], .ProsemirrorEditor')) {
-                $targets = $scope;
-            }
+        var editorApi = function () {
             try {
-                var additions = require('ui.additions');
-                if ($scope && $scope.length) {
-                    additions.applyTo($scope);
-                }
+                return require('thiscoveryEditor');
             } catch (e) {
-                // Rich text assets may not be loaded yet on first paint.
+                return null;
+            }
+        };
+
+        var initRichEditors = function ($scope) {
+            var api = editorApi();
+            var $ctx = ($scope && $scope.length) ? $scope : $root;
+            if (api && typeof api.initEditors === 'function') {
+                api.initEditors($ctx);
+                return;
+            }
+            if (window.ThiscoveryEditor && typeof window.ThiscoveryEditor.init === 'function') {
+                $ctx.find('[data-te-editor]').each(function () {
+                    try { window.ThiscoveryEditor.init(this); } catch (err) {}
+                });
+            }
+        };
+
+        var destroyRichEditors = function ($scope) {
+            var api = editorApi();
+            var $ctx = ($scope && $scope.length) ? $scope : $root;
+            if (api && typeof api.saveEditors === 'function') {
+                api.saveEditors($ctx);
+            }
+            if (api && typeof api.destroyEditors === 'function') {
+                api.destroyEditors($ctx);
+                return;
+            }
+            if (window.ThiscoveryEditor && typeof window.ThiscoveryEditor.destroy === 'function') {
+                $ctx.find('[data-te-editor]').each(function () {
+                    try { window.ThiscoveryEditor.destroy(this); } catch (err) {}
+                });
             }
         };
 
         var syncRichEditors = function () {
-            $root.find('.ProsemirrorEditor, [data-ui-widget="ui.richtext.prosemirror.RichTextEditor"]').trigger('focusout');
+            var api = editorApi();
+            if (api && typeof api.saveEditors === 'function') {
+                api.saveEditors($root);
+                return;
+            }
+            if (window.ThiscoveryEditor && typeof window.ThiscoveryEditor.saveAll === 'function') {
+                try { window.ThiscoveryEditor.saveAll(); } catch (e) {}
+            }
+        };
+
+        var remountRichEditors = function ($scope) {
+            destroyRichEditors($scope);
         };
 
         var addField = function (type, $beforeEl) {
@@ -341,7 +376,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $root.find('[data-cf-panel]').removeClass('is-active');
             $root.find('[data-cf-panel="' + tab + '"]').addClass('is-active');
             $root.find('.cf-studio__footer').toggle(tab === 'builder' || tab === 'settings' || tab === 'css' || tab === 'share');
-            if (tab === 'settings' || tab === 'builder' || tab === 'translations') {
+            if (tab === 'settings' || tab === 'builder' || tab === 'translations' || tab === 'rounds') {
                 setTimeout(function () {
                     initRichEditors($root.find('[data-cf-panel="' + tab + '"]'));
                 }, 30);
@@ -355,6 +390,35 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 $root.find('[data-cf-tab="' + openTab + '"]').trigger('click');
             }
         } catch (e) {}
+
+        var toSwatchHex = function (value) {
+            var v = String(value || '').trim();
+            var short = v.match(/^#([0-9a-f]{3})$/i);
+            if (short) {
+                return '#' + short[1].split('').map(function (c) { return c + c; }).join('');
+            }
+            var full = v.match(/^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i);
+            return full ? ('#' + full[1]) : '';
+        };
+
+        $root.on('input', '[data-cf-style-swatch]', function () {
+            var $text = $(this).closest('.cf-style-color').find('[data-cf-style-color]');
+            $text.val(this.value);
+        });
+
+        $root.on('input change', '[data-cf-style-color]', function () {
+            var hex = toSwatchHex(this.value);
+            if (hex) {
+                $(this).closest('.cf-style-color').find('[data-cf-style-swatch]').val(hex);
+            }
+        });
+
+        $root.on('click', '[data-cf-style-clear]', function (e) {
+            e.preventDefault();
+            var $row = $(this).closest('.cf-style-color');
+            $row.find('[data-cf-style-color]').val('');
+            $row.find('[data-cf-style-swatch]').val('#ffffff');
+        });
 
         $root.on('click', '[data-cf-copy-url]', function (e) {
             e.preventDefault();
@@ -389,6 +453,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('submit', 'form.cf-studio__form', function () {
             refreshIndexes();
             syncRichEditors();
+        });
+
+        $root.on('submit', '[data-cf-panel="rounds"] form', function () {
+            var api = editorApi();
+            if (api && typeof api.saveEditors === 'function') {
+                api.saveEditors($(this));
+            }
         });
 
         // Palette: click to add
@@ -493,6 +564,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             var $row = $(this).closest('.thiscovery-forms-field-row');
+            syncRichEditors();
             saveLibrary(title, 'question', { q: collectFieldPost($row) });
         });
 
@@ -503,6 +575,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             var fields = {};
+            syncRichEditors();
             $root.find('.thiscovery-forms-field-row').each(function (i) {
                 fields['b' + i] = collectFieldPost($(this));
             });
@@ -521,6 +594,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 $root.find('[data-cf-fields]').append($html);
                 $html.each(function () {
                     refreshTypeUi($(this));
+                    initRichEditors($(this));
                 });
                 refreshIndexes();
                 refreshConditionOptions();
@@ -608,11 +682,19 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (!dragging) {
                     return;
                 }
-                $(dragging).removeClass('is-reordering');
+                var $moved = $(dragging);
+                var moved = didDrag;
+                $moved.removeClass('is-reordering');
                 $list.removeClass('is-sorting');
                 dragging = null;
                 refreshIndexes();
                 $(document).off('.cfBuilderSort');
+                if (moved) {
+                    remountRichEditors($moved);
+                    setTimeout(function () {
+                        initRichEditors($moved);
+                    }, 30);
+                }
             };
 
             var moveDragging = function (clientY) {
@@ -687,8 +769,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $row = $(this).closest('.thiscovery-forms-field-row');
                 var $prev = $row.prev('.thiscovery-forms-field-row');
                 if ($prev.length) {
+                    remountRichEditors($row);
                     $row.insertBefore($prev);
                     refreshIndexes();
+                    setTimeout(function () {
+                        initRichEditors($row);
+                    }, 30);
                 }
             });
 
@@ -698,8 +784,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $row = $(this).closest('.thiscovery-forms-field-row');
                 var $next = $row.next('.thiscovery-forms-field-row');
                 if ($next.length) {
+                    remountRichEditors($row);
                     $row.insertAfter($next);
                     refreshIndexes();
+                    setTimeout(function () {
+                        initRichEditors($row);
+                    }, 30);
                 }
             });
         })();
@@ -1022,17 +1112,98 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return setsOk && $field.find('.cf-maxdiff-set').length > 0;
             }
             if ($field.find('input[type="checkbox"]').length) {
-                return $field.find('input[type="checkbox"]:checked').length > 0;
+                if ($field.find('input[type="checkbox"]:checked').length < 1) {
+                    return false;
+                }
+                return !otherSpecifyMissing($field);
             }
             if ($field.find('input[type="radio"]').length) {
-                return $field.find('input[type="radio"]:checked').length > 0;
+                if ($field.find('input[type="radio"]:checked').length < 1) {
+                    return false;
+                }
+                return !otherSpecifyMissing($field);
             }
-            var $input = $field.find('input, select, textarea').filter(':not([type="hidden"]):not([type="checkbox"]):not([type="radio"])').first();
+            var $input = $field.find('input, select, textarea').filter(':not([type="hidden"]):not([type="checkbox"]):not([type="radio"]):not([data-cf-other-text])').first();
             if ($input.length) {
-                return $.trim(String($input.val() || '')) !== '';
+                if ($.trim(String($input.val() || '')) === '') {
+                    return false;
+                }
+                return !otherSpecifyMissing($field);
             }
             var guid = $.trim(String($field.find('[data-cf-file-guid]').val() || ''));
             return guid !== '';
+        };
+
+        var isOtherOption = function (opt) {
+            opt = $.trim(String(opt || ''));
+            if (!opt || opt.indexOf(':') !== -1) {
+                return false;
+            }
+            return /^other\b/i.test(opt);
+        };
+
+        var otherSpecifyMissing = function ($field) {
+            var missing = false;
+            $field.find('[data-cf-other-wrap]').not('.d-none').each(function () {
+                var $input = $(this).find('[data-cf-other-text]');
+                if ($input.length && $.trim(String($input.val() || '')) === '') {
+                    missing = true;
+                }
+            });
+            return missing;
+        };
+
+        var syncOtherSpecify = function ($scope) {
+            ($scope && $scope.length ? $scope : $root).find('[data-cf-other-wrap]').each(function () {
+                var $wrap = $(this);
+                var opt = String($wrap.attr('data-cf-other-option') || '');
+                var $q = $wrap.closest('[data-cf-field-id]');
+                var selected = false;
+                var $select = $q.find('select[data-cf-other-select], select.cf-input').first();
+                if ($select.length && $select.is('select')) {
+                    selected = String($select.val() || '') === opt;
+                } else {
+                    selected = $q.find('input[type="radio"], input[type="checkbox"]').filter(function () {
+                        return String(this.value) === opt && this.checked;
+                    }).length > 0;
+                }
+                var fieldVisible = !$q.hasClass('cf-hidden');
+                $wrap.toggleClass('d-none', !selected);
+                $wrap.find('[data-cf-other-text]').prop('disabled', !selected || !fieldVisible);
+            });
+        };
+
+        var otherPrefix = function (opt) {
+            return String(opt || '').replace(/[\s:]+$/, '') + ': ';
+        };
+
+        var valueMatchesOption = function (value, opt) {
+            value = String(value);
+            opt = String(opt);
+            return value === opt || (isOtherOption(opt) && value.indexOf(otherPrefix(opt)) === 0);
+        };
+
+        var selectedIncludes = function (selected, opt) {
+            return selected.some(function (v) {
+                return valueMatchesOption(v, opt);
+            });
+        };
+
+        var makeOtherSpecifyWrap = function (opt, fieldId, savedText) {
+            var id = 'cf-input-' + fieldId + '-other';
+            var label = (module.config && module.config.specifyLabel) || 'Please specify';
+            var placeholder = (module.config && module.config.specifyPlaceholder) || 'Type your answer';
+            var $wrap = $('<div class="cf-other-specify d-none"/>')
+                .attr('data-cf-other-wrap', true)
+                .attr('data-cf-other-option', opt);
+            $wrap.append($('<label class="cf-other-specify__label"/>').attr('for', id).text(label));
+            $wrap.append($('<input type="text" class="form-control cf-input"/>').attr({
+                id: id,
+                name: 'SubmitForm[other_text][' + fieldId + ']',
+                placeholder: placeholder,
+                disabled: true
+            }).attr('data-cf-other-text', true).val(savedText || ''));
+            return $wrap;
         };
 
         var syncHtmlValues = function () {
@@ -1507,15 +1678,19 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var selected = selectedList(values[from]);
                 var next = all;
                 if (mode === 'selected') {
-                    next = all.filter(function (o) { return selected.indexOf(String(o)) !== -1; });
+                    next = all.filter(function (o) { return selectedIncludes(selected, o); });
                 } else if (mode === 'unselected') {
-                    next = all.filter(function (o) { return selected.indexOf(String(o)) === -1; });
+                    next = all.filter(function (o) { return !selectedIncludes(selected, o); });
                 }
                 var rendered = next.join('\0');
                 if ($el.attr('data-cf-carry-rendered') === rendered) {
                     return;
                 }
                 $el.attr('data-cf-carry-rendered', rendered);
+                var $q = $el.closest('[data-cf-field-id]');
+                var fieldId = String($q.attr('data-cf-field-id') || '');
+                var savedOther = String($q.find('[data-cf-other-text]').val() || '');
+                var otherOpt = next.filter(isOtherOption)[0];
                 if ($el.is('select')) {
                     var cur = String($el.val() || '');
                     $el.find('option').not('[value=""]').remove();
@@ -1525,15 +1700,22 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     if (next.indexOf(cur) !== -1) {
                         $el.val(cur);
                     }
+                    $q.find('[data-cf-other-wrap]').remove();
+                    if (otherOpt) {
+                        $el.attr('data-cf-other-select', otherOpt);
+                        $el.after(makeOtherSpecifyWrap(otherOpt, fieldId, savedOther));
+                    } else {
+                        $el.removeAttr('data-cf-other-select');
+                    }
                     return;
                 }
-                var name = String($el.find('input').first().attr('name') || '');
+                var name = String($el.find('input[type="checkbox"], input[type="radio"]').first().attr('name') || '');
                 var isCheck = $el.find('input[type="checkbox"]').length > 0;
                 var current = [];
-                $el.find('input:checked').each(function () {
+                $el.find('input[type="checkbox"]:checked, input[type="radio"]:checked').each(function () {
                     current.push(String($(this).val()));
                 });
-                $el.find('label.cf-choice').remove();
+                $el.find('label.cf-choice, [data-cf-other-wrap]').remove();
                 next.forEach(function (opt) {
                     var $lab = $('<label class="cf-choice"/>');
                     var $input = $('<input>').attr({
@@ -1543,6 +1725,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     }).prop('checked', current.indexOf(String(opt)) !== -1);
                     $lab.append($input).append($('<span/>').text(opt));
                     $el.append($lab);
+                    if (isOtherOption(opt)) {
+                        $el.append(makeOtherSpecifyWrap(opt, fieldId, savedOther));
+                    }
                 });
             });
         };
@@ -1622,13 +1807,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (raw && typeof raw === 'object') {
                 flatten(raw);
                 if (op === 'checked') {
-                    return expected ? list.indexOf(expected) !== -1 : list.length > 0;
+                    return expected ? list.some(function (v) { return valueMatchesOption(v, expected); }) : list.length > 0;
                 }
                 if (op === 'equals') {
-                    return list.indexOf(expected) !== -1;
+                    return list.some(function (v) { return valueMatchesOption(v, expected); });
                 }
                 if (op === 'not_equals') {
-                    return list.indexOf(expected) === -1;
+                    return !list.some(function (v) { return valueMatchesOption(v, expected); });
                 }
                 if (op === 'contains') {
                     return list.some(function (v) { return String(v).indexOf(expected) !== -1; });
@@ -1637,10 +1822,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             var val = String(raw);
             if (op === 'equals') {
-                return val === expected;
+                return valueMatchesOption(val, expected);
             }
             if (op === 'not_equals') {
-                return val !== expected;
+                return !valueMatchesOption(val, expected);
             }
             if (op === 'contains') {
                 return expected !== '' && val.toLowerCase().indexOf(expected.toLowerCase()) !== -1;
@@ -1764,7 +1949,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var required = $field.find('.cf-question__required').length > 0
                     || $field.find('[required]').length > 0
                     || $field.find('[data-cf-html-required="1"]').length > 0;
-                if (required && !isFilled($field)) {
+                if ((required && !isFilled($field)) || otherSpecifyMissing($field)) {
                     ok = false;
                     $field.addClass('cf-page-error');
                 } else {
@@ -1789,6 +1974,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
             applyPiping(values);
             applyCarryForward(values);
+            syncOtherSpecify();
             updateProgress();
             if (multiPage) {
                 showPage(currentPage);
@@ -1976,6 +2162,27 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return;
         }
         $root.data('cf-poll-ready', 1);
+
+        var syncPollOtherSpecify = function () {
+            $root.find('[data-cf-other-wrap]').each(function () {
+                var $wrap = $(this);
+                var opt = String($wrap.attr('data-cf-other-option') || '');
+                var $q = $wrap.closest('.cf-poll-embed__question');
+                var selected = false;
+                var $select = $q.find('select').first();
+                if ($select.length) {
+                    selected = String($select.val() || '') === opt;
+                } else {
+                    selected = $q.find('input[type="radio"], input[type="checkbox"]').filter(function () {
+                        return String(this.value) === opt && this.checked;
+                    }).length > 0;
+                }
+                $wrap.toggleClass('d-none', !selected);
+                $wrap.find('[data-cf-other-text]').prop('disabled', !selected);
+            });
+        };
+        $root.on('change', 'select, input[type="radio"], input[type="checkbox"]', syncPollOtherSpecify);
+        syncPollOtherSpecify();
 
         $root.on('submit', '[data-cf-poll-form]', function (e) {
             e.preventDefault();

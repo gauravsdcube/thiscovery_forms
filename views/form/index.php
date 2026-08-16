@@ -12,11 +12,13 @@ use yii\widgets\LinkPager;
 /** @var $contentContainer humhub\modules\content\components\ContentContainerActiveRecord|null */
 /** @var $canCreate bool */
 /** @var CustomForm[] $templates */
+/** @var bool $canConfigure */
 
 ThiscoveryFormsAsset::register($this);
 $statusLabels = CustomForm::getStatusLabels();
 $kindLabels = CustomForm::getKindLabels();
 $templates = $templates ?? [];
+$canConfigure = !empty($canConfigure);
 ?>
 
 <div class="cf-list-page">
@@ -26,6 +28,12 @@ $templates = $templates ?? [];
             <p class="cf-list-sub"><?= Yii::t('ThiscoveryFormsModule.base', 'Browse, open, and manage forms in one place.') ?></p>
         </div>
         <div class="cf-list-header__actions">
+            <?php if ($canConfigure): ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Configuration'))
+                    ->link(Url::toAdminSettings())
+                    ->icon('cog')
+                    ->loader(false) ?>
+            <?php endif; ?>
             <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Dashboard'))
                 ->link(Url::toOverview($contentContainer))
                 ->icon('bar-chart')
@@ -131,7 +139,7 @@ $templates = $templates ?? [];
                                 <?= Html::a(Html::encode($formModel->title), Url::toView($formModel)) ?>
                                 <span class="cf-form-row__chip"><?= Html::encode($kindLabels[$formModel->kind] ?? $formModel->kind) ?></span>
                                 <?php if ($formModel->show_in_menu): ?>
-                                    <span class="cf-form-row__chip" title="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'In menu')) ?>">
+                                    <span class="cf-form-row__chip cf-form-row__chip--icon" title="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'In menu')) ?>">
                                         <i class="fa fa-bars"></i>
                                     </span>
                                 <?php endif; ?>

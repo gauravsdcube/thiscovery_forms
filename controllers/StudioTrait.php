@@ -59,6 +59,12 @@ trait StudioTrait
         if ($kind === '' || !isset(CustomForm::getKindLabels()[$kind])) {
             return $this->renderCreateWizard($form);
         }
+        if (!CustomForm::isKindEnabled($kind)) {
+            throw new ForbiddenHttpException(Yii::t(
+                'ThiscoveryFormsModule.base',
+                'This form type is disabled by an administrator.'
+            ));
+        }
 
         $form->kind = $kind;
         $form->status = CustomForm::STATUS_DRAFT;
@@ -93,6 +99,12 @@ trait StudioTrait
         $template = CustomForm::findOne($templateId);
         if (!$template || !$template->isTemplate()) {
             throw new NotFoundHttpException();
+        }
+        if (!CustomForm::isKindEnabled((string)$template->kind)) {
+            throw new ForbiddenHttpException(Yii::t(
+                'ThiscoveryFormsModule.base',
+                'This form type is disabled by an administrator.'
+            ));
         }
         if (!$template->canManage() && !$this->prepareNewForm()->canCreate()) {
             throw new ForbiddenHttpException();

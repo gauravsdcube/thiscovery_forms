@@ -2,6 +2,28 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.8.0 (August 15, 2026)
+
+- Enh: Module settings page to enable or disable form types (Administration → Modules → Thiscovery Forms → Configure)
+- Enh: CSS tab accordion for page, card, questions, buttons, and each question type, plus a custom CSS box; blank values keep the site theme
+- Enh: Dropdown, radio, and checkbox options named Other show a text box so respondents can type their own answer
+
+## 1.7.0 (August 15, 2026)
+
+- Enh: Save and resume is now a per-form setting on every form type; it is off unless enabled
+- Enh: When resume is on, opening the form asks whether to continue a saved response or start a new one (anonymous respondents always see this choice)
+- Enh: When multiple submissions are not allowed and the person has already submitted, a configurable message is shown instead of the resume choice
+
+## 1.6.0 (August 15, 2026)
+
+- Enh: **Project** form kind — structured records with a published catalogue
+- Enh: Configurable approval stages; each stage can assign users and/or groups, with any-one or all-must-approve
+- Enh: Submit for review, request changes, publish, archive, and a decision log on each record
+
+## 1.5.1 (August 15, 2026)
+
+- Enh: Rich text blocks, thank-you messages, and consensus round summaries use Thiscovery Editor instead of HumHub markup
+
 ## 1.5.0 (August 15, 2026)
 
 - Git release of form kinds and studio (library, templates, question import/export), compound logic and research types, longitudinal and consensus programmes, and translation overlay with export/import (1.2.0–1.4.3)

@@ -13,6 +13,7 @@ use humhub\modules\thiscoveryForms\permissions\ManageForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ViewAnswers;
 use humhub\modules\thiscoveryForms\permissions\ViewGlobalAnswers;
+use humhub\modules\thiscoveryForms\services\FormStyleService;
 use humhub\modules\thiscoveryForms\widgets\WallEntry;
 use humhub\modules\search\interfaces\Searchable;
 use humhub\modules\space\models\Space;
@@ -28,12 +29,14 @@ use yii\db\ActiveQuery;
  * @property string $kind
  * @property string|null $description
  * @property string|null $thank_you_content
+ * @property string|null $already_submitted_message
  * @property string|null $custom_css
  * @property string|null $settings_json
  * @property int $status
  * @property int $allow_multiple
  * @property int $allow_anonymous
  * @property int $allow_edit
+ * @property int $allow_resume
  * @property int $show_in_menu
  * @property int $is_template
  * @property int|null $source_template_id
@@ -57,6 +60,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public const KIND_FEEDBACK = 'feedback';
     public const KIND_LONGITUDINAL = 'longitudinal';
     public const KIND_CONSENSUS = 'consensus';
+    public const KIND_PROJECT = 'project';
 
     public const IDENTITY_IDENTIFIED = 'identified';
     public const IDENTITY_MANAGERS_ONLY = 'managers_only';
@@ -90,6 +94,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
     /** @var int|bool Require a comment after choice questions */
     public $require_justification = 0;
 
+    /** @var array Visual tokens for the fill page (empty = site theme) */
+    public $style = [];
+
     public static function tableName()
     {
         return 'custom_form';
@@ -102,16 +109,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['title'], 'string', 'max' => 255],
             [['kind'], 'default', 'value' => self::KIND_SURVEY],
             [['kind'], 'in', 'range' => array_keys(self::getKindLabels())],
-            [['description', 'thank_you_content', 'custom_css', 'settings_json'], 'string'],
+            [['description', 'thank_you_content', 'already_submitted_message', 'custom_css', 'settings_json'], 'string'],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
-            [['allow_multiple', 'show_in_menu', 'allow_anonymous', 'allow_edit', 'is_template', 'show_results', 'freeze_on_consensus', 'require_justification'], 'boolean'],
+            [['allow_multiple', 'show_in_menu', 'allow_anonymous', 'allow_edit', 'allow_resume', 'is_template', 'show_results', 'freeze_on_consensus', 'require_justification'], 'boolean'],
             [['allow_edit'], 'default', 'value' => 1],
+            [['allow_resume'], 'default', 'value' => 0],
             [['is_template'], 'default', 'value' => 0],
             [['source_template_id', 'consensus_threshold'], 'integer'],
             [['consensus_threshold'], 'integer', 'min' => 1, 'max' => 100],
             [['source_language', 'identity_mode'], 'string', 'max' => 32],
             [['identity_mode'], 'in', 'range' => array_keys(self::getIdentityModeLabels())],
-            [['enabled_languages'], 'safe'],
+            [['enabled_languages', 'style'], 'safe'],
             [['answers_visibility'], 'in', 'range' => [
                 self::ANSWERS_MANAGERS,
                 self::ANSWERS_RESPONDENTS,
@@ -127,11 +135,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'kind' => Yii::t('ThiscoveryFormsModule.base', 'Type'),
             'description' => Yii::t('ThiscoveryFormsModule.base', 'Description'),
             'thank_you_content' => Yii::t('ThiscoveryFormsModule.base', 'Thank you message'),
+            'already_submitted_message' => Yii::t('ThiscoveryFormsModule.base', 'Already submitted message'),
             'custom_css' => Yii::t('ThiscoveryFormsModule.base', 'Custom CSS'),
             'status' => Yii::t('ThiscoveryFormsModule.base', 'Status'),
             'allow_multiple' => Yii::t('ThiscoveryFormsModule.base', 'Allow multiple submissions'),
             'allow_anonymous' => Yii::t('ThiscoveryFormsModule.base', 'Allow anonymous submissions'),
             'allow_edit' => Yii::t('ThiscoveryFormsModule.base', 'Allow respondents to edit their answers'),
+            'allow_resume' => Yii::t('ThiscoveryFormsModule.base', 'Allow save and resume'),
             'show_in_menu' => Yii::t('ThiscoveryFormsModule.base', 'Show in side menu'),
             'show_results' => Yii::t('ThiscoveryFormsModule.base', 'Show results after voting'),
             'answers_visibility' => Yii::t('ThiscoveryFormsModule.base', 'Who can view answers'),
@@ -151,6 +161,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             self::KIND_FEEDBACK => 'fa-commenting-o',
             self::KIND_LONGITUDINAL => 'fa-line-chart',
             self::KIND_CONSENSUS => 'fa-balance-scale',
+            self::KIND_PROJECT => 'fa-folder-open',
             default => 'fa-wpforms',
         };
     }
@@ -193,6 +204,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function getRounds(): ActiveQuery
     {
         return $this->hasMany(FormRound::class, ['form_id' => 'id'])->orderBy(['round_number' => SORT_ASC]);
+    }
+
+    public function getApprovalStages(): ActiveQuery
+    {
+        return $this->hasMany(FormApprovalStage::class, ['form_id' => 'id'])->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
     }
 
     public function getI18nRows(): ActiveQuery
@@ -324,6 +340,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             self::KIND_FEEDBACK => Yii::t('ThiscoveryFormsModule.base', 'Feedback form'),
             self::KIND_LONGITUDINAL => Yii::t('ThiscoveryFormsModule.base', 'Longitudinal survey'),
             self::KIND_CONSENSUS => Yii::t('ThiscoveryFormsModule.base', 'Consensus / Delphi'),
+            self::KIND_PROJECT => Yii::t('ThiscoveryFormsModule.base', 'Project'),
         ];
     }
 
@@ -335,7 +352,29 @@ class CustomForm extends ContentActiveRecord implements Searchable
             self::KIND_FEEDBACK => Yii::t('ThiscoveryFormsModule.base', 'Short rating plus comments, ready to edit.'),
             self::KIND_LONGITUDINAL => Yii::t('ThiscoveryFormsModule.base', 'The same panel answers repeating waves of this survey.'),
             self::KIND_CONSENSUS => Yii::t('ThiscoveryFormsModule.base', 'Multi-round consensus or Delphi, with summaries between rounds.'),
+            self::KIND_PROJECT => Yii::t('ThiscoveryFormsModule.base', 'Structured project record with a configurable approval workflow and a published catalogue.'),
         ];
+    }
+
+    public static function isKindEnabled(string $kind): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if ($module instanceof \humhub\modules\thiscoveryForms\Module) {
+            return $module->isKindEnabled($kind);
+        }
+        return isset(self::getKindLabels()[$kind]);
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function getEnabledKindLabels(): array
+    {
+        return array_filter(
+            self::getKindLabels(),
+            static fn($label, $kind) => self::isKindEnabled((string)$kind),
+            ARRAY_FILTER_USE_BOTH
+        );
     }
 
     public function isPoll(): bool
@@ -356,6 +395,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function isConsensus(): bool
     {
         return $this->kind === self::KIND_CONSENSUS;
+    }
+
+    public function isProject(): bool
+    {
+        return $this->kind === self::KIND_PROJECT;
     }
 
     public static function getIdentityModeLabels(): array
@@ -413,6 +457,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
         if ($this->kind === self::KIND_POLL) {
             $this->allow_edit = 0;
             $this->allow_multiple = 0;
+            $this->allow_resume = 0;
             $this->show_in_menu = 0;
             if ($this->title === '' || $this->title === null) {
                 $this->title = Yii::t('ThiscoveryFormsModule.base', 'Quick poll');
@@ -440,6 +485,14 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
             if ($this->getSetting('identity_mode') === null) {
                 $this->identity_mode = self::IDENTITY_IDENTIFIED;
+            }
+        } elseif ($this->kind === self::KIND_PROJECT) {
+            $this->allow_anonymous = 0;
+            $this->allow_multiple = 1;
+            $this->allow_edit = 1;
+            $this->answers_visibility = self::ANSWERS_PERMISSION;
+            if ($this->title === '' || $this->title === null) {
+                $this->title = Yii::t('ThiscoveryFormsModule.base', 'Project record');
             }
         }
     }
@@ -513,7 +566,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
         } else {
             $query->andWhere(['content.contentcontainer_id' => null]);
         }
-        return $query->joinWith('content')->orderBy(['custom_form.title' => SORT_ASC])->all();
+        $templates = $query->joinWith('content')->orderBy(['custom_form.title' => SORT_ASC])->all();
+        return array_values(array_filter(
+            $templates,
+            static fn(self $template) => self::isKindEnabled((string)$template->kind)
+        ));
     }
 
     /**
@@ -567,6 +624,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->consensus_threshold = (int)$this->getSetting('consensus_threshold', 70) ?: 70;
         $this->freeze_on_consensus = $this->getSetting('freeze_on_consensus', true) ? 1 : 0;
         $this->require_justification = $this->getSetting('require_justification', false) ? 1 : 0;
+        $style = $this->getSetting('style', []);
+        $this->style = is_array($style) ? $style : [];
         if ($this->isTemplate()) {
             $this->silentContentCreation = true;
         }
@@ -586,14 +645,6 @@ class CustomForm extends ContentActiveRecord implements Searchable
     {
         parent::afterSave($insert, $changedAttributes);
         $this->syncContentState();
-
-        if (!empty($this->thank_you_content)) {
-            try {
-                \humhub\modules\content\widgets\richtext\RichText::postProcess($this->thank_you_content, $this);
-            } catch (\Throwable $e) {
-                Yii::warning('Thiscovery Forms thank-you postProcess failed: ' . $e->getMessage(), 'thiscovery-forms');
-            }
-        }
 
         if (!$this->isTemplate()) {
             try {
@@ -721,6 +772,33 @@ class CustomForm extends ContentActiveRecord implements Searchable
         return (bool)$this->allow_anonymous;
     }
 
+    public function allowsResume(): bool
+    {
+        return (bool)$this->allow_resume;
+    }
+
+    /**
+     * Message shown when a second submission is blocked. Uses {formName} as the form title.
+     */
+    public function getAlreadySubmittedMessage(): string
+    {
+        $title = (string)$this->title;
+        $custom = trim((string)$this->already_submitted_message);
+        if ($custom !== '') {
+            return strtr($custom, [
+                '{formName}' => $title,
+                '{form name}' => $title,
+                '{title}' => $title,
+            ]);
+        }
+
+        return Yii::t(
+            'ThiscoveryFormsModule.base',
+            'You have already submitted {formName}. Multiple submissions are not allowed',
+            ['formName' => $title]
+        );
+    }
+
     public function hasGuestAnswered(?int $waveId = null, ?int $roundId = null): bool
     {
         return (bool)Yii::$app->session->get($this->guestAnswerSessionKey($waveId, $roundId), false);
@@ -748,7 +826,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
      */
     public function getSafeCustomCss(): string
     {
-        $css = trim((string)$this->custom_css);
+        $compiled = (new FormStyleService())->compile(
+            is_array($this->style) ? $this->style : []
+        );
+        $css = trim($compiled . "\n" . (string)$this->custom_css);
         if ($css === '') {
             return '';
         }
@@ -797,6 +878,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $this->allow_multiple = 0;
         }
 
+        if ($this->isProject()) {
+            $this->allow_anonymous = 0;
+        }
+
         $this->persistProgrammeSettings();
 
         return true;
@@ -826,6 +911,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->setSetting('consensus_threshold', max(1, min(100, (int)$this->consensus_threshold)));
         $this->setSetting('freeze_on_consensus', !empty($this->freeze_on_consensus));
         $this->setSetting('require_justification', !empty($this->require_justification));
+
+        $style = is_array($this->style) ? $this->style : [];
+        $this->style = (new FormStyleService())->normalize($style);
+        $this->setSetting('style', $this->style);
     }
 
     public function canViewAnswers($user = null): bool
@@ -861,6 +950,15 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     public function canEditOwnAnswer(FormAnswer $answer, $user = null): bool
     {
+        $user = $user ?: Yii::$app->user->getIdentity();
+        if (!$user || $answer->isAnonymous()) {
+            return false;
+        }
+
+        if ($this->isProject() && (int)$answer->created_by === (int)$user->id && $answer->isChangesRequested()) {
+            return true;
+        }
+
         if (!$this->allowsEdit()) {
             return false;
         }
@@ -869,8 +967,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
             return false;
         }
 
-        $user = $user ?: Yii::$app->user->getIdentity();
-        if (!$user || !$this->isOpen()) {
+        if (!$this->isOpen()) {
+            return false;
+        }
+
+        if ($this->isProject() && $answer->isInReview()) {
             return false;
         }
 
@@ -1066,13 +1167,6 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 $richContent = (string)($row['rich_content'] ?? '');
                 $field->setRichTextContent($richContent);
                 $field->required = false;
-                if ($richContent !== '') {
-                    try {
-                        \humhub\modules\content\widgets\richtext\RichText::postProcess($richContent, $this);
-                    } catch (\Throwable $e) {
-                        Yii::warning('Thiscovery Forms richtext postProcess failed: ' . $e->getMessage(), 'thiscovery-forms');
-                    }
-                }
             } elseif ($type === FormField::TYPE_HTML) {
                 $field->setHtmlConfig([
                     'html' => (string)($row['html_content'] ?? ''),

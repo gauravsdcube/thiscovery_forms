@@ -26,6 +26,8 @@ use yii\helpers\Url;
 
 class Module extends ContentContainerModule
 {
+    public const SETTING_ENABLED_KINDS = 'enabled_kinds';
+
     public $resourcesPath = 'resources';
     public $icon = 'fa-wpforms';
 
@@ -99,7 +101,41 @@ class Module extends ContentContainerModule
 
     public function getConfigUrl()
     {
-        return Url::to(['/thiscovery-forms/admin/index']);
+        return Url::to(['/thiscovery-forms/admin/settings']);
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getEnabledKinds(): array
+    {
+        $all = array_keys(CustomForm::getKindLabels());
+        $raw = $this->settings->get(self::SETTING_ENABLED_KINDS);
+        if ($raw === null || $raw === '') {
+            return $all;
+        }
+        $decoded = json_decode((string)$raw, true);
+        if (!is_array($decoded)) {
+            return $all;
+        }
+        return array_values(array_intersect($decoded, $all));
+    }
+
+    public function isKindEnabled(string $kind): bool
+    {
+        return in_array($kind, $this->getEnabledKinds(), true);
+    }
+
+    /**
+     * @return string[]
+     */
+    public static function enabledKinds(): array
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self) {
+            return array_keys(CustomForm::getKindLabels());
+        }
+        return $module->getEnabledKinds();
     }
 
     public function disable()

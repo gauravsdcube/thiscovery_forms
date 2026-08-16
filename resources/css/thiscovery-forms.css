@@ -197,6 +197,90 @@
     max-width: 860px;
 }
 
+.cf-studio__settings--css {
+    max-width: 980px;
+}
+
+.cf-style-accs {
+    margin: 1rem 0 0;
+}
+
+.cf-style-acc {
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    margin-bottom: .5rem;
+    background: #fff;
+}
+
+.cf-style-acc > summary {
+    cursor: pointer;
+    font-weight: 600;
+    padding: .75rem 1rem;
+    list-style: none;
+}
+
+.cf-style-acc > summary::-webkit-details-marker {
+    display: none;
+}
+
+.cf-style-acc > summary::after {
+    content: "\f107";
+    font-family: FontAwesome;
+    float: right;
+    color: #94a3b8;
+}
+
+.cf-style-acc[open] > summary::after {
+    content: "\f106";
+}
+
+.cf-style-acc__body {
+    padding: .15rem 1rem 1rem;
+    border-top: 1px solid #e2e8f0;
+}
+
+.cf-style-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: .75rem 1rem;
+    padding-top: .85rem;
+}
+
+.cf-style-color {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.cf-style-color__swatch {
+    width: 2.4rem;
+    height: 2.4rem;
+    padding: 0;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.cf-style-color__swatch::-webkit-color-swatch-wrapper {
+    padding: 2px;
+}
+
+.cf-style-color__swatch::-webkit-color-swatch {
+    border: 0;
+    border-radius: 5px;
+}
+
+.cf-style-color .form-control {
+    min-width: 0;
+    flex: 1 1 auto;
+}
+
+.cf-style-color .btn {
+    flex-shrink: 0;
+}
+
 .cf-css-editor {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: .85rem;
@@ -245,6 +329,10 @@
 
 .cf-rich-editor {
     margin-top: .35rem;
+}
+
+.cf-rich-editor .te-field {
+    min-height: 8rem;
 }
 
 .cf-studio__footer {
@@ -619,12 +707,12 @@
 .cf-fill-progress-wrap {
     margin-bottom: 1rem;
     padding-bottom: 1rem;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--hh-background-color-page, #f1f5f9);
 }
 
 .cf-fill-progress {
     height: 6px;
-    background: #e2e8f0;
+    background: var(--hh-background-color-page, #e2e8f0);
     border-radius: 999px;
     overflow: hidden;
     margin-bottom: .45rem;
@@ -632,7 +720,7 @@
 
 .cf-fill-progress__bar {
     height: 100%;
-    background: linear-gradient(90deg, #2563eb, #0ea5e9);
+    background: var(--bs-primary, #2563eb);
     border-radius: 999px;
     transition: width .2s ease;
 }
@@ -647,12 +735,12 @@
 
 .cf-fill-progress__label {
     font-size: .8rem;
-    color: #64748b;
+    color: var(--hh-text-color-secondary, #64748b);
 }
 
 .cf-fill-body {
-    background: #fff;
-    border: 1px solid #e5e7eb;
+    background: var(--hh-background-color-main, #fff);
+    border: 1px solid var(--hh-background-color-page, #e5e7eb);
     border-radius: 14px;
     padding: 1.5rem 2rem 1.75rem;
     box-shadow: 0 8px 24px rgba(15, 23, 42, .03);
@@ -661,7 +749,7 @@
 .cf-fill-hero {
     margin: 0 0 1.15rem;
     padding-bottom: 1.05rem;
-    border-bottom: 1px solid #e2e8f0;
+    border-bottom: 1px solid var(--hh-background-color-page, #e2e8f0);
 }
 
 .cf-fill-hero__title {
@@ -669,19 +757,19 @@
     font-size: 1.55rem;
     font-weight: 750;
     line-height: 1.25;
-    color: #0f172a;
+    color: var(--hh-text-color-main, #0f172a);
 }
 
 .cf-fill-hero__desc {
     margin: 0;
-    color: #475569;
+    color: var(--hh-text-color-secondary, #475569);
     font-size: .98rem;
     line-height: 1.55;
 }
 
 .cf-question {
     padding: 1.15rem 0;
-    border-bottom: 1px solid #f1f5f9;
+    border-bottom: 1px solid var(--hh-background-color-page, #f1f5f9);
 }
 
 .cf-question:last-of-type {
@@ -728,12 +816,12 @@
     display: block;
     font-size: 1.05rem;
     font-weight: 600;
-    color: #0f172a;
+    color: var(--hh-text-color-main, #0f172a);
     margin-bottom: .35rem;
 }
 
 .cf-question__help {
-    color: #64748b;
+    color: var(--hh-text-color-secondary, #64748b);
     font-size: .9rem;
     margin: 0 0 .75rem;
 }
@@ -741,12 +829,12 @@
 .cf-input {
     border-radius: 10px !important;
     padding: .7rem .9rem !important;
-    border-color: #cbd5e1 !important;
+    border-color: var(--hh-background-color-page, #cbd5e1) !important;
     min-height: 2.75rem;
 }
 
 .cf-input:focus {
-    border-color: #2563eb !important;
+    border-color: var(--bs-primary, #2563eb) !important;
     box-shadow: 0 0 0 .2rem rgba(37, 99, 235, .15) !important;
 }
 
@@ -778,6 +866,18 @@
 .cf-choice input {
     margin: 0;
     flex-shrink: 0;
+}
+
+.cf-other-specify {
+    margin: .15rem 0 .65rem 1.85rem;
+}
+
+.cf-other-specify__label {
+    display: block;
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--hh-text-color-secondary, #64748b);
+    margin-bottom: .3rem;
 }
 
 /* Rating scale (fill form) */
@@ -1224,6 +1324,48 @@
     margin-bottom: 1rem;
 }
 
+.cf-resume-gate {
+    margin: 0 0 1.5rem;
+    padding: 1.15rem 1.25rem 1.35rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    background: #f8fafc;
+}
+
+.cf-resume-gate__title {
+    margin: 0 0 .4rem;
+    font-size: 1.2rem;
+}
+
+.cf-resume-gate__lead {
+    margin: 0 0 1.15rem;
+    color: var(--hh-text-color-secondary, #667);
+}
+
+.cf-resume-gate__grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+}
+
+.cf-resume-gate__card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 1rem 1.1rem 1.15rem;
+}
+
+.cf-resume-gate__card h3 {
+    margin: 0 0 .4rem;
+    font-size: 1.02rem;
+}
+
+.cf-resume-gate__card > p {
+    margin: 0 0 .85rem;
+    color: var(--hh-text-color-secondary, #667);
+    font-size: .92rem;
+}
+
 .cf-save-panel {
     position: fixed;
     inset: 0;
@@ -1459,7 +1601,7 @@
 }
 
 .cf-form-table__form-col {
-    min-width: 220px;
+    min-width: 280px;
 }
 
 .cf-form-table__num-col {
@@ -1482,6 +1624,7 @@
 
 .cf-form-row__title {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: .45rem;
     font-size: 1rem;
@@ -1492,6 +1635,7 @@
 .cf-form-row__title a {
     color: #0f172a;
     text-decoration: none;
+    min-width: 0;
 }
 
 .cf-form-row__title a:hover {
@@ -1501,14 +1645,22 @@
 .cf-form-row__chip {
     display: inline-flex;
     align-items: center;
-    justify-content: center;
-    width: 1.35rem;
-    height: 1.35rem;
+    padding: .12rem .55rem;
     border-radius: 999px;
     background: #f1f5f9;
     color: #64748b;
-    font-size: .7rem;
+    font-size: .72rem;
+    font-weight: 600;
+    line-height: 1.35;
+    white-space: nowrap;
     flex-shrink: 0;
+}
+
+.cf-form-row__chip--icon {
+    width: 1.35rem;
+    height: 1.35rem;
+    padding: 0;
+    justify-content: center;
 }
 
 .cf-form-row__desc {
@@ -2171,10 +2323,71 @@
 .cf-inline-form .btn {
     margin-top: 0;
 }
-.cf-answer-just {
-    margin-top: .35rem;
+.cf-approval-stage {
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 1rem 1.1rem 1.15rem;
+    margin-bottom: 1.25rem;
+    background: #fff;
+}
+.cf-approval-stage__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .5rem 1rem;
+    margin-bottom: .5rem;
+}
+.cf-approval-stage__move {
+    margin-left: auto;
+    display: flex;
+    gap: .25rem;
+}
+.cf-catalogue-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+}
+.cf-catalogue-card {
+    display: block;
+    padding: 1.1rem 1.15rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #fff;
+    color: inherit;
+    text-decoration: none;
+}
+.cf-catalogue-card:hover {
+    border-color: #94a3b8;
+    text-decoration: none;
+}
+.cf-catalogue-card__eyebrow {
+    font-size: .78rem;
     color: #64748b;
-    font-style: italic;
+    margin-bottom: .35rem;
+}
+.cf-catalogue-card__title {
+    font-size: 1.05rem;
+    margin: 0 0 .5rem;
+}
+.cf-catalogue-card__meta {
+    font-size: .82rem;
+    color: #64748b;
+}
+.cf-project-section {
+    margin-bottom: 1.75rem;
+}
+.cf-project-section h2 {
+    font-size: 1.15rem;
+    margin-bottom: .75rem;
+}
+.cf-approval-actions {
+    margin: 1.5rem 0;
+}
+.cf-approval-history ul {
+    padding-left: 1.1rem;
+}
+.cf-approval-history li {
+    margin-bottom: .65rem;
 }
 @media (max-width: 767px) {
     .cf-i18n-grid {

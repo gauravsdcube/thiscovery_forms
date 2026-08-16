@@ -1,9 +1,9 @@
 {
   "id": "thiscovery-forms",
   "name": "Thiscovery Forms",
-  "description": "Create surveys, quick polls, feedback forms, longitudinal and consensus programmes for spaces and the network. Supports anonymous guest fill, multi-page surveys, templates, translations, and save-and-resume.",
+    "description": "Create surveys, quick polls, feedback forms, project records with approval, longitudinal and consensus programmes for spaces and the network. Supports anonymous guest fill, multi-page surveys, templates, translations, and save-and-resume.",
   "keywords": ["form", "survey", "thiscovery-forms", "thiscovery"],
-  "version": "1.5.0",
+    "version": "1.8.0",
   "humhub": {
     "minVersion": "1.18"
   },

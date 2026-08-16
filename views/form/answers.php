@@ -37,6 +37,13 @@ $total = (int)$dataProvider->getTotalCount();
                 ->sm()
                 ->icon('bar-chart')
                 ->loader(false) ?>
+            <?php if ($formModel->isProject()): ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Catalogue'))
+                    ->link(Url::toCatalogue($formModel))
+                    ->sm()
+                    ->icon('folder-open')
+                    ->loader(false) ?>
+            <?php endif; ?>
             <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))
                 ->link(Url::toExport($formModel))
                 ->sm()
@@ -116,6 +123,12 @@ $total = (int)$dataProvider->getTotalCount();
                                     'total' => $answerableTotal,
                                 ]) ?>
                             </span>
+                            <?php if ($formModel->isProject()): ?>
+                                <span class="cf-answer-card__chip"><?= Html::encode($answer->getWorkflowLabel()) ?></span>
+                                <a class="cf-answer-card__chip" href="<?= Html::encode(Url::toProject($formModel, $answer)) ?>">
+                                    <?= Yii::t('ThiscoveryFormsModule.base', 'Open record') ?>
+                                </a>
+                            <?php endif; ?>
                         </div>
                     </header>
 

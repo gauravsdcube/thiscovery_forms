@@ -404,7 +404,17 @@ class DashboardService
                     }
                     if (array_key_exists($item, $counts)) {
                         $counts[$item]++;
-                    } else {
+                        continue;
+                    }
+                    $matchedOther = false;
+                    foreach ($options as $opt) {
+                        if (FormField::choiceValueMatchesOption($item, (string)$opt)) {
+                            $counts[(string)$opt]++;
+                            $matchedOther = true;
+                            break;
+                        }
+                    }
+                    if (!$matchedOther) {
                         $other++;
                     }
                 }

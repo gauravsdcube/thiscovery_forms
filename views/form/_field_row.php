@@ -1,6 +1,6 @@
 <?php
 
-use humhub\modules\content\widgets\richtext\RichTextField;
+use humhub\modules\thiscoveryEditor\widgets\EditorField;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
 use yii\helpers\Html;
@@ -215,7 +215,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <div class="cf-field-note<?= in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true) ? '' : ' d-none' ?>" data-cf-choice-note>
                 <i class="fa fa-info-circle" aria-hidden="true"></i>
                 <div>
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Each line becomes one selectable choice. Duplicate or empty lines are ignored.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Each line becomes one selectable choice. Duplicate or empty lines are ignored. Add a line called Other to let people type their own answer.') ?>
                 </div>
             </div>
             <div class="cf-field-note" data-cf-randomize-note>
@@ -392,13 +392,13 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 <div><?= Yii::t('ThiscoveryFormsModule.base', 'Display-only section shown to respondents. Place at the start or anywhere between questions. Formatting toolbar is available below.') ?></div>
             </div>
             <div class="cf-rich-editor" data-cf-rich-editor>
-                <?= RichTextField::widget([
+                <?= EditorField::widget([
                     'id' => 'cf-rich-field-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$key),
                     'name' => $namePrefix . '[rich_content]',
                     'value' => $field->getRichTextContent(),
                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Write instructions, context, or intro text…'),
-                    'backupInterval' => 0,
-                    'exclude' => ['oembed', 'mention'],
+                    'height' => 240,
+                    'profile' => 'simple',
                 ]) ?>
             </div>
         </div>

@@ -1,6 +1,6 @@
 <?php
 
-use humhub\modules\content\widgets\richtext\RichTextField;
+use humhub\modules\thiscoveryEditor\widgets\EditorField;
 use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
@@ -112,11 +112,16 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Rounds') ?>
             </button>
         <?php endif; ?>
+        <?php if ($formModel->isProject()): ?>
+            <button type="button" class="cf-studio__tab" data-cf-tab="approval" role="tab" aria-selected="false">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Approval') ?>
+            </button>
+        <?php endif; ?>
         <button type="button" class="cf-studio__tab" data-cf-tab="translations" role="tab" aria-selected="false">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Translations') ?>
         </button>
         <button type="button" class="cf-studio__tab" data-cf-tab="css" role="tab" aria-selected="false">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Custom CSS') ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'CSS') ?>
         </button>
         <button type="button" class="cf-studio__tab" data-cf-tab="share" role="tab" aria-selected="false">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Share') ?>
@@ -230,6 +235,11 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                     <?= Yii::t('ThiscoveryFormsModule.base', 'One submission per person per round. Set up rounds on the Rounds tab.') ?>
                 </p>
             <?php endif; ?>
+            <?php if ($formModel->isProject()): ?>
+                <p class="cf-hint text-muted">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Submissions go through the approval stages on the Approval tab before they appear in the catalogue.') ?>
+                </p>
+            <?php endif; ?>
 
             <div class="form-group">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
@@ -259,13 +269,15 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                     <i class="fa fa-info-circle" aria-hidden="true"></i>
                     <div><?= Yii::t('ThiscoveryFormsModule.base', 'Shown after a successful submission. Leave empty for the default thank-you message.') ?></div>
                 </div>
-                <?= RichTextField::widget([
-                    'model' => $formModel,
-                    'attribute' => 'thank_you_content',
-                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Thanks for completing this form…'),
-                    'backupInterval' => 0,
-                    'exclude' => ['oembed', 'mention'],
-                ]) ?>
+                <div class="cf-rich-editor" data-cf-rich-editor>
+                    <?= EditorField::widget([
+                        'model' => $formModel,
+                        'attribute' => 'thank_you_content',
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Thanks for completing this form…'),
+                        'height' => 220,
+                        'profile' => 'simple',
+                    ]) ?>
+                </div>
             </div>
 
             <div class="row g-3">
@@ -286,13 +298,19 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Allow multiple submissions') ?>
                         </label>
                         <?php endif; ?>
+                        <?php if (!$formModel->isProject()): ?>
                         <label>
                             <?= Html::activeCheckbox($formModel, 'allow_anonymous', ['label' => false]) ?>
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Allow anonymous submissions') ?>
                         </label>
+                        <?php endif; ?>
                         <label>
                             <?= Html::activeCheckbox($formModel, 'allow_edit', ['label' => false]) ?>
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Allow respondents to edit their answers') ?>
+                        </label>
+                        <label>
+                            <?= Html::activeCheckbox($formModel, 'allow_resume', ['label' => false]) ?>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Allow save and resume') ?>
                         </label>
                         <label>
                             <?= Html::activeCheckbox($formModel, 'show_in_menu', ['label' => false]) ?>
@@ -309,9 +327,27 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Anonymous mode does not store who submitted the form. Guests can fill the form when this is enabled.') ?>
                     </p>
                     <p class="cf-hint text-muted">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'If save and resume is enabled, people are asked whether they are continuing a saved response or starting a new one. Save & continue later is hidden when this is off.') ?>
+                    </p>
+                    <p class="cf-hint text-muted">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'If respondents cannot edit, they will see a confirmation after submitting and cannot change that response. Form managers can still update answers.') ?>
                     </p>
                 </div>
+            </div>
+
+            <div class="form-group">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Already submitted message') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                </label>
+                <div class="cf-field-note">
+                    <i class="fa fa-info-circle" aria-hidden="true"></i>
+                    <div><?= Yii::t('ThiscoveryFormsModule.base', 'Shown when this person has already submitted and multiple submissions are not allowed. Use {formName} for the form title. Leave empty for the default message.', ['formName' => '{formName}']) ?></div>
+                </div>
+                <?= Html::activeTextarea($formModel, 'already_submitted_message', [
+                    'class' => 'form-control',
+                    'rows' => 3,
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'You have already submitted {formName}. Multiple submissions are not allowed', ['formName' => '{formName}']),
+                ]) ?>
             </div>
 
             <h5 class="cf-section__title mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Languages') ?></h5>
@@ -374,18 +410,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
     </div>
 
     <div class="cf-studio__panel" data-cf-panel="css">
-        <div class="cf-studio__settings">
-            <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Custom CSS') ?></h5>
-            <p class="cf-hint text-muted">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Styles apply only to the fill page. Prefer selectors under #cf-fill (for example #cf-fill .cf-question or #cf-fill .cf-fill-hero__title).') ?>
-            </p>
-            <?= Html::activeTextarea($formModel, 'custom_css', [
-                'class' => 'form-control cf-css-editor',
-                'rows' => 18,
-                'spellcheck' => 'false',
-                'placeholder' => "#cf-fill .cf-fill-hero__title {\n  color: #1a5f4a;\n}\n#cf-fill .cf-question {\n  margin-bottom: 1.5rem;\n}",
-            ]) ?>
-        </div>
+        <?= $this->render('_studio_css', ['formModel' => $formModel]) ?>
     </div>
 
     <div class="cf-studio__panel" data-cf-panel="share">
@@ -521,6 +546,12 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
     <?php if ($formModel->isConsensus()): ?>
         <div class="cf-studio__panel" data-cf-panel="rounds">
             <?= $this->render('_studio_rounds', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if ($formModel->isProject()): ?>
+        <div class="cf-studio__panel" data-cf-panel="approval">
+            <?= $this->render('_studio_approval', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
         </div>
     <?php endif; ?>
 

@@ -70,6 +70,52 @@ trait FillResumeTrait
         }
     }
 
+    protected function assertResumeEnabled(CustomForm $form): void
+    {
+        if (!$form->allowsResume()) {
+            throw new ForbiddenHttpException(Yii::t(
+                'ThiscoveryFormsModule.base',
+                'Save and resume is not enabled for this form.'
+            ));
+        }
+    }
+
+    protected function isStartNewRequest(): bool
+    {
+        return (string)Yii::$app->request->get('start', Yii::$app->request->post('start', '')) === 'new';
+    }
+
+    protected function isContinueOwnRequest(): bool
+    {
+        return (string)Yii::$app->request->get('continue', '') === '1';
+    }
+
+    protected function hasResumeIntent(CustomForm $form): bool
+    {
+        if (!$form->allowsResume()) {
+            return false;
+        }
+        if ($this->isContinueOwnRequest()) {
+            return true;
+        }
+        $code = (string)(Yii::$app->request->post('resume_code')
+            ?: Yii::$app->request->get('resume', ''));
+        return $code !== '';
+    }
+
+    protected function resolveOwnInProgress(CustomForm $form): ?FormAnswer
+    {
+        $ctx = $this->fillContext($form);
+        if ($form->isLongitudinal() || $form->isConsensus()) {
+            $column = $form->isLongitudinal() ? 'wave_id' : 'round_id';
+            $scopeId = $form->isLongitudinal() ? ($ctx->wave->id ?? null) : ($ctx->round->id ?? null);
+            $scoped = (new FillContextService())->findScopedAnswer($form, $ctx, $scopeId, $column);
+            return ($scoped && $scoped->isInProgress()) ? $scoped : null;
+        }
+
+        return $form->getUserInProgressAnswer();
+    }
+
     protected function resolveDraftFromRequest(CustomForm $form): ?FormAnswer
     {
         $code = (string)(Yii::$app->request->post('resume_code')
@@ -87,23 +133,45 @@ trait FillResumeTrait
     protected function resolveFillExisting(CustomForm $form, SubmitForm $submit): ?FormAnswer
     {
         $draft = $this->resolveDraftFromRequest($form);
-        if ($draft) {
+        if ($draft && $form->allowsResume()) {
             $submit->loadFromAnswer($draft);
             return $draft;
         }
 
+        if ($form->allowsResume() && $this->isContinueOwnRequest()) {
+            $own = $this->resolveOwnInProgress($form);
+            if ($own) {
+                $submit->loadFromAnswer($own);
+                return $own;
+            }
+        }
+
         $ctx = $this->fillContext($form);
+        $resumeOn = $form->allowsResume();
+        $startNew = $this->isStartNewRequest();
+        $skipInProgress = $resumeOn && !$this->hasResumeIntent($form);
+
         if ($form->isLongitudinal() || $form->isConsensus()) {
             $column = $form->isLongitudinal() ? 'wave_id' : 'round_id';
             $scopeId = $form->isLongitudinal() ? ($ctx->wave->id ?? null) : ($ctx->round->id ?? null);
             $scoped = (new FillContextService())->findScopedAnswer($form, $ctx, $scopeId, $column);
             if ($scoped) {
+                if ($skipInProgress && $scoped->isInProgress() && !$startNew) {
+                    return null;
+                }
+                if ($startNew && $scoped->isInProgress()) {
+                    return null;
+                }
                 $submit->loadFromAnswer($scoped);
                 return $scoped;
             }
-            if ($form->isConsensus() && $ctx->previousRoundAnswer) {
+            if ($form->isConsensus() && $ctx->previousRoundAnswer && !$startNew) {
                 $submit->loadFromAnswer($ctx->previousRoundAnswer);
             }
+            return null;
+        }
+
+        if ($startNew && $resumeOn) {
             return null;
         }
 
@@ -112,6 +180,9 @@ trait FillResumeTrait
             if ($complete) {
                 $submit->loadFromAnswer($complete);
                 return $complete;
+            }
+            if ($skipInProgress) {
+                return null;
             }
             $inProgress = $form->getUserInProgressAnswer();
             if ($inProgress) {
@@ -161,6 +232,8 @@ trait FillResumeTrait
 
     protected function handleSaveProgress(CustomForm $form, SubmitForm $submit, ?FormAnswer $existing)
     {
+        $this->assertResumeEnabled($form);
+
         if (!$this->canContinueDraft($form, $existing)) {
             throw new ForbiddenHttpException();
         }
@@ -234,6 +307,8 @@ trait FillResumeTrait
      */
     protected function handleEmailResumeCode(CustomForm $form)
     {
+        $this->assertResumeEnabled($form);
+
         if (!Yii::$app->request->isPost) {
             return $this->redirect(Url::toView($form));
         }
@@ -271,6 +346,8 @@ trait FillResumeTrait
      */
     protected function handleResumeLookup(CustomForm $form)
     {
+        $this->assertResumeEnabled($form);
+
         $code = (string)(Yii::$app->request->post('resume_code')
             ?: Yii::$app->request->get('code', ''));
         $answer = $this->resumeService()->findDraftByCode($form, $code);
@@ -300,9 +377,13 @@ trait FillResumeTrait
     {
         (new TranslationService())->overlay($form, $ctx->language);
         $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
+        $ownDraft = $form->allowsResume() ? $this->resolveOwnInProgress($form) : null;
+
         return [
             'fillContext' => $ctx,
             'panelToken' => $ctx->tokenAccess ? ($ctx->member->token ?? $token) : $token,
+            'ownDraft' => $ownDraft,
+            'startNew' => $this->isStartNewRequest(),
         ];
     }
 
@@ -313,6 +394,9 @@ trait FillResumeTrait
         }
         if ($ctx->member) {
             $ctx->member->markConsent();
+        }
+        if ($form->isProject() && $answer instanceof FormAnswer && !$anonymous) {
+            (new \humhub\modules\thiscoveryForms\services\ApprovalWorkflowService())->submitForReview($answer);
         }
     }
 }

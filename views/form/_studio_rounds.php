@@ -1,5 +1,6 @@
 <?php
 
+use humhub\modules\thiscoveryEditor\widgets\EditorField;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormRound;
@@ -79,10 +80,16 @@ $rounds = $isNew ? [] : (new RoundService())->listRounds($formModel);
             <?= Html::beginForm(Url::studioAction($formModel, 'round-publish'), 'post', ['class' => 'mb-4']) ?>
                 <?= Html::hiddenInput('round_id', $round->id) ?>
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Summary shown at the start of the next round') ?></label>
-                <textarea name="summary_html" class="form-control" rows="6"><?= Html::encode((string)$round->summary_html) ?></textarea>
-                <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Leave empty to generate a distribution and anonymised comments from this round.') ?>
-                </p>
+                <div class="cf-rich-editor" data-cf-rich-editor>
+                    <?= EditorField::widget([
+                        'id' => 'cf-round-summary-' . (int)$round->id,
+                        'name' => 'summary_html',
+                        'value' => (string)$round->summary_html,
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Leave empty to generate a distribution and anonymised comments from this round.'),
+                        'height' => 220,
+                        'profile' => 'simple',
+                    ]) ?>
+                </div>
                 <button type="submit" class="btn btn-light"><?= Yii::t('ThiscoveryFormsModule.base', 'Publish summary') ?></button>
             <?= Html::endForm() ?>
         <?php endforeach; ?>

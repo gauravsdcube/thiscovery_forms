@@ -251,6 +251,122 @@ class FormField extends ActiveRecord
         return array_values(array_filter(array_map('strval', $decoded), 'strlen'));
     }
 
+    public static function isOtherOption(string $option): bool
+    {
+        $option = trim($option);
+        if ($option === '') {
+            return false;
+        }
+        if (str_contains($option, ':')) {
+            return false;
+        }
+        $normalized = strtolower($option);
+        if ($normalized === 'other') {
+            return true;
+        }
+
+        return (bool)preg_match('/^other\b/i', $option);
+    }
+
+    public static function otherSpecifyPrefix(string $option): string
+    {
+        return rtrim($option, " \t:") . ': ';
+    }
+
+    public static function choiceValueMatchesOption(string $value, string $option): bool
+    {
+        if ($value === $option) {
+            return true;
+        }
+        if (!self::isOtherOption($option)) {
+            return false;
+        }
+
+        return str_starts_with($value, self::otherSpecifyPrefix($option));
+    }
+
+    public static function selectedIncludesOption(array $selected, string $option): bool
+    {
+        foreach ($selected as $item) {
+            if (self::choiceValueMatchesOption((string)$item, $option)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function findOtherOption(?array $options = null): ?string
+    {
+        foreach ($options ?? $this->getOptions() as $opt) {
+            if (self::isOtherOption((string)$opt)) {
+                return (string)$opt;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return array{selected: bool, text: string}
+     */
+    public static function otherSpecifyState(string $otherLabel, $value): array
+    {
+        $prefix = self::otherSpecifyPrefix($otherLabel);
+        $items = is_array($value) ? $value : [$value];
+        $selected = false;
+        $text = '';
+        foreach ($items as $item) {
+            $item = (string)$item;
+            if ($item === $otherLabel) {
+                $selected = true;
+            } elseif (str_starts_with($item, $prefix)) {
+                $selected = true;
+                $text = substr($item, strlen($prefix));
+            }
+        }
+        return ['selected' => $selected, 'text' => $text];
+    }
+
+    public function allowsChoiceValue(string $item): bool
+    {
+        foreach ($this->getOptions() as $opt) {
+            if ($item === $opt) {
+                return true;
+            }
+            if (self::isOtherOption($opt)) {
+                $prefix = self::otherSpecifyPrefix($opt);
+                if (str_starts_with($item, $prefix) && strlen($item) > strlen($prefix)) {
+                    return true;
+                }
+            }
+        }
+        if (self::isOtherOption($item)) {
+            return true;
+        }
+        if (preg_match('/^(other\b[^:]*):\s+\S/i', $item)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    public function otherSpecifyIncomplete($value): bool
+    {
+        $label = $this->findOtherOption();
+        $items = is_array($value) ? $value : [$value];
+        foreach ($items as $item) {
+            $item = (string)$item;
+            if ($label !== null && $item === $label) {
+                return true;
+            }
+            if ($label === null && self::isOtherOption($item)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public function isRandomizeOptions(): bool
     {
         if (!$this->options_json || !self::isChoiceType($this->type)) {
@@ -415,15 +531,23 @@ class FormField extends ActiveRecord
     public function getShuffledOptions(?int $userId = null): array
     {
         $options = $this->getOptions();
-        if (!$this->isRandomizeOptions() || count($options) < 2) {
+        $pinned = [];
+        $rest = [];
+        foreach ($options as $opt) {
+            if (self::isOtherOption((string)$opt)) {
+                $pinned[] = $opt;
+            } else {
+                $rest[] = $opt;
+            }
+        }
+        if (!$this->isRandomizeOptions() || count($rest) < 2) {
             return $options;
         }
 
         $userId = $userId ?? (int)(Yii::$app->user->id ?? 0);
         $seed = crc32($userId . ':' . (int)$this->id . ':' . (int)$this->form_id);
-        $order = range(0, count($options) - 1);
+        $order = range(0, count($rest) - 1);
 
-        // Mulberry32-ish deterministic shuffle
         $n = count($order);
         for ($i = $n - 1; $i > 0; $i--) {
             $seed = ($seed * 1664525 + 1013904223) & 0x7fffffff;
@@ -435,9 +559,9 @@ class FormField extends ActiveRecord
 
         $shuffled = [];
         foreach ($order as $idx) {
-            $shuffled[] = $options[$idx];
+            $shuffled[] = $rest[$idx];
         }
-        return $shuffled;
+        return array_merge($shuffled, $pinned);
     }
 
     public function setRatingScale(array $config): void
@@ -713,9 +837,9 @@ class FormField extends ActiveRecord
         if ($carry['mode'] === self::CARRY_ALL) {
             $options = $sourceOpts;
         } elseif ($carry['mode'] === self::CARRY_UNSELECTED) {
-            $options = array_values(array_filter($sourceOpts, static fn($o) => !in_array((string)$o, $selected, true)));
+            $options = array_values(array_filter($sourceOpts, static fn($o) => !self::selectedIncludesOption($selected, (string)$o)));
         } else {
-            $options = array_values(array_filter($sourceOpts, static fn($o) => in_array((string)$o, $selected, true)));
+            $options = array_values(array_filter($sourceOpts, static fn($o) => self::selectedIncludesOption($selected, (string)$o)));
         }
         return $options;
     }

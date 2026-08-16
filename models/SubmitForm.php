@@ -108,6 +108,8 @@ class SubmitForm extends Model
             $this->values[$field->id] = isset($fieldPost[$key]) ? $fieldPost[$key] : '';
         }
 
+        $this->applyOtherSpecify($post);
+
         $justPost = $post['SubmitForm']['justifications'] ?? ($post['justifications'] ?? []);
         if (!is_array($justPost)) {
             $justPost = [];
@@ -121,6 +123,63 @@ class SubmitForm extends Model
         }
 
         return true;
+    }
+
+    /**
+     * When "Other" is selected, store "Other: typed text" as the answer value.
+     */
+    protected function applyOtherSpecify($post): void
+    {
+        $otherPost = $post['SubmitForm']['other_text'] ?? ($post['other_text'] ?? []);
+        if (!is_array($otherPost)) {
+            return;
+        }
+
+        foreach ($this->form->fields as $field) {
+            if (!in_array($field->type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true)) {
+                continue;
+            }
+            $otherLabel = $field->findOtherOption();
+            if ($otherLabel === null) {
+                $current = $this->values[$field->id] ?? null;
+                $probe = is_array($current) ? $current : [$current];
+                foreach ($probe as $item) {
+                    if ($item !== null && $item !== '' && FormField::isOtherOption((string)$item)) {
+                        $otherLabel = (string)$item;
+                        break;
+                    }
+                }
+            }
+            if ($otherLabel === null) {
+                continue;
+            }
+            $text = trim((string)($otherPost[(string)$field->id] ?? ''));
+            if ($text === '') {
+                continue;
+            }
+            $stored = FormField::otherSpecifyPrefix($otherLabel) . $text;
+            $current = $this->values[$field->id] ?? null;
+            if ($field->type === FormField::TYPE_CHECKBOX) {
+                $items = is_array($current) ? $current : [];
+                $next = [];
+                $replaced = false;
+                foreach ($items as $item) {
+                    if ((string)$item === $otherLabel || str_starts_with((string)$item, FormField::otherSpecifyPrefix($otherLabel))) {
+                        $next[] = $stored;
+                        $replaced = true;
+                    } else {
+                        $next[] = $item;
+                    }
+                }
+                if ($replaced) {
+                    $this->values[$field->id] = $next;
+                }
+                continue;
+            }
+            if ((string)$current === $otherLabel || str_starts_with((string)$current, FormField::otherSpecifyPrefix($otherLabel))) {
+                $this->values[$field->id] = $stored;
+            }
+        }
     }
 
     public function loadFromAnswer(FormAnswer $answer): void
@@ -178,8 +237,12 @@ class SubmitForm extends Model
                     break;
                 case FormField::TYPE_DROPDOWN:
                 case FormField::TYPE_RADIO:
-                    if (!in_array((string)$value, $field->getOptions(), true)) {
+                    if (!$field->allowsChoiceValue((string)$value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid option.', [
+                            'label' => $field->label,
+                        ]));
+                    } elseif ($this->scenario !== self::SCENARIO_DRAFT && $field->otherSpecifyIncomplete($value)) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please specify your answer for "{label}".', [
                             'label' => $field->label,
                         ]));
                     }
@@ -191,14 +254,18 @@ class SubmitForm extends Model
                         ]));
                         break;
                     }
-                    $allowed = $field->getOptions();
                     foreach ($value as $item) {
-                        if (!in_array((string)$item, $allowed, true)) {
+                        if (!$field->allowsChoiceValue((string)$item)) {
                             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid option.', [
                                 'label' => $field->label,
                             ]));
                             break;
                         }
+                    }
+                    if ($this->scenario !== self::SCENARIO_DRAFT && $field->otherSpecifyIncomplete($value)) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please specify your answer for "{label}".', [
+                            'label' => $field->label,
+                        ]));
                     }
                     $maxSelect = $field->getMaxSelect();
                     if ($maxSelect !== null && count($value) > $maxSelect) {

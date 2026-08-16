@@ -1,6 +1,7 @@
 <?php
 
 use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
+use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
@@ -25,6 +26,9 @@ use yii\helpers\Json;
 $savedDraft = $savedDraft ?? null;
 $fillContext = $fillContext ?? null;
 $panelToken = $panelToken ?? (string)Yii::$app->request->get('token', '');
+$ownDraft = $ownDraft ?? null;
+$startNew = !empty($startNew);
+$editingAnswer = !empty($editingAnswer);
 
 ThiscoveryFormsAsset::register($this);
 
@@ -67,6 +71,8 @@ $this->registerJsConfig('thiscoveryForms', [
     'nextLabel' => Yii::t('ThiscoveryFormsModule.base', 'Next'),
     'backLabel' => Yii::t('ThiscoveryFormsModule.base', 'Back'),
     'requiredPage' => Yii::t('ThiscoveryFormsModule.base', 'Please complete the required fields on this page.'),
+    'specifyLabel' => Yii::t('ThiscoveryFormsModule.base', 'Please specify'),
+    'specifyPlaceholder' => Yii::t('ThiscoveryFormsModule.base', 'Type your answer'),
     'copiedLabel' => Yii::t('ThiscoveryFormsModule.base', 'Copied'),
     'copyFailedLabel' => Yii::t('ThiscoveryFormsModule.base', 'Could not copy'),
     'startPage' => ($existing && $existing->isInProgress() && $existing->current_page !== null)
@@ -84,7 +90,17 @@ $canSubmit = $isDraft
 if ($fillContext && $fillContext->blockReason && !$formModel->canManage() && !($existing && $existing->isComplete() && ($formModel->canEditOwnAnswer($existing) || $formModel->canManage()))) {
     $canSubmit = $existing && $existing->isInProgress() ? $canSubmit : false;
 }
-$canSaveProgress = $canSubmit && $formModel->isOpen() && (!$existing || $isDraft) && !$formModel->isPoll();
+$resumeEnabled = $formModel->allowsResume();
+$identifiedBlocked = !$formModel->allow_multiple
+    && !$formModel->allowsAnonymous()
+    && !$formModel->isLongitudinal()
+    && !$formModel->isConsensus()
+    && $formModel->hasUserAnswered()
+    && !$isDraft;
+if ($resumeEnabled && !$editingAnswer && $existing && $existing->isComplete() && !$formModel->allow_multiple) {
+    $canSubmit = false;
+}
+$canSaveProgress = $resumeEnabled && $canSubmit && $formModel->isOpen() && (!$existing || $isDraft);
 
 $answerableCount = 0;
 foreach ($formModel->fields as $f) {
@@ -101,6 +117,19 @@ $alreadyAnsweredAnon = $formModel->allowsAnonymous()
     && !$isDraft;
 $showToolbar = $formModel->canManage() || $formModel->canViewAnswers();
 $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resume_code : '';
+$hasResumeIntent = $isDraft && (
+    (string)Yii::$app->request->get('resume', '') !== ''
+    || (string)Yii::$app->request->get('continue', '') === '1'
+    || $savedDraft
+);
+$showResumeGate = $resumeEnabled
+    && $formModel->isOpen()
+    && !$editingAnswer
+    && !$startNew
+    && !$hasResumeIntent
+    && !$identifiedBlocked
+    && !($existing && $existing->isComplete());
+$alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
 ?>
 
 <div class="cf-fill-page" id="cf-fill" data-cf-multipage="<?= $multiPage ? '1' : '0' ?>">
@@ -120,6 +149,10 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
                         ->link(Url::toDashboard($formModel))->sm()->icon('bar-chart') ?>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Answers'))
                         ->link(Url::toAnswers($formModel))->sm()->icon('list') ?>
+                <?php endif; ?>
+                <?php if ($formModel->isProject()): ?>
+                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Catalogue'))
+                        ->link(Url::toCatalogue($formModel))->sm()->icon('folder-open') ?>
                 <?php endif; ?>
             </div>
             <?php if ($formModel->canManage()): ?>
@@ -169,7 +202,7 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
         <?php endif; ?>
         <?php if ($fillContext && $fillContext->roundSummaryHtml): ?>
             <div class="cf-round-summary richtext-output">
-                <?= (new HtmlSanitizer())->sanitize($fillContext->roundSummaryHtml) ?>
+                <?= (new HtmlSanitizer())->sanitize(RichHtml::toHtml($fillContext->roundSummaryHtml)) ?>
             </div>
         <?php endif; ?>
         <?php if ($fillContext && $fillContext->previousRoundAnswer): ?>
@@ -184,7 +217,7 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
             <div class="alert alert-warning"><?= Yii::t('ThiscoveryFormsModule.base', 'This form is still a draft.') ?></div>
         <?php endif; ?>
 
-        <?php if ($answerableCount > 0 && $canSubmit): ?>
+        <?php if ($answerableCount > 0 && $canSubmit && !$showResumeGate): ?>
             <div class="cf-fill-progress-wrap">
                 <div class="cf-fill-progress" aria-hidden="true">
                     <div class="cf-fill-progress__bar" data-cf-progress-bar style="width:0%"></div>
@@ -233,27 +266,6 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
             </div>
         <?php endif; ?>
 
-        <?php if ($canSaveProgress || $formModel->isOpen()): ?>
-            <details class="cf-resume-lookup">
-                <summary><?= Yii::t('ThiscoveryFormsModule.base', 'Have a resume code?') ?></summary>
-                <?= Html::beginForm(Url::toLookupResume($formModel), 'post', ['class' => 'cf-resume-lookup__form']) ?>
-                    <label class="cf-label" for="cf-resume-lookup-code">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Enter your code to continue a saved response') ?>
-                    </label>
-                    <div class="cf-resume-email-row">
-                        <?= Html::textInput('resume_code', '', [
-                            'id' => 'cf-resume-lookup-code',
-                            'class' => 'form-control',
-                            'placeholder' => 'ABCD-2345-EFGH',
-                            'autocomplete' => 'off',
-                            'required' => true,
-                        ]) ?>
-                        <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Continue'))->submit()->sm() ?>
-                    </div>
-                <?= Html::endForm() ?>
-            </details>
-        <?php endif; ?>
-
         <?php if ($isDraft && $resumeCode): ?>
             <div class="alert alert-info cf-resume-banner">
                 <?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Continuing saved response {code}', [
@@ -262,7 +274,13 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
             </div>
         <?php endif; ?>
 
-        <?php if ($canSubmit): ?>
+        <?php if ($showResumeGate): ?>
+            <?= $this->render('_resume_gate', [
+                'formModel' => $formModel,
+                'ownDraft' => $ownDraft,
+                'panelToken' => $panelToken,
+            ]) ?>
+        <?php elseif ($canSubmit): ?>
             <?= Html::beginForm('', 'post', [
                 'class' => 'cf-fill-form',
                 'data-cf-fill-form' => true,
@@ -270,6 +288,9 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
             ]) ?>
             <?php if ($resumeCode): ?>
                 <?= Html::hiddenInput('resume_code', $resumeCode) ?>
+            <?php endif; ?>
+            <?php if ($startNew): ?>
+                <?= Html::hiddenInput('start', 'new') ?>
             <?php endif; ?>
             <?php if ($panelToken !== ''): ?>
                 <?= Html::hiddenInput('panel_token', $panelToken) ?>
@@ -352,7 +373,9 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
                 <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
                     <?= Button::save($existing && !$isDraft
                         ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')
-                        : Yii::t('ThiscoveryFormsModule.base', 'Submit'))
+                        : ($formModel->isProject()
+                            ? Yii::t('ThiscoveryFormsModule.base', 'Submit for review')
+                            : Yii::t('ThiscoveryFormsModule.base', 'Submit')))
                         ->submit()
                         ->cssClass('btn-lg') ?>
                 </div>
@@ -388,16 +411,16 @@ $resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resu
         <?php elseif ($existing && !$isDraft): ?>
             <div class="cf-fill-done">
                 <i class="fa fa-check-circle"></i>
-                <h3><?= Yii::t('ThiscoveryFormsModule.base', 'You have already submitted this form.') ?></h3>
+                <h3><?= Html::encode($alreadySubmittedMessage) ?></h3>
                 <?php if ($formModel->canEditOwnAnswer($existing)): ?>
                     <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Edit your submission'))
                         ->link(Url::toEditAnswer($formModel, $existing)) ?>
                 <?php endif; ?>
             </div>
-        <?php elseif ($alreadyAnsweredAnon): ?>
+        <?php elseif ($alreadyAnsweredAnon || $identifiedBlocked): ?>
             <div class="cf-fill-done">
                 <i class="fa fa-check-circle"></i>
-                <h3><?= Yii::t('ThiscoveryFormsModule.base', 'You have already submitted this form.') ?></h3>
+                <h3><?= Html::encode($alreadySubmittedMessage) ?></h3>
             </div>
         <?php elseif ($formModel->isOpen()): ?>
             <div class="alert alert-warning"><?= Html::encode($fillContext?->blockReason ?? Yii::t('ThiscoveryFormsModule.base', 'You are not allowed to submit this form.')) ?></div>

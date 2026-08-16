@@ -21,6 +21,37 @@ class Url
         return $scheme ? self::ensureHttps($url) : $url;
     }
 
+    public static function toStartNew(CustomForm $form): string
+    {
+        return self::withFillContext(self::toView($form), ['start' => 'new']);
+    }
+
+    public static function toContinueOwn(CustomForm $form): string
+    {
+        return self::withFillContext(self::toView($form), ['continue' => '1']);
+    }
+
+    /**
+     * Keep panel token and language on fill-page links.
+     */
+    protected static function withFillContext(string $url, array $extra = []): string
+    {
+        $token = (string)Yii::$app->request->get('token', '');
+        if ($token !== '' && !isset($extra['token'])) {
+            $extra['token'] = $token;
+        }
+        $lang = (string)Yii::$app->request->get('lang', '');
+        if ($lang !== '' && !isset($extra['lang'])) {
+            $extra['lang'] = $lang;
+        }
+        $extra = array_filter($extra, static fn($v) => $v !== null && $v !== '');
+        if (!$extra) {
+            return $url;
+        }
+        $sep = str_contains($url, '?') ? '&' : '?';
+        return $url . $sep . http_build_query($extra);
+    }
+
     public static function toResume(CustomForm $form, ?string $code = null, $scheme = false): string
     {
         $params = ['id' => $form->id];
@@ -104,6 +135,11 @@ class Url
         return $container->createUrl('/thiscovery-forms/form/index');
     }
 
+    public static function toAdminSettings(): string
+    {
+        return BaseUrl::to(['/thiscovery-forms/admin/settings']);
+    }
+
     public static function toAnswers(CustomForm $form): string
     {
         if ($form->isGlobal()) {
@@ -132,6 +168,52 @@ class Url
             'id' => $form->id,
             'answerId' => $answer->id,
         ]);
+    }
+
+    public static function toProject(CustomForm $form, FormAnswer $answer, $scheme = false): string
+    {
+        $params = ['id' => $form->id, 'answerId' => $answer->id];
+        if ($form->isGlobal()) {
+            $url = BaseUrl::to(array_merge(['/thiscovery-forms/global/project'], $params), $scheme);
+            return $scheme ? self::ensureHttps($url) : $url;
+        }
+        $url = $form->content->container->createUrl('/thiscovery-forms/form/project', $params, $scheme);
+        return $scheme ? self::ensureHttps($url) : $url;
+    }
+
+    public static function toCatalogue(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/catalogue', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/catalogue', ['id' => $form->id]);
+    }
+
+    public static function toAnswerApprove(CustomForm $form, FormAnswer $answer): string
+    {
+        $params = ['id' => $form->id, 'answerId' => $answer->id];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/answer-approve'], $params));
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/answer-approve', $params);
+    }
+
+    public static function toAnswerChanges(CustomForm $form, FormAnswer $answer): string
+    {
+        $params = ['id' => $form->id, 'answerId' => $answer->id];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/answer-changes'], $params));
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/answer-changes', $params);
+    }
+
+    public static function toAnswerArchive(CustomForm $form, FormAnswer $answer): string
+    {
+        $params = ['id' => $form->id, 'answerId' => $answer->id];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/answer-archive'], $params));
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/answer-archive', $params);
     }
 
     public static function toDelete(CustomForm $form): string
@@ -284,13 +366,13 @@ class Url
 
     public static function toFillLanguage(CustomForm $form, string $lang): string
     {
-        $url = self::toView($form);
-        $sep = str_contains($url, '?') ? '&' : '?';
-        $token = (string)Yii::$app->request->get('token', '');
-        $extra = 'lang=' . urlencode($lang);
-        if ($token !== '') {
-            $extra .= '&token=' . urlencode($token);
+        $extra = ['lang' => $lang];
+        foreach (['start', 'resume', 'continue'] as $key) {
+            $val = (string)Yii::$app->request->get($key, '');
+            if ($val !== '') {
+                $extra[$key] = $val;
+            }
         }
-        return $url . $sep . $extra;
+        return self::withFillContext(self::toView($form), $extra);
     }
 }

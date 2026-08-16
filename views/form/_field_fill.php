@@ -1,6 +1,6 @@
 <?php
 
-use humhub\modules\content\widgets\richtext\RichText;
+use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\services\HtmlSanitizer;
@@ -37,7 +37,7 @@ $choiceOptions = FormField::isCarryForwardType($field->type)
     : (FormField::isChoiceType($field->type) ? $field->getShuffledOptions($userId) : []);
 
 if ($field->type === FormField::TYPE_RICH_TEXT):
-    $richHtml = RichText::convert($field->getRichTextContent(), RichText::FORMAT_HTML);
+    $richHtml = RichHtml::toHtml($field->getRichTextContent());
     $richHtml = $pipe->substitute($richHtml, $user, $formModel, $allValues, $allFields);
     ?>
     <div class="cf-rich-block richtext-output" data-cf-pipe-html="<?= Html::encode($field->getRichTextContent()) ?>">
@@ -125,11 +125,17 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
         <?php elseif ($field->type === FormField::TYPE_DROPDOWN): ?>
             <?php
             $carry = $field->getCarryForward();
+            $otherLabel = $field->findOtherOption($choiceOptions);
+            $otherState = $otherLabel ? FormField::otherSpecifyState($otherLabel, $value) : ['selected' => false, 'text' => ''];
+            $dropValue = $otherState['selected'] ? $otherLabel : (is_array($value) ? null : $value);
             $dropAttrs = [
                 'class' => 'form-control cf-input',
                 'id' => $inputId,
                 'prompt' => Yii::t('ThiscoveryFormsModule.base', 'Please select'),
             ];
+            if ($otherLabel) {
+                $dropAttrs['data-cf-other-select'] = $otherLabel;
+            }
             if ($carry['from'] !== '') {
                 $src = $fieldsById[(int)$carry['from']] ?? null;
                 $dropAttrs['data-cf-carry-from'] = $carry['from'];
@@ -137,10 +143,28 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 $dropAttrs['data-cf-carry-options'] = json_encode($src ? $src->getOptions() : [], JSON_UNESCAPED_UNICODE);
             }
             ?>
-            <?= Html::dropDownList($inputName, is_array($value) ? null : $value, array_combine($choiceOptions, $choiceOptions) ?: [], $dropAttrs) ?>
+            <?= Html::dropDownList($inputName, $dropValue, array_combine($choiceOptions, $choiceOptions) ?: [], $dropAttrs) ?>
+            <?php if ($otherLabel): ?>
+                <div class="cf-other-specify<?= $otherState['selected'] ? '' : ' d-none' ?>"
+                     data-cf-other-wrap
+                     data-cf-other-option="<?= Html::encode($otherLabel) ?>">
+                    <label class="cf-other-specify__label" for="<?= Html::encode($inputId) ?>-other">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Please specify') ?>
+                    </label>
+                    <?= Html::textInput('SubmitForm[other_text][' . $field->id . ']', $otherState['text'], [
+                        'id' => $inputId . '-other',
+                        'class' => 'form-control cf-input',
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Type your answer'),
+                        'data-cf-other-text' => true,
+                        'disabled' => !$otherState['selected'],
+                    ]) ?>
+                </div>
+            <?php endif; ?>
         <?php elseif ($field->type === FormField::TYPE_RADIO): ?>
             <?php
             $carry = $field->getCarryForward();
+            $otherLabel = $field->findOtherOption($choiceOptions);
+            $otherState = $otherLabel ? FormField::otherSpecifyState($otherLabel, $value) : ['selected' => false, 'text' => ''];
             $listAttrs = ['class' => 'cf-choice-list'];
             if ($carry['from'] !== '') {
                 $src = $fieldsById[(int)$carry['from']] ?? null;
@@ -151,10 +175,27 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             ?>
             <div <?= \yii\helpers\Html::renderTagAttributes($listAttrs) ?>>
                 <?php foreach ($choiceOptions as $opt): ?>
+                    <?php $isOther = $otherLabel !== null && (string)$opt === $otherLabel; ?>
                     <label class="cf-choice">
-                        <?= Html::radio($inputName, (string)$value === (string)$opt, ['value' => $opt]) ?>
+                        <?= Html::radio($inputName, $isOther ? $otherState['selected'] : ((string)$value === (string)$opt), ['value' => $opt]) ?>
                         <span><?= Html::encode($opt) ?></span>
                     </label>
+                    <?php if ($isOther): ?>
+                        <div class="cf-other-specify<?= $otherState['selected'] ? '' : ' d-none' ?>"
+                             data-cf-other-wrap
+                             data-cf-other-option="<?= Html::encode($otherLabel) ?>">
+                            <label class="cf-other-specify__label" for="<?= Html::encode($inputId) ?>-other">
+                                <?= Yii::t('ThiscoveryFormsModule.base', 'Please specify') ?>
+                            </label>
+                            <?= Html::textInput('SubmitForm[other_text][' . $field->id . ']', $otherState['text'], [
+                                'id' => $inputId . '-other',
+                                'class' => 'form-control cf-input',
+                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Type your answer'),
+                                'data-cf-other-text' => true,
+                                'disabled' => !$otherState['selected'],
+                            ]) ?>
+                        </div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         <?php elseif ($field->type === FormField::TYPE_CHECKBOX): ?>
@@ -162,6 +203,8 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $selected = is_array($value) ? $value : [];
             $maxSelect = $field->getMaxSelect();
             $exclusiveOptions = $field->getExclusiveOptions();
+            $otherLabel = $field->findOtherOption($choiceOptions);
+            $otherState = $otherLabel ? FormField::otherSpecifyState($otherLabel, $selected) : ['selected' => false, 'text' => ''];
             $listAttrs = ['class' => 'cf-choice-list'];
             if ($maxSelect) {
                 $listAttrs['data-cf-max-select'] = (int)$maxSelect;
@@ -179,10 +222,27 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             ?>
             <div <?= \yii\helpers\Html::renderTagAttributes($listAttrs) ?>>
                 <?php foreach ($choiceOptions as $opt): ?>
+                    <?php $isOther = $otherLabel !== null && (string)$opt === $otherLabel; ?>
                     <label class="cf-choice">
-                        <?= Html::checkbox($inputName . '[]', in_array($opt, $selected, true), ['value' => $opt]) ?>
+                        <?= Html::checkbox($inputName . '[]', $isOther ? $otherState['selected'] : in_array($opt, $selected, true), ['value' => $opt]) ?>
                         <span><?= Html::encode($opt) ?></span>
                     </label>
+                    <?php if ($isOther): ?>
+                        <div class="cf-other-specify<?= $otherState['selected'] ? '' : ' d-none' ?>"
+                             data-cf-other-wrap
+                             data-cf-other-option="<?= Html::encode($otherLabel) ?>">
+                            <label class="cf-other-specify__label" for="<?= Html::encode($inputId) ?>-other">
+                                <?= Yii::t('ThiscoveryFormsModule.base', 'Please specify') ?>
+                            </label>
+                            <?= Html::textInput('SubmitForm[other_text][' . $field->id . ']', $otherState['text'], [
+                                'id' => $inputId . '-other',
+                                'class' => 'form-control cf-input',
+                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Type your answer'),
+                                'data-cf-other-text' => true,
+                                'disabled' => !$otherState['selected'],
+                            ]) ?>
+                        </div>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         <?php elseif ($field->type === FormField::TYPE_RATING): ?>
