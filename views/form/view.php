@@ -29,6 +29,7 @@ $panelToken = $panelToken ?? (string)Yii::$app->request->get('token', '');
 $ownDraft = $ownDraft ?? null;
 $startNew = !empty($startNew);
 $editingAnswer = !empty($editingAnswer);
+$isPreview = !empty($isPreview);
 
 ThiscoveryFormsAsset::register($this);
 
@@ -45,7 +46,7 @@ foreach ($pages as $page) {
         $branches = $page['break']->getPageBreakConfig()['branches'];
     }
     $fieldLogic = [];
-    foreach ($page['items'] as $item) {
+    foreach (FormPager::navigationFields($page) as $item) {
         $logic = $item->getLogic();
         if (!empty($logic['rules'])) {
             $fieldLogic[] = [
@@ -71,10 +72,17 @@ $this->registerJsConfig('thiscoveryForms', [
     'nextLabel' => Yii::t('ThiscoveryFormsModule.base', 'Next'),
     'backLabel' => Yii::t('ThiscoveryFormsModule.base', 'Back'),
     'requiredPage' => Yii::t('ThiscoveryFormsModule.base', 'Please complete the required fields on this page.'),
+    'fixPageErrors' => Yii::t('ThiscoveryFormsModule.base', 'Please fix the highlighted questions, then try again.'),
+    'requiredField' => Yii::t('ThiscoveryFormsModule.base', 'This question is required.'),
+    'checkboxMin' => Yii::t('ThiscoveryFormsModule.base', 'Select the required number of options.'),
+    'invalidEmail' => Yii::t('ThiscoveryFormsModule.base', 'Enter a valid email address, for example name@example.com.'),
     'specifyLabel' => Yii::t('ThiscoveryFormsModule.base', 'Please specify'),
     'specifyPlaceholder' => Yii::t('ThiscoveryFormsModule.base', 'Type your answer'),
     'copiedLabel' => Yii::t('ThiscoveryFormsModule.base', 'Copied'),
     'copyFailedLabel' => Yii::t('ThiscoveryFormsModule.base', 'Could not copy'),
+    'runActionsUrl' => Url::toRunActions($formModel),
+    'fillFileDeleteUrl' => Url::toFillDeleteFile($formModel),
+    'pipeVars' => $pipe->tokenMap($user ?? Yii::$app->user->identity, $formModel, $fillContext->member ?? null),
     'startPage' => ($existing && $existing->isInProgress() && $existing->current_page !== null)
         ? (int)$existing->current_page
         : 0,
@@ -82,25 +90,27 @@ $this->registerJsConfig('thiscoveryForms', [
 $this->registerJs('humhub.require("thiscoveryForms").initFill("#cf-fill");', \yii\web\View::POS_READY);
 
 $isDraft = $existing && $existing->isInProgress();
-$canSubmit = $isDraft
-    ? $formModel->isOpen()
-    : ($existing
-        ? ($formModel->canEditOwnAnswer($existing) || $formModel->canManage())
-        : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member))));
-if ($fillContext && $fillContext->blockReason && !$formModel->canManage() && !($existing && $existing->isComplete() && ($formModel->canEditOwnAnswer($existing) || $formModel->canManage()))) {
+$canSubmit = $isPreview
+    ? true
+    : ($isDraft
+        ? $formModel->isOpen()
+        : ($existing
+            ? ($formModel->canEditOwnAnswer($existing) || $formModel->canManage())
+            : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member)))));
+if (!$isPreview && $fillContext && $fillContext->blockReason && !$formModel->canManage() && !($existing && $existing->isComplete() && ($formModel->canEditOwnAnswer($existing) || $formModel->canManage()))) {
     $canSubmit = $existing && $existing->isInProgress() ? $canSubmit : false;
 }
 $resumeEnabled = $formModel->allowsResume();
-$identifiedBlocked = !$formModel->allow_multiple
+$identifiedBlocked = !$isPreview && !$formModel->allow_multiple
     && !$formModel->allowsAnonymous()
-    && !$formModel->isLongitudinal()
+    && !$formModel->usesWaves()
     && !$formModel->isConsensus()
     && $formModel->hasUserAnswered()
     && !$isDraft;
 if ($resumeEnabled && !$editingAnswer && $existing && $existing->isComplete() && !$formModel->allow_multiple) {
     $canSubmit = false;
 }
-$canSaveProgress = $resumeEnabled && $canSubmit && $formModel->isOpen() && (!$existing || $isDraft);
+$canSaveProgress = ($resumeEnabled || $formModel->keepsPartials()) && $canSubmit && ($isPreview || $formModel->isOpen()) && (!$existing || $isDraft);
 
 $answerableCount = 0;
 foreach ($formModel->fields as $f) {
@@ -111,12 +121,12 @@ foreach ($formModel->fields as $f) {
 $multiPage = count($pages) > 1;
 $questionNum = 0;
 $customCss = $formModel->getSafeCustomCss();
-$alreadyAnsweredAnon = $formModel->allowsAnonymous()
+$alreadyAnsweredAnon = !$isPreview && $formModel->allowsAnonymous()
     && !$formModel->allow_multiple
     && $formModel->hasGuestAnswered($fillContext?->wave?->id, $fillContext?->round?->id)
     && !$isDraft;
 $showToolbar = $formModel->canManage() || $formModel->canViewAnswers();
-$resumeCode = ($existing && $existing->isInProgress()) ? (string)$existing->resume_code : '';
+$resumeCode = ($resumeEnabled && $existing && $existing->isInProgress()) ? (string)$existing->resume_code : '';
 $hasResumeIntent = $isDraft && (
     (string)Yii::$app->request->get('resume', '') !== ''
     || (string)Yii::$app->request->get('continue', '') === '1'
@@ -130,9 +140,14 @@ $showResumeGate = $resumeEnabled
     && !$identifiedBlocked
     && !($existing && $existing->isComplete());
 $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
+$fillLang = $fillContext->language ?? $formModel->getSourceLanguage();
+$fillRtl = TranslationService::isRtl($fillLang);
 ?>
 
-<div class="cf-fill-page" id="cf-fill" data-cf-multipage="<?= $multiPage ? '1' : '0' ?>">
+<div class="cf-fill-page" id="cf-fill"
+     dir="<?= $fillRtl ? 'rtl' : 'ltr' ?>"
+     lang="<?= Html::encode($fillLang) ?>"
+     data-cf-multipage="<?= $multiPage ? '1' : '0' ?>">
     <?php if ($customCss !== ''): ?>
         <style type="text/css"><?= $customCss ?></style>
     <?php endif; ?>
@@ -142,17 +157,17 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
             <div class="cf-fill-toolbar__actions">
                 <?php if ($formModel->canManage()): ?>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Edit'))
-                        ->link(Url::toEdit($formModel))->sm()->icon('pencil') ?>
+                        ->link(Url::toEdit($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('pencil') ?>
                 <?php endif; ?>
                 <?php if ($formModel->canViewAnswers()): ?>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Dashboard'))
-                        ->link(Url::toDashboard($formModel))->sm()->icon('bar-chart') ?>
+                        ->link(Url::toDashboard($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('bar-chart') ?>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Answers'))
-                        ->link(Url::toAnswers($formModel))->sm()->icon('list') ?>
+                        ->link(Url::toAnswers($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('list') ?>
                 <?php endif; ?>
                 <?php if ($formModel->isProject()): ?>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Catalogue'))
-                        ->link(Url::toCatalogue($formModel))->sm()->icon('folder-open') ?>
+                        ->link(Url::toCatalogue($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('folder-open') ?>
                 <?php endif; ?>
             </div>
             <?php if ($formModel->canManage()): ?>
@@ -190,6 +205,17 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
                 <div class="cf-fill-hero__desc"><?= nl2br(Html::encode($formModel->description)) ?></div>
             <?php endif; ?>
         </header>
+        <?php if ($isPreview): ?>
+            <div class="alert alert-warning cf-preview-banner">
+                <strong><?= Yii::t('ThiscoveryFormsModule.base', 'Test mode') ?></strong>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Answers submitted with this link are not recorded as participant responses.') ?>
+                <?php if ($formModel->canManage()): ?>
+                    <a class="alert-link" href="<?= Html::encode(Url::toEdit($formModel)) ?>"<?= $formModel->hidesHumhubHeader() ? ' data-pjax-prevent="1"' : '' ?>>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Back to studio') ?>
+                    </a>
+                <?php endif; ?>
+            </div>
+        <?php endif; ?>
         <?php if ($fillContext && $fillContext->wave): ?>
             <div class="alert alert-info cf-wave-banner">
                 <?= Html::encode($fillContext->wave->getDisplayTitle()) ?>
@@ -234,7 +260,7 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
             </div>
         <?php endif; ?>
 
-        <?php if ($savedDraft && $savedDraft->resume_code): ?>
+        <?php if ($resumeEnabled && $savedDraft && $savedDraft->resume_code): ?>
             <div class="cf-resume-saved" data-cf-resume-saved>
                 <div class="cf-resume-saved__title">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Your progress is saved') ?>
@@ -266,7 +292,7 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
             </div>
         <?php endif; ?>
 
-        <?php if ($isDraft && $resumeCode): ?>
+        <?php if ($resumeEnabled && $isDraft && $resumeCode): ?>
             <div class="alert alert-info cf-resume-banner">
                 <?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Continuing saved response {code}', [
                     'code' => $resumeCode,
@@ -283,11 +309,18 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
         <?php elseif ($canSubmit): ?>
             <?= Html::beginForm('', 'post', [
                 'class' => 'cf-fill-form',
+                'novalidate' => true,
                 'data-cf-fill-form' => true,
                 'data-cf-save-url' => Url::toSaveProgress($formModel),
+                'data-cf-run-actions-url' => Url::toRunActions($formModel),
+                'data-cf-autosave' => $formModel->keepsPartials() ? '1' : '0',
+                'autocomplete' => 'off',
             ]) ?>
             <?php if ($resumeCode): ?>
                 <?= Html::hiddenInput('resume_code', $resumeCode) ?>
+            <?php endif; ?>
+            <?php if ($isPreview): ?>
+                <?= Html::hiddenInput('preview', Yii::$app->request->get('preview', Yii::$app->request->post('preview', ''))) ?>
             <?php endif; ?>
             <?php if ($startNew): ?>
                 <?= Html::hiddenInput('start', 'new') ?>
@@ -296,28 +329,82 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
                 <?= Html::hiddenInput('panel_token', $panelToken) ?>
             <?php endif; ?>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
+            <?= Html::hiddenInput('action_vars', ($existing instanceof FormAnswer) ? json_encode($existing->getVars(), JSON_UNESCAPED_UNICODE) : '{}', ['data-cf-action-vars' => true]) ?>
 
             <?php foreach ($pages as $page): ?>
                 <div class="cf-form-page<?= $page['index'] === 0 ? ' is-active' : '' ?>"
                      data-cf-page="<?= (int)$page['index'] ?>"
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
+                     data-cf-page-break-id="<?= $page['break'] ? (int)$page['break']->id : '' ?>"
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
                     <?php if (!empty($page['title'])): ?>
-                        <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields); ?>
+                        <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null); ?>
                         <h2 class="cf-form-page__title" data-cf-pipe="<?= Html::encode((string)$page['title']) ?>"><?= $pageTitle ?></h2>
                     <?php endif; ?>
 
-                    <?php foreach ($page['items'] as $field): ?>
+                    <?php $pageItems = array_values($page['items']); ?>
+                    <?php $groupDepth = 0; ?>
+                    <?php $openGroupIds = []; ?>
+                    <?php foreach ($pageItems as $itemIndex => $field): ?>
+                        <?php if ($field->type === FormField::TYPE_GROUP_END): ?>
+                            <?php if ($groupDepth > 0): ?>
+                                </div>
+                                <?php $groupDepth--; ?>
+                            <?php endif; ?>
+                            <?php if ($openGroupIds): ?>
+                                <?php array_pop($openGroupIds); ?>
+                            <?php endif; ?>
+                            <?php continue; ?>
+                        <?php endif; ?>
+                        <?php if ($field->type === FormField::TYPE_QUESTION_GROUP): ?>
+                            <?php
+                            $wrapGroup = FormPager::groupClosesInItems($pageItems, (int)$itemIndex);
+                            $groupAttrs = [
+                                'class' => 'cf-question-group',
+                                'data-cf-conditional' => true,
+                                'data-cf-field-id' => $field->id,
+                                'data-cf-field-type' => $field->type,
+                            ];
+                            $groupLogic = $field->getLogic();
+                            if (!empty($groupLogic['rules'])) {
+                                $groupAttrs['data-cf-logic'] = Json::encode($groupLogic);
+                            }
+                            $groupTitle = $pipe->substitutePlain((string)$field->label, $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null);
+                            $openGroupIds[] = (int)$field->id;
+                            ?>
+                            <div <?= Html::renderTagAttributes($groupAttrs) ?>>
+                                <?php if (trim($groupTitle) !== '' && $groupTitle !== FormField::defaultLabelForType(FormField::TYPE_QUESTION_GROUP)): ?>
+                                    <h3 class="cf-question-group__title" data-cf-pipe="<?= Html::encode($field->label) ?>"><?= Html::encode($groupTitle) ?></h3>
+                                <?php endif; ?>
+                            <?php if ($wrapGroup): ?>
+                                <?php $groupDepth++; ?>
+                            <?php else: ?>
+                                </div>
+                            <?php endif; ?>
+                            <?php continue; ?>
+                        <?php endif; ?>
                         <?php
                         $value = $submit->values[$field->id] ?? '';
                         $attrs = [
-                            'class' => 'cf-question',
+                            'class' => 'cf-question' . ($field->isHiddenFromRespondent() ? ' cf-respondent-hidden' : ''),
                             'data-cf-conditional' => true,
                             'data-cf-field-id' => $field->id,
                             'data-cf-field-type' => $field->type,
                         ];
+                        if ($openGroupIds) {
+                            $attrs['data-cf-enclosing-groups'] = Json::encode(array_values($openGroupIds));
+                        }
+                        if ($field->isHiddenFromRespondent()) {
+                            $attrs['data-cf-respondent-hidden'] = '1';
+                        }
+                        if (FormField::isChoiceType($field->type)) {
+                            $attrs['data-cf-choice-pairs'] = Json::encode($field->getChoicePairs());
+                        }
                         if ($field->collectsAnswer()) {
                             $attrs['data-cf-answerable'] = '1';
+                        }
+                        if ($field->hasActions()) {
+                            $attrs['data-cf-field-actions'] = '1';
                         }
                         $logic = $field->getLogic();
                         if (!empty($logic['rules'])) {
@@ -350,40 +437,52 @@ $alreadySubmittedMessage = $formModel->getAlreadySubmittedMessage();
                                 'allFields' => $formModel->fields,
                                 'justifications' => $submit->justifications,
                                 'frozen' => !empty($frozen),
+                                'fillRtl' => $fillRtl,
+                                'panelMember' => $fillContext->member ?? null,
                             ]) ?>
                         </div>
                     <?php endforeach; ?>
+                    <?php while ($groupDepth > 0): ?></div><?php $groupDepth--; endwhile; ?>
                 </div>
             <?php endforeach; ?>
 
+            <div class="cf-fill-errors d-none" data-cf-page-errors role="alert"></div>
+
             <div class="cf-fill-nav">
-                <?php if ($multiPage): ?>
-                    <button type="button" class="btn btn-light" data-cf-page-back style="display:none">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Back') ?>
-                    </button>
-                    <button type="button" class="btn btn-primary" data-cf-page-next>
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Next') ?>
-                    </button>
-                <?php endif; ?>
-                <?php if ($canSaveProgress): ?>
-                    <button type="button" class="btn btn-light" data-cf-save-progress>
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Save & continue later') ?>
-                    </button>
-                <?php endif; ?>
-                <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
-                    <?= Button::save($existing && !$isDraft
-                        ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')
-                        : ($formModel->isProject()
-                            ? Yii::t('ThiscoveryFormsModule.base', 'Submit for review')
-                            : Yii::t('ThiscoveryFormsModule.base', 'Submit')))
-                        ->submit()
-                        ->cssClass('btn-lg') ?>
+                <div class="cf-fill-nav__start">
+                    <?php if ($multiPage): ?>
+                        <button type="button" class="btn btn-light" data-cf-page-back style="display:none">
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Back') ?>
+                        </button>
+                    <?php endif; ?>
+                </div>
+                <div class="cf-fill-nav__end">
+                    <?php if ($resumeEnabled && $canSaveProgress): ?>
+                        <button type="button" class="btn btn-light" data-cf-save-progress>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Save & continue later') ?>
+                        </button>
+                    <?php endif; ?>
+                    <?php if ($multiPage): ?>
+                        <button type="button" class="btn btn-primary" data-cf-page-next>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Next') ?>
+                        </button>
+                    <?php endif; ?>
+                    <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
+                        <?= Button::save($existing && !$isDraft
+                            ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')
+                            : ($formModel->isProject()
+                                ? Yii::t('ThiscoveryFormsModule.base', 'Submit for review')
+                                : Yii::t('ThiscoveryFormsModule.base', 'Submit')))
+                            ->submit()
+                            ->loader(false)
+                            ->cssClass('btn-lg') ?>
+                    </div>
                 </div>
             </div>
 
             <?= Html::endForm() ?>
 
-            <?php if ($canSaveProgress): ?>
+            <?php if ($resumeEnabled && $canSaveProgress): ?>
                 <div class="cf-save-panel" data-cf-save-panel hidden>
                     <div class="cf-save-panel__inner">
                         <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Save & continue later') ?></h3>

@@ -11,9 +11,11 @@ use yii\db\ActiveQuery;
  * @property int $id
  * @property int $form_id
  * @property int $status
+ * @property int $is_test
  * @property string|null $resume_code
  * @property string|null $resume_email
  * @property int|null $current_page
+ * @property string|null $vars_json
  * @property string $created_at
  * @property int|null $created_by
  * @property string $updated_at
@@ -58,9 +60,11 @@ class FormAnswer extends ActiveRecord
     {
         return [
             [['form_id'], 'required'],
-            [['form_id', 'created_by', 'updated_by', 'status', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id'], 'integer'],
+            [['form_id', 'created_by', 'updated_by', 'status', 'is_test', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id'], 'integer'],
             [['status'], 'default', 'value' => self::STATUS_COMPLETE],
             [['status'], 'in', 'range' => [self::STATUS_IN_PROGRESS, self::STATUS_COMPLETE]],
+            [['is_test'], 'default', 'value' => 0],
+            [['is_test'], 'boolean'],
             [['workflow_status'], 'default', 'value' => self::WORKFLOW_NONE],
             [['workflow_status'], 'in', 'range' => [
                 self::WORKFLOW_NONE,
@@ -75,6 +79,7 @@ class FormAnswer extends ActiveRecord
             [['resume_code'], 'string', 'max' => 32],
             [['resume_email'], 'email'],
             [['created_at', 'updated_at'], 'safe'],
+            [['vars_json'], 'string'],
             [['created_by', 'updated_by'], 'required', 'when' => function ($model) {
                 return !$model->forceAnonymous;
             }],
@@ -89,6 +94,19 @@ class FormAnswer extends ActiveRecord
     public function isComplete(): bool
     {
         return (int)$this->status === self::STATUS_COMPLETE;
+    }
+
+    public function isTest(): bool
+    {
+        return (int)$this->is_test === 1;
+    }
+
+    /**
+     * Live participant answers (never preview/test runs).
+     */
+    public static function findParticipants(): ActiveQuery
+    {
+        return static::find()->andWhere(['is_test' => 0]);
     }
 
     public static function getWorkflowLabels(): array
@@ -248,10 +266,46 @@ class FormAnswer extends ActiveRecord
         return null;
     }
 
+    /**
+     * @return array<string,string>
+     */
+    public function getVars(): array
+    {
+        $decoded = json_decode((string)$this->vars_json, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        $out = [];
+        foreach ($decoded as $key => $value) {
+            $name = \humhub\modules\thiscoveryForms\services\FormActionService::sanitizeName((string)$key);
+            if ($name === '') {
+                continue;
+            }
+            $out[$name] = is_scalar($value) ? (string)$value : '';
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $vars
+     */
+    public function setVars(array $vars): void
+    {
+        $clean = [];
+        foreach ($vars as $key => $value) {
+            $name = \humhub\modules\thiscoveryForms\services\FormActionService::sanitizeName((string)$key);
+            if ($name === '') {
+                continue;
+            }
+            $clean[$name] = is_scalar($value) ? (string)$value : '';
+        }
+        $this->vars_json = $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
+    }
+
     public function getValuesMap(): array
     {
         $map = [];
-        foreach ($this->answerFields as $af) {
+        foreach ($this->getAnswerFields()->all() as $af) {
             $decoded = json_decode((string)$af->value, true);
             $map[$af->field_id] = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : $af->value;
         }

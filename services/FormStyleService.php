@@ -85,7 +85,7 @@ class FormStyleService
         ];
 
         foreach (FormField::getTypeLabels() as $type => $label) {
-            if ($type === FormField::TYPE_PAGE_BREAK) {
+            if ($type === FormField::TYPE_PAGE_BREAK || $type === FormField::TYPE_GROUP_END) {
                 continue;
             }
             $sel = '#cf-fill [data-cf-field-type="' . $type . '"]';
@@ -185,7 +185,7 @@ class FormStyleService
             FormField::TYPE_FILE => $block . ' .cf-input, ' . $block . ' .form-control',
             FormField::TYPE_RADIO,
             FormField::TYPE_CHECKBOX => $block . ' .cf-choice, ' . $block . ' label',
-            FormField::TYPE_RATING => $block . ' .cf-rating, ' . $block . ' .cf-star',
+            FormField::TYPE_RATING => $block . ' .cf-rating, ' . $block . ' .cf-star, ' . $block . ' .cf-vas',
             FormField::TYPE_RANKING => $block . ' .cf-ranking-item',
             FormField::TYPE_GRID_SINGLE,
             FormField::TYPE_GRID_MULTI => $block . ' table, ' . $block . ' .cf-grid',

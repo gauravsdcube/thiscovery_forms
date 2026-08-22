@@ -2,10 +2,10 @@
 
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
-use humhub\modules\thiscoveryForms\models\FormPanelMember;
 use humhub\modules\thiscoveryForms\models\FormWave;
 use humhub\modules\thiscoveryForms\services\PanelService;
 use humhub\modules\thiscoveryForms\services\WaveService;
+use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
 
 /** @var CustomForm $formModel */
@@ -15,19 +15,19 @@ $panelService = new PanelService();
 $waveService = new WaveService();
 $panel = $isNew ? null : $panelService->getPanel($formModel);
 $panels = $isNew ? [] : $panelService->listAvailable($formModel);
-$members = $panel ? $panel->getActiveMembers()->all() : [];
+$memberCount = $panel ? $panel->getActiveMemberCount() : 0;
 $waves = $isNew ? [] : $waveService->listWaves($formModel);
 ?>
 
 <div class="cf-studio__settings">
     <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Panel') ?></h5>
     <p class="cf-hint text-muted">
-        <?= Yii::t('ThiscoveryFormsModule.base', 'Invite the same people to each wave. Members can be signed-in users or email-only guests with a personal link.') ?>
+        <?= Yii::t('ThiscoveryFormsModule.base', 'Attach a panel for invites, waves, and this survey’s cohort. When someone completes the form with an email (from a question or their account), they are added to this panel.') ?>
     </p>
 
     <?php if ($isNew): ?>
         <div class="alert alert-info">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Save the form first to set up the panel and waves.') ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Save the form first to attach a panel and set up waves.') ?>
         </div>
     <?php else: ?>
         <?= Html::beginForm(Url::studioAction($formModel, 'panel-save'), 'post', ['id' => 'cf-panel-save']) ?>
@@ -38,6 +38,7 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
                     <?php foreach ($panels as $p): ?>
                         <option value="<?= (int)$p->id ?>" <?= $panel && (int)$panel->id === (int)$p->id ? 'selected' : '' ?>>
                             <?= Html::encode($p->title) ?>
+                            (<?= (int)$p->getActiveMemberCount() ?>)
                         </option>
                     <?php endforeach; ?>
                 </select>
@@ -60,77 +61,61 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Email all members when a later wave opens (Wave 2 onwards)') ?>
                 </label>
             </div>
+            <p class="cf-hint text-muted">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Choose invite, wave, reminder, and post-completion templates on the Settings tab.') ?>
+                <a href="<?= Html::encode(Url::toEmailTemplateIndex($formModel->isGlobal() ? null : $formModel->content->getContainer())) ?>">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Open email templates') ?>
+                </a>
+            </p>
             <button type="submit" class="btn btn-primary"><?= Yii::t('ThiscoveryFormsModule.base', 'Save panel') ?></button>
         <?= Html::endForm() ?>
 
-        <hr>
-        <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Members') ?></h5>
-        <?= Html::beginForm(Url::studioAction($formModel, 'panel-add-member'), 'post', ['class' => 'cf-inline-form']) ?>
-            <div class="row g-2 align-items-end">
-                <div class="col-md-6">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Username or email') ?></label>
-                    <input type="text" name="member" class="form-control" required placeholder="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'name@nhs.net')) ?>">
-                </div>
-                <div class="col-md-2">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Weight') ?></label>
-                    <input type="number" name="weight" class="form-control" value="1" min="0" step="0.1">
-                </div>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-light"><?= Yii::t('ThiscoveryFormsModule.base', 'Add member') ?></button>
-                </div>
-            </div>
-        <?= Html::endForm() ?>
+        <p class="mt-3">
+            <?php if ($panel): ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Manage members ({n})', ['n' => $memberCount]))
+                    ->link(Url::toPanelView($panel))
+                    ->icon('users')
+                    ->loader(false) ?>
+            <?php else: ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Open panels'))
+                    ->link(Url::toPanelIndex($formModel->isGlobal() ? null : $formModel->content->getContainer()))
+                    ->icon('users')
+                    ->loader(false) ?>
+            <?php endif; ?>
+        </p>
 
-        <?php if ($members): ?>
-            <table class="table cf-panel-table mt-3">
-                <thead>
-                <tr>
-                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Member') ?></th>
-                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Weight') ?></th>
-                    <th></th>
-                </tr>
-                </thead>
-                <tbody>
-                <?php foreach ($members as $member): ?>
-                    <?php /** @var FormPanelMember $member */ ?>
-                    <tr>
-                        <td>
-                            <strong><?= Html::encode($member->getDisplayLabel()) ?></strong>
-                            <div class="text-muted small">
-                                <?= $member->user_id
-                                    ? Yii::t('ThiscoveryFormsModule.base', 'Signed-in user')
-                                    : Yii::t('ThiscoveryFormsModule.base', 'Email invite') ?>
-                                <?php if ($member->consent_at): ?>
-                                    · <?= Yii::t('ThiscoveryFormsModule.base', 'Consent recorded') ?>
-                                <?php endif; ?>
-                            </div>
-                        </td>
-                        <td><?= Html::encode((string)$member->weight) ?></td>
-                        <td class="text-end">
-                            <?= Html::beginForm(Url::studioAction($formModel, 'panel-invite'), 'post', ['class' => 'd-inline']) ?>
-                                <?= Html::hiddenInput('member_id', $member->id) ?>
-                                <button type="submit" class="btn btn-sm btn-light"><?= Yii::t('ThiscoveryFormsModule.base', 'Email invite') ?></button>
-                            <?= Html::endForm() ?>
-                            <?= Html::beginForm(Url::studioAction($formModel, 'panel-remove-member'), 'post', ['class' => 'd-inline']) ?>
-                                <?= Html::hiddenInput('member_id', $member->id) ?>
-                                <button type="submit" class="btn btn-sm btn-danger"><?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?></button>
-                            <?= Html::endForm() ?>
-                        </td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-            <?= Html::beginForm(Url::studioAction($formModel, 'panel-invite'), 'post') ?>
+        <?php if ($panel && $memberCount): ?>
+            <?= Html::beginForm(Url::studioAction($formModel, 'panel-invite'), 'post', ['class' => 'mt-2']) ?>
                 <button type="submit" class="btn btn-primary">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Email all members') ?>
                 </button>
             <?= Html::endForm() ?>
-        <?php else: ?>
-            <p class="text-muted mt-2"><?= Yii::t('ThiscoveryFormsModule.base', 'No members yet.') ?></p>
+        <?php elseif ($panel): ?>
+            <p class="text-muted mt-2"><?= Yii::t('ThiscoveryFormsModule.base', 'No members yet. Add people on the panel screen, or enrol them when they complete a form.') ?></p>
         <?php endif; ?>
 
         <hr>
         <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Waves') ?></h5>
+        <?php if (\humhub\modules\thiscoveryForms\Module::wavesLiveOnPanelStatic()): ?>
+            <p class="cf-hint text-muted">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Waves are managed on the panel, so every form that uses this panel shares the same calendar.') ?>
+            </p>
+            <?php if ($panel): ?>
+                <p>
+                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Open panel waves'))
+                        ->link(Url::toPanelView($panel))
+                        ->icon('line-chart')
+                        ->loader(false) ?>
+                </p>
+                <?= $this->render('@thiscovery-forms/views/form/_wave_list', [
+                    'waves' => $waves,
+                    'statusUrl' => Url::toPanelWaveStatus($panel),
+                    'canManage' => true,
+                ]) ?>
+            <?php else: ?>
+                <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Save the panel first, then add waves on the panel screen.') ?></p>
+            <?php endif; ?>
+        <?php else: ?>
         <p class="cf-hint text-muted">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Each wave is the same form, answered again. Only one wave can be open at a time.') ?>
         </p>
@@ -153,36 +138,11 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
                 </div>
             </div>
         <?= Html::endForm() ?>
-
-        <?php foreach ($waves as $wave): ?>
-            <?php /** @var FormWave $wave */ ?>
-            <div class="cf-programme-card">
-                <div>
-                    <strong><?= Html::encode($wave->getDisplayTitle()) ?></strong>
-                    <span class="cf-answer-card__chip"><?= Html::encode(FormWave::getStatusLabels()[$wave->status] ?? $wave->status) ?></span>
-                    <?php if ($wave->opens_at || $wave->closes_at): ?>
-                        <div class="text-muted small">
-                            <?= Html::encode(trim(($wave->opens_at ?: '—') . ' → ' . ($wave->closes_at ?: '—'))) ?>
-                        </div>
-                    <?php endif; ?>
-                </div>
-                <div>
-                    <?php if ($wave->status !== FormWave::STATUS_OPEN): ?>
-                        <?= Html::beginForm(Url::studioAction($formModel, 'wave-status'), 'post', ['class' => 'd-inline']) ?>
-                            <?= Html::hiddenInput('wave_id', $wave->id) ?>
-                            <?= Html::hiddenInput('status', FormWave::STATUS_OPEN) ?>
-                            <button type="submit" class="btn btn-sm btn-primary"><?= Yii::t('ThiscoveryFormsModule.base', 'Open') ?></button>
-                        <?= Html::endForm() ?>
-                    <?php endif; ?>
-                    <?php if ($wave->status !== FormWave::STATUS_CLOSED): ?>
-                        <?= Html::beginForm(Url::studioAction($formModel, 'wave-status'), 'post', ['class' => 'd-inline']) ?>
-                            <?= Html::hiddenInput('wave_id', $wave->id) ?>
-                            <?= Html::hiddenInput('status', FormWave::STATUS_CLOSED) ?>
-                            <button type="submit" class="btn btn-sm btn-light"><?= Yii::t('ThiscoveryFormsModule.base', 'Close') ?></button>
-                        <?= Html::endForm() ?>
-                    <?php endif; ?>
-                </div>
-            </div>
-        <?php endforeach; ?>
+        <?= $this->render('@thiscovery-forms/views/form/_wave_list', [
+            'waves' => $waves,
+            'statusUrl' => Url::studioAction($formModel, 'wave-status'),
+            'canManage' => true,
+        ]) ?>
+        <?php endif; ?>
     <?php endif; ?>
 </div>

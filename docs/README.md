@@ -1,23 +1,27 @@
 # Thiscovery Forms
 
-**Version 1.8.0**  
+**Version 1.18.5**  
 Copyright (c) 2026 D Cube Consulting. All rights reserved.
 
 Lean HumHub module for creating forms at **space** and **network (global)** level.
 
+**User documentation** (in-product **Help**, and paste into Wiki if needed): see [`docs/user/`](user/README.md) — pages for administrators and form creators.
+
 ## Features
 
 - Field types: text, textarea, number, email, date, dropdown, radio, checkbox, file, rating, ranking, rich text, HTML, page breaks, grid, best–worst, MaxDiff, drill-down, image area
-- Form kinds: survey, quick poll, feedback, project, longitudinal, consensus
+- Form kinds: survey, quick poll, feedback, EQ-5D, project, longitudinal, consensus
+- EQ-5D: licence-safe five-page + thermometer layout, panel waves, profile/VAS export
+- Waves: per survey or per panel (module setting); optional on ordinary surveys
 - Project: configurable approval stages (users and/or groups), catalogue of published records, request-changes and decision log
 - Longitudinal: hybrid panel (users or email invites), repeating waves, attrition on the dashboard
 - Consensus / Delphi: rounds, published summaries, identity modes, comments, weighted votes
 - Translation overlay and language switcher on the fill page
 - Question / block library and save-as-template
-- Import and export questions (JSON / CSV)
+- Import and export questions (JSON / CSV), with append or replace and a CSV field-type guide
 - Quick polls embed on the stream and on Thiscovery pages
 - Compound logic (AND/OR, skip question/page, go to page/end) and answer piping / carry-forward
-- Per-form: multiple submissions, anonymous submissions, respondent edit after submit, save and resume, side-menu visibility, answers visibility
+- Per-form: multiple submissions, anonymous submissions, respondent edit after submit, save and resume, keep incomplete responses, public dashboard share, side-menu visibility, answers visibility
 - Administrators can enable or disable form types in module settings
 - Fill-page appearance: per-element CSS accordion (site theme by default) plus custom CSS
 - Soft states: Draft → Open → Closed
@@ -26,7 +30,10 @@ Lean HumHub module for creating forms at **space** and **network (global)** leve
 - CSV export and dashboards
 - Notifications to author and managers on submit
 - Permission-based create / manage / answer / view answers
-- **Save & continue later** (optional per form) with a copyable / emailable resume code (in-progress drafts are not counted as submissions)
+- **Save & continue later** (optional per form) with a copyable / emailable resume code
+- Preview / test link so stakeholders can try a form without polluting participant results
+- Optional public dashboard share link (no sign-in)
+- Incomplete responses can be kept for dashboard counts and CSV export
 
 ## Requirements
 

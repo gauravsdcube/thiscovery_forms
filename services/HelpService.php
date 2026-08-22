@@ -1,0 +1,146 @@
+<?php
+
+namespace humhub\modules\thiscoveryForms\services;
+
+use humhub\modules\thiscoveryForms\helpers\Url;
+use humhub\modules\thiscoveryForms\Module;
+use Yii;
+use yii\helpers\Markdown;
+
+/**
+ * In-product Help from docs/user markdown.
+ */
+class HelpService
+{
+    /**
+     * @return array<int, array{id:string,title:string,intro:string,pages:string[]}>
+     */
+    public static function sections(): array
+    {
+        return [
+            [
+                'id' => 'admin',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Administration'),
+                'intro' => Yii::t('ThiscoveryFormsModule.base', 'Enable the module, choose form types, and decide who can create, fill, and see answers.'),
+                'pages' => ['admins'],
+            ],
+            [
+                'id' => 'creators',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Form creators'),
+                'intro' => Yii::t('ThiscoveryFormsModule.base', 'Build forms, invite people, and work with results.'),
+                'pages' => [
+                    'creators-getting-started',
+                    'creators-builder',
+                    'creators-csv-import',
+                    'creators-settings',
+                    'creators-results',
+                    'creators-panels',
+                    'creators-form-types',
+                ],
+            ],
+        ];
+    }
+
+    /**
+     * @return array<string, array{file:string,title:string,summary:string,icon:string}>
+     */
+    public static function pages(): array
+    {
+        return [
+            'admins' => [
+                'file' => 'admins.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Forms for administrators'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Module enablement, configuration, permissions, and network versus space forms.'),
+                'icon' => 'cog',
+            ],
+            'creators-getting-started' => [
+                'file' => 'creators-getting-started.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Getting started'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Where forms live, how to create one, and the studio tabs.'),
+                'icon' => 'play-circle',
+            ],
+            'creators-builder' => [
+                'file' => 'creators-builder.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Builder and questions'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Question types, pages, logic, piping, and field actions.'),
+                'icon' => 'th-list',
+            ],
+            'creators-csv-import' => [
+                'file' => 'creators-csv-import.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Import questions from CSV'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Field types, columns, page breaks, and whether to replace or append.'),
+                'icon' => 'file-excel-o',
+            ],
+            'creators-settings' => [
+                'file' => 'creators-settings.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Form settings'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, emails, languages, and custom functions.'),
+                'icon' => 'wrench',
+            ],
+            'creators-results' => [
+                'file' => 'creators-results.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Sharing and results'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Share links, preview, dashboards, and CSV export.'),
+                'icon' => 'bar-chart',
+            ],
+            'creators-panels' => [
+                'file' => 'creators-panels.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Panels, waves, and email'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Panels, wave calendars, and email templates.'),
+                'icon' => 'users',
+            ],
+            'creators-form-types' => [
+                'file' => 'creators-form-types.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Form types'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'When to use a survey, poll, EQ-5D, longitudinal, consensus, or project form.'),
+                'icon' => 'files-o',
+            ],
+        ];
+    }
+
+    public static function find(string $slug): ?array
+    {
+        $pages = self::pages();
+        return $pages[$slug] ?? null;
+    }
+
+    /**
+     * @return array{slug:string,title:string,html:string}|null
+     */
+    public static function render(string $slug, $container = null): ?array
+    {
+        $meta = self::find($slug);
+        if (!$meta) {
+            return null;
+        }
+
+        $path = self::docsPath() . DIRECTORY_SEPARATOR . $meta['file'];
+        if (!is_readable($path)) {
+            return null;
+        }
+
+        $markdown = (string)file_get_contents($path);
+        $markdown = preg_replace('/^#\s+.*\R+/', '', $markdown, 1) ?? $markdown;
+        $markdown = preg_replace_callback(
+            '/\]\(([\w-]+)\.md(#[^)]+)?\)/',
+            static function (array $m) use ($container): string {
+                $url = Url::toHelp($container, $m[1]);
+                return '](' . $url . ($m[2] ?? '') . ')';
+            },
+            $markdown
+        ) ?? $markdown;
+
+        return [
+            'slug' => $slug,
+            'title' => $meta['title'],
+            'html' => Markdown::process($markdown, 'gfm'),
+        ];
+    }
+
+    public static function docsPath(): string
+    {
+        /** @var Module $module */
+        $module = Yii::$app->getModule('thiscovery-forms');
+        return $module->getBasePath() . DIRECTORY_SEPARATOR . 'docs' . DIRECTORY_SEPARATOR . 'user';
+    }
+}

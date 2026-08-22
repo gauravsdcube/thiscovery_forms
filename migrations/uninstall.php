@@ -6,6 +6,7 @@ class uninstall extends Migration
 {
     public function up()
     {
+        $this->dropTable('custom_form_folder_acl');
         $this->dropTable('custom_form_answer_approval');
         $this->dropTable('custom_form_approval_authority');
         $this->dropTable('custom_form_approval_stage');
@@ -13,6 +14,9 @@ class uninstall extends Migration
         $this->dropTable('custom_form_i18n');
         $this->dropTable('form_round');
         $this->dropTable('form_wave');
+        $this->dropTable('form_email_send');
+        $this->dropTable('form_email_template');
+        $this->dropTable('form_panel_activity');
         $this->dropTable('form_panel_member');
         $this->dropTable('form_panel');
         $this->dropTable('form_library_item');
@@ -20,6 +24,7 @@ class uninstall extends Migration
         $this->dropTable('custom_form_answer');
         $this->dropTable('custom_form_field');
         $this->dropTable('custom_form');
+        $this->dropTable('custom_form_folder');
     }
 
     public function down()

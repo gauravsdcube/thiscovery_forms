@@ -68,6 +68,7 @@ trait ProgrammeTrait
         $panel->save(false);
 
         $form->setSetting('panel_id', (int)$panel->id);
+        $form->setSetting('log_panel_activity', true);
         $form->setSetting('email_on_wave_open', Yii::$app->request->post('email_on_wave_open', '0') === '1');
         $form->save(false, ['settings_json']);
 
@@ -176,8 +177,8 @@ trait ProgrammeTrait
         $closes = (string)Yii::$app->request->post('closes_at', '');
 
         if ($waveId) {
-            $wave = FormWave::findOne(['id' => $waveId, 'form_id' => $form->id]);
-            if (!$wave) {
+            $wave = FormWave::findOne((int)$waveId);
+            if (!$wave || !$waves->waveBelongsToForm($wave, $form)) {
                 throw new NotFoundHttpException();
             }
             $wave->title = $title ?: $wave->title;
@@ -198,8 +199,8 @@ trait ProgrammeTrait
         if (!Yii::$app->request->isPost) {
             return $this->redirectStudio($form, 'panel');
         }
-        $wave = FormWave::findOne(['id' => (int)Yii::$app->request->post('wave_id', 0), 'form_id' => $form->id]);
-        if (!$wave) {
+        $wave = FormWave::findOne((int)Yii::$app->request->post('wave_id', 0));
+        if (!$wave || !(new WaveService())->waveBelongsToForm($wave, $form)) {
             throw new NotFoundHttpException();
         }
         $previous = $wave->status;

@@ -20,6 +20,7 @@ if ($lang === '' || $lang === $source || !in_array($lang, $enabled, true)) {
     $lang = $targets[0] ?? '';
 }
 $labels = TranslationService::languageLabels();
+$targetDir = TranslationService::isRtl($lang) ? 'rtl' : 'ltr';
 $formI18n = ($lang && !$isNew)
     ? (FormI18n::findOne(['form_id' => $formModel->id, 'language' => $lang]) ?: new FormI18n())
     : new FormI18n();
@@ -85,7 +86,7 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                 </div>
                 <div>
                     <label class="cf-label"><?= Html::encode($labels[$lang] ?? $lang) ?></label>
-                    <input type="text" name="form_i18n[title]" class="form-control" value="<?= Html::encode((string)$formI18n->title) ?>">
+                    <input type="text" name="form_i18n[title]" class="form-control" dir="<?= $targetDir ?>" value="<?= Html::encode((string)$formI18n->title) ?>">
                 </div>
                 <div>
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Description') ?></label>
@@ -93,7 +94,7 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                 </div>
                 <div>
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Description') ?></label>
-                    <textarea name="form_i18n[description]" class="form-control" rows="3"><?= Html::encode((string)$formI18n->description) ?></textarea>
+                    <textarea name="form_i18n[description]" class="form-control" dir="<?= $targetDir ?>" rows="3"><?= Html::encode((string)$formI18n->description) ?></textarea>
                 </div>
             </div>
 
@@ -115,7 +116,7 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                         </div>
                         <div>
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translated label') ?></label>
-                            <input type="text" name="field_i18n[<?= (int)$field->id ?>][label]" class="form-control" value="<?= Html::encode((string)$fi->label) ?>">
+                            <input type="text" name="field_i18n[<?= (int)$field->id ?>][label]" class="form-control" dir="<?= $targetDir ?>" value="<?= Html::encode((string)$fi->label) ?>">
                         </div>
                         <?php if ($field->help_text): ?>
                             <div>
@@ -124,7 +125,7 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                             </div>
                             <div>
                                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translated help') ?></label>
-                                <input type="text" name="field_i18n[<?= (int)$field->id ?>][help_text]" class="form-control" value="<?= Html::encode((string)$fi->help_text) ?>">
+                                <input type="text" name="field_i18n[<?= (int)$field->id ?>][help_text]" class="form-control" dir="<?= $targetDir ?>" value="<?= Html::encode((string)$fi->help_text) ?>">
                             </div>
                         <?php endif; ?>
                         <?php if (FormField::isChoiceType($field->type) && $field->getOptions()): ?>
@@ -134,7 +135,7 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                             </div>
                             <div>
                                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translated choices') ?></label>
-                                <textarea name="field_i18n[<?= (int)$field->id ?>][options]" class="form-control" rows="4"><?= Html::encode($optText) ?></textarea>
+                                <textarea name="field_i18n[<?= (int)$field->id ?>][options]" class="form-control" dir="<?= $targetDir ?>" rows="4"><?= Html::encode($optText) ?></textarea>
                             </div>
                         <?php endif; ?>
                     </div>

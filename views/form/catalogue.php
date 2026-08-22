@@ -30,6 +30,7 @@ $total = (int)$dataProvider->getTotalCount();
         <div class="cf-list-header__actions">
             <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Submit a project'))
                 ->link(Url::toView($formModel))
+                ->pjax(!$formModel->hidesHumhubHeader())
                 ->sm()
                 ->loader(false) ?>
             <?php if ($formModel->canViewAnswers()): ?>

@@ -19,7 +19,9 @@ use yii\helpers\Html;
 ThiscoveryFormsAsset::register($this);
 
 $valueMap = [];
+$answerFieldMap = [];
 foreach ($answer->answerFields as $af) {
+    $answerFieldMap[(int)$af->field_id] = $af;
     $valueMap[(int)$af->field_id] = $af->getDisplayValue();
 }
 
@@ -87,7 +89,9 @@ $isAuthor = $user && (int)$answer->created_by === (int)$user->id;
                                 <?php if ($isEmpty): ?>
                                     <span class="cf-answer-field__blank"><?= Yii::t('ThiscoveryFormsModule.base', 'No answer') ?></span>
                                 <?php else: ?>
-                                    <?= nl2br(Html::encode($afValue)) ?>
+                                    <?= !empty($answerFieldMap[(int)$field->id])
+                                        ? $answerFieldMap[(int)$field->id]->getAnswerHtml()
+                                        : nl2br(Html::encode($afValue)) ?>
                                 <?php endif; ?>
                             </div>
                         </div>

@@ -40,6 +40,10 @@ class Url
         if ($token !== '' && !isset($extra['token'])) {
             $extra['token'] = $token;
         }
+        $preview = (string)Yii::$app->request->get('preview', '');
+        if ($preview !== '' && !isset($extra['preview'])) {
+            $extra['preview'] = $preview;
+        }
         $lang = (string)Yii::$app->request->get('lang', '');
         if ($lang !== '' && !isset($extra['lang'])) {
             $extra['lang'] = $lang;
@@ -75,6 +79,24 @@ class Url
         }
 
         return $form->content->container->createUrl('/thiscovery-forms/form/save-progress', ['id' => $form->id]);
+    }
+
+    public static function toFillUpload(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/upload', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/upload', ['id' => $form->id]);
+    }
+
+    public static function toFillDeleteFile(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/delete-file', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/delete-file', ['id' => $form->id]);
     }
 
     public static function toLookupResume(CustomForm $form): string
@@ -126,13 +148,53 @@ class Url
         return $container->createUrl('/thiscovery-forms/form/create', $params);
     }
 
-    public static function toIndex($container = null): string
+    public static function toIndex($container = null, array $params = []): string
     {
         if ($container === null) {
-            return BaseUrl::to(['/thiscovery-forms/global/index']);
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/index'], $params));
         }
 
-        return $container->createUrl('/thiscovery-forms/form/index');
+        return $container->createUrl('/thiscovery-forms/form/index', $params);
+    }
+
+    /**
+     * Forms list used when managing (admin sidebar for network forms).
+     */
+    public static function toManageIndex($container = null, array $params = []): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/index'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/index', $params);
+    }
+
+    public static function toFolderEdit($container = null, $folderId = null, array $params = []): string
+    {
+        if ($folderId) {
+            $params['id'] = (int)$folderId;
+        }
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/folder-edit'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/folder-edit', $params);
+    }
+
+    public static function toFolderDelete($container = null, int $folderId): string
+    {
+        $params = ['id' => $folderId];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/folder-delete'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/folder-delete', $params);
+    }
+
+    public static function toMoveForm(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/admin/move-form', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/move-form', ['id' => $form->id]);
     }
 
     public static function toAdminSettings(): string
@@ -140,13 +202,24 @@ class Url
         return BaseUrl::to(['/thiscovery-forms/admin/settings']);
     }
 
-    public static function toAnswers(CustomForm $form): string
+    public static function toAnswers(CustomForm $form, array $params = []): string
     {
+        $params = array_merge(['id' => $form->id], $params);
         if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/answers', 'id' => $form->id]);
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/answers'], $params));
         }
 
-        return $form->content->container->createUrl('/thiscovery-forms/form/answers', ['id' => $form->id]);
+        return $form->content->container->createUrl('/thiscovery-forms/form/answers', $params);
+    }
+
+    public static function toAnswerDetail(CustomForm $form, $answerId): string
+    {
+        $params = ['id' => $form->id, 'answerId' => (int)$answerId];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/answer-detail'], $params));
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/answer-detail', $params);
     }
 
     public static function toExport(CustomForm $form): string
@@ -223,6 +296,41 @@ class Url
         }
 
         return $form->content->container->createUrl('/thiscovery-forms/form/delete', ['id' => $form->id]);
+    }
+
+    public static function toPreview(CustomForm $form, $scheme = true): string
+    {
+        $url = self::toView($form, $scheme);
+        $token = $form->getTestToken();
+        $sep = str_contains($url, '?') ? '&' : '?';
+        return $url . $sep . http_build_query(['preview' => $token]);
+    }
+
+    public static function toPublicDashboard(CustomForm $form, $scheme = true): string
+    {
+        $params = ['id' => $form->id, 'share' => $form->getPublicDashboardToken()];
+        if ($form->isGlobal()) {
+            $url = BaseUrl::to(array_merge(['/thiscovery-forms/global/public-dashboard'], $params), $scheme);
+            return $scheme ? self::ensureHttps($url) : $url;
+        }
+        $url = $form->content->container->createUrl('/thiscovery-forms/form/public-dashboard', $params, $scheme);
+        return $scheme ? self::ensureHttps($url) : $url;
+    }
+
+    public static function toRegeneratePreview(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/regenerate-preview', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/regenerate-preview', ['id' => $form->id]);
+    }
+
+    public static function toRegenerateDashboardShare(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/regenerate-dashboard-share', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/regenerate-dashboard-share', ['id' => $form->id]);
     }
 
     public static function toDashboard(CustomForm $form): string
@@ -345,6 +453,15 @@ class Url
         return $container->createUrl('/thiscovery-forms/form/library-insert');
     }
 
+    public static function toHealthStatusInsert($container = null): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/insert-health-status']);
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/insert-health-status');
+    }
+
     public static function toPanelInvite(CustomForm $form, string $token, $scheme = true): string
     {
         $url = self::toView($form, $scheme);
@@ -374,5 +491,159 @@ class Url
             }
         }
         return self::withFillContext(self::toView($form), $extra);
+    }
+
+    public static function toPanelIndex($container = null, array $params = []): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/panels'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/panels', $params);
+    }
+
+    public static function toPanelEdit($container = null, $panelId = null, array $params = []): string
+    {
+        if ($panelId) {
+            $params['id'] = (int)$panelId;
+        }
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/panel-edit'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/panel-edit', $params);
+    }
+
+    public static function toPanelView($panel, $container = null): string
+    {
+        $id = is_object($panel) ? (int)$panel->id : (int)$panel;
+        if (is_object($panel) && $container === null) {
+            $container = $panel->getContentContainer();
+        }
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/admin/panel-view', 'id' => $id]);
+        }
+        return $container->createUrl('/thiscovery-forms/form/panel-view', ['id' => $id]);
+    }
+
+    public static function toPanelDelete($panel, $container = null): string
+    {
+        $id = is_object($panel) ? (int)$panel->id : (int)$panel;
+        if (is_object($panel) && $container === null) {
+            $container = $panel->getContentContainer();
+        }
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/admin/panel-delete', 'id' => $id]);
+        }
+        return $container->createUrl('/thiscovery-forms/form/panel-delete', ['id' => $id]);
+    }
+
+    public static function toPanelMemberAdd($panel, $container = null): string
+    {
+        return self::panelAction($panel, 'panel-member-add', $container);
+    }
+
+    public static function toPanelMemberRemove($panel, $container = null): string
+    {
+        return self::panelAction($panel, 'panel-member-remove', $container);
+    }
+
+    public static function toPanelImport($panel, $container = null): string
+    {
+        return self::panelAction($panel, 'panel-import', $container);
+    }
+
+    public static function toPanelSample($container = null, $panel = null): string
+    {
+        $params = [];
+        if ($panel) {
+            $params['id'] = is_object($panel) ? (int)$panel->id : (int)$panel;
+        }
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/panel-sample'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/panel-sample', $params);
+    }
+
+    public static function toPanelWaveSave($panel, $container = null): string
+    {
+        return self::panelAction($panel, 'panel-wave-save', $container);
+    }
+
+    public static function toPanelWaveStatus($panel, $container = null): string
+    {
+        return self::panelAction($panel, 'panel-wave-status', $container);
+    }
+
+    public static function toPanelMember($member, $container = null): string
+    {
+        $id = is_object($member) ? (int)$member->id : (int)$member;
+        if (is_object($member) && $container === null && $member->panel) {
+            $container = $member->panel->getContentContainer();
+        }
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/admin/panel-member', 'id' => $id]);
+        }
+        return $container->createUrl('/thiscovery-forms/form/panel-member', ['id' => $id]);
+    }
+
+    public static function toEmailTemplateIndex($container = null, array $params = []): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/email-templates'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/email-templates', $params);
+    }
+
+    public static function toEmailTemplateEdit($container = null, $templateId = null, array $params = []): string
+    {
+        if ($templateId) {
+            $params['id'] = (int)$templateId;
+        }
+        if ($container === null) {
+            // Use GlobalController, not Administration. POSTing Thiscovery Editor HTML
+            // to /thiscovery-forms/admin/... is often rejected as 403.
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/email-template-edit'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/email-template-edit', $params);
+    }
+
+    public static function toEmailTemplateDelete($template, $container = null): string
+    {
+        $id = is_object($template) ? (int)$template->id : (int)$template;
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/email-template-delete', 'id' => $id]);
+        }
+        return $container->createUrl('/thiscovery-forms/form/email-template-delete', ['id' => $id]);
+    }
+
+    public static function toRunActions(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/run-actions', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/run-actions', ['id' => $form->id]);
+    }
+
+    public static function toHelp($container = null, ?string $page = null): string
+    {
+        $params = [];
+        if ($page) {
+            $params['page'] = $page;
+        }
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/help'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/help', $params);
+    }
+
+    protected static function panelAction($panel, string $action, $container = null): string
+    {
+        $id = is_object($panel) ? (int)$panel->id : (int)$panel;
+        if (is_object($panel) && $container === null) {
+            $container = $panel->getContentContainer();
+        }
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/admin/' . $action, 'id' => $id]);
+        }
+        return $container->createUrl('/thiscovery-forms/form/' . $action, ['id' => $id]);
     }
 }

@@ -45,7 +45,8 @@ $statusLabels = CustomForm::getStatusLabels();
             <h1 class="cf-dash-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Dashboard') ?></h1>
         </div>
         <div class="cf-dash-actions">
-            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'All forms'))->link(Url::toIndex($contentContainer))->sm()->loader(false) ?>
+            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'All forms'))->link(Url::toManageIndex($contentContainer))->sm()->loader(false) ?>
+            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Help'))->link(Url::toHelp($contentContainer))->sm()->icon('question-circle')->loader(false) ?>
             <?php if ($canCreate): ?>
                 <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Create form'))->link(Url::toCreate($contentContainer))->sm()->loader(false) ?>
             <?php endif; ?>

@@ -48,7 +48,7 @@ class DashboardService
         $perForm = [];
 
         if ($formIds) {
-            $complete = ['status' => FormAnswer::STATUS_COMPLETE];
+            $complete = ['status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0];
             $totalAnswers = (int)FormAnswer::find()->where(['form_id' => $formIds] + $complete)->count();
             $uniqueRespondents = (int)FormAnswer::find()
                 ->where(['form_id' => $formIds] + $complete)
@@ -63,7 +63,7 @@ class DashboardService
             $counts = (new Query())
                 ->from(FormAnswer::tableName())
                 ->select(['form_id', 'cnt' => 'COUNT(*)'])
-                ->where(['form_id' => $formIds, 'status' => FormAnswer::STATUS_COMPLETE])
+                ->where(['form_id' => $formIds, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
                 ->groupBy('form_id')
                 ->indexBy('form_id')
                 ->all();
@@ -98,14 +98,15 @@ class DashboardService
         $formId = (int)$form->id;
         $totalAnswers = (int)$form->getAnswers()->count();
         $uniqueRespondents = (int)FormAnswer::find()
-            ->where(['form_id' => $formId, 'status' => FormAnswer::STATUS_COMPLETE])
+            ->where(['form_id' => $formId, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
             ->select('created_by')
             ->distinct()
             ->count();
         $answersLast7 = (int)FormAnswer::find()
-            ->where(['form_id' => $formId, 'status' => FormAnswer::STATUS_COMPLETE])
+            ->where(['form_id' => $formId, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
             ->andWhere(['>=', 'created_at', date('Y-m-d H:i:s', strtotime('-7 days'))])
             ->count();
+        $inProgress = (int)$form->getInProgressAnswers()->count();
 
         $fieldCount = 0;
         foreach ($form->fields as $field) {
@@ -116,7 +117,7 @@ class DashboardService
         $answeredFieldRows = (int)(new Query())
             ->from(['af' => FormAnswerField::tableName()])
             ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
-            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE])
+            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
             ->andWhere(['and',
                 ['IS NOT', 'af.value', null],
                 ['<>', 'af.value', ''],
@@ -130,6 +131,7 @@ class DashboardService
 
         return [
             'totalAnswers' => $totalAnswers,
+            'inProgress' => $inProgress,
             'uniqueRespondents' => $uniqueRespondents,
             'answersLast7' => $answersLast7,
             'fieldCount' => $fieldCount,
@@ -140,7 +142,7 @@ class DashboardService
             'timeline' => $this->getTimeline([$formId], 14),
             'structured' => $this->getStructuredBreakdowns($form),
             'fieldResponseRates' => $this->getFieldResponseRates($form, $totalAnswers),
-            'waves' => $form->isLongitudinal() ? $this->getWaveStats($form) : [],
+            'waves' => $form->usesWaves() ? $this->getWaveStats($form) : [],
             'rounds' => $form->isConsensus() ? $this->getRoundStats($form) : [],
         ];
     }
@@ -153,9 +155,9 @@ class DashboardService
             : 0;
         $out = [];
         $prevCompleted = null;
-        foreach ($form->waves as $wave) {
+        foreach ((new WaveService())->listWaves($form) as $wave) {
             $completed = (int)FormAnswer::find()
-                ->where(['form_id' => $form->id, 'wave_id' => $wave->id, 'status' => FormAnswer::STATUS_COMPLETE])
+                ->where(['form_id' => $form->id, 'wave_id' => $wave->id, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
                 ->count();
             $dropOff = ($prevCompleted !== null && $prevCompleted > 0)
                 ? round((1 - ($completed / $prevCompleted)) * 100)
@@ -178,7 +180,7 @@ class DashboardService
         $out = [];
         foreach ($form->rounds as $round) {
             $completed = (int)FormAnswer::find()
-                ->where(['form_id' => $form->id, 'round_id' => $round->id, 'status' => FormAnswer::STATUS_COMPLETE])
+                ->where(['form_id' => $form->id, 'round_id' => $round->id, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
                 ->count();
             $out[] = [
                 'title' => $round->getDisplayTitle(),
@@ -214,7 +216,7 @@ class DashboardService
                 'day' => new Expression('DATE(created_at)'),
                 'cnt' => 'COUNT(*)',
             ])
-            ->where(['form_id' => $formIds, 'status' => FormAnswer::STATUS_COMPLETE])
+            ->where(['form_id' => $formIds, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
             ->andWhere(['>=', 'created_at', date('Y-m-d 00:00:00', strtotime('-' . ($days - 1) . ' days'))])
             ->groupBy(new Expression('DATE(created_at)'))
             ->all();
@@ -256,7 +258,7 @@ class DashboardService
                     ->from(['af' => FormAnswerField::tableName()])
                     ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
                     ->select(['af.value'])
-                    ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'af.field_id' => $field->id])
+                    ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
                     ->column();
 
                 foreach ($values as $raw) {
@@ -293,7 +295,7 @@ class DashboardService
                     ->from(['af' => FormAnswerField::tableName()])
                     ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
                     ->select(['af.value'])
-                    ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'af.field_id' => $field->id])
+                    ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
                     ->column();
 
                 foreach ($values as $raw) {
@@ -317,7 +319,7 @@ class DashboardService
                         $series[] = (int)($positionCounts[$option] ?? 0);
                     }
                     $datasets[] = [
-                        'label' => $option,
+                        'label' => $field->optionLabel((string)$option),
                         'data' => $series,
                     ];
                 }
@@ -388,7 +390,7 @@ class DashboardService
                 ->from(['af' => FormAnswerField::tableName()])
                 ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
                 ->select(['af.value'])
-                ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'af.field_id' => $field->id])
+                ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
                 ->column();
 
             foreach ($values as $raw) {
@@ -408,7 +410,7 @@ class DashboardService
                     }
                     $matchedOther = false;
                     foreach ($options as $opt) {
-                        if (FormField::choiceValueMatchesOption($item, (string)$opt)) {
+                        if ($field->choiceMatchesExpected($item, (string)$opt)) {
                             $counts[(string)$opt]++;
                             $matchedOther = true;
                             break;
@@ -420,7 +422,7 @@ class DashboardService
                 }
             }
 
-            $labels = array_keys($counts);
+            $labels = array_map(static fn($code) => $field->optionLabel((string)$code), array_keys($counts));
             $data = array_values($counts);
             if ($other > 0) {
                 $labels[] = 'Other';
@@ -468,8 +470,8 @@ class DashboardService
             $question = $form->getPollQuestion();
             if ($question) {
                 $label = $question->label;
-                foreach ($question->getOptions() as $opt) {
-                    $options[] = ['label' => $opt, 'count' => 0];
+                foreach ($question->getChoicePairs() as $pair) {
+                    $options[] = ['label' => $pair['label'], 'count' => 0];
                 }
             }
         }
@@ -487,7 +489,7 @@ class DashboardService
             ->from(['af' => FormAnswerField::tableName()])
             ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
             ->select(['af.value'])
-            ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'af.field_id' => $field->id])
+            ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
             ->column();
     }
 
@@ -723,7 +725,7 @@ class DashboardService
             $answered = (int)(new Query())
                 ->from(['af' => FormAnswerField::tableName()])
                 ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
-                ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'af.field_id' => $field->id])
+                ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
                 ->andWhere(['and',
                     ['IS NOT', 'af.value', null],
                     ['<>', 'af.value', ''],

@@ -9,6 +9,9 @@ use yii\helpers\Html;
 /** @var CustomForm $formModel */
 /** @var array $stats */
 /** @var $contentContainer */
+/** @var bool $isPublic */
+
+$isPublic = !empty($isPublic);
 
 ChartAsset::register($this);
 $this->registerJsConfig('thiscoveryForms.dashboard', [
@@ -43,9 +46,18 @@ JS
             <h1 class="cf-dash-title"><?= Html::encode($formModel->title) ?></h1>
         </div>
         <div class="cf-dash-actions">
-            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Open form'))->link(Url::toView($formModel))->sm()->loader(false) ?>
-            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Answers'))->link(Url::toAnswers($formModel))->sm()->loader(false) ?>
-            <?= Button::info(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))->link(Url::toExport($formModel))->sm()->loader(false) ?>
+            <?php if (empty($isPublic)): ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
+                    ->link(Url::toManageIndex($contentContainer ?? null))
+                    ->sm()
+                    ->icon('arrow-left')
+                    ->loader(false) ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Open form'))->link(Url::toView($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->loader(false) ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Answers'))->link(Url::toAnswers($formModel))->sm()->loader(false) ?>
+                <?= Button::info(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))->link(Url::toExport($formModel))->sm()->loader(false) ?>
+            <?php else: ?>
+                <span class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Shared dashboard') ?></span>
+            <?php endif; ?>
         </div>
     </div>
 
@@ -53,6 +65,10 @@ JS
         <div class="cf-stat-card">
             <div class="cf-stat-value"><?= (int)$stats['totalAnswers'] ?></div>
             <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Total submissions') ?></div>
+        </div>
+        <div class="cf-stat-card">
+            <div class="cf-stat-value"><?= (int)($stats['inProgress'] ?? 0) ?></div>
+            <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'In progress') ?></div>
         </div>
         <div class="cf-stat-card">
             <div class="cf-stat-value"><?= (int)$stats['uniqueRespondents'] ?></div>

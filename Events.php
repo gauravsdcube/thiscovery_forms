@@ -48,6 +48,7 @@ class Events
                 'label' => $form->title,
                 'url' => Url::toView($form),
                 'icon' => 'wpforms',
+                'htmlOptions' => $form->fillHtmlOptions(),
                 'isActive' => ControllerHelper::isActivePath('thiscovery-forms', 'form', 'view')
                     && (int)Yii::$app->request->get('id') === (int)$form->id,
                 'sortOrder' => 400,
@@ -85,6 +86,7 @@ class Events
                 'id' => 'thiscovery-form-global-' . $form->id,
                 'url' => Url::toView($form),
                 'icon' => 'wpforms',
+                'htmlOptions' => $form->fillHtmlOptions(),
                 'isActive' => ControllerHelper::isActivePath('thiscovery-forms', 'global', 'view')
                     && (int)Yii::$app->request->get('id') === (int)$form->id,
                 'sortOrder' => 400,
@@ -117,7 +119,7 @@ class Events
         /** @var AdminMenu $menu */
         $menu = $event->sender;
         $menu->addEntry(new MenuLink([
-            'label' => Yii::t('ThiscoveryFormsModule.base', 'Forms'),
+            'label' => Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Forms'),
             'id' => 'thiscovery-forms-admin',
             'icon' => 'wpforms',
             'url' => ['/thiscovery-forms/admin/index'],
@@ -143,6 +145,11 @@ class Events
             (new \humhub\modules\thiscoveryForms\services\WaveService())->dispatchDueInvites();
         } catch (\Throwable $e) {
             Yii::error('Thiscovery Forms hourly cron failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
+        try {
+            (new \humhub\modules\thiscoveryForms\services\EmailTemplateService())->dispatchDueReminders();
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms reminder cron failed: ' . $e->getMessage(), 'thiscovery-forms');
         }
     }
 

@@ -141,6 +141,7 @@ class RoundService
                     'a.form_id' => $form->id,
                     'a.round_id' => $round->id,
                     'a.status' => FormAnswer::STATUS_COMPLETE,
+                    'a.is_test' => 0,
                     'af.field_id' => $field->id,
                 ])
                 ->all();
@@ -220,6 +221,7 @@ class RoundService
                     'a.form_id' => $form->id,
                     'a.round_id' => $round->id,
                     'a.status' => FormAnswer::STATUS_COMPLETE,
+                    'a.is_test' => 0,
                     'af.field_id' => $field->id,
                 ])
                 ->all();

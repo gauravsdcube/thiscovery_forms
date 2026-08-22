@@ -8,8 +8,9 @@ use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\ModuleSettings;
 use humhub\modules\thiscoveryForms\permissions\CreateGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
+use humhub\modules\thiscoveryForms\services\FolderService;
+use humhub\modules\thiscoveryForms\services\FormListService;
 use Yii;
-use yii\data\ActiveDataProvider;
 use yii\web\ForbiddenHttpException;
 
 /**
@@ -17,6 +18,11 @@ use yii\web\ForbiddenHttpException;
  */
 class AdminController extends Controller
 {
+    use FolderTrait;
+    use PanelAdminTrait;
+    use EmailAdminTrait;
+    use HelpTrait;
+
     /**
      * @inheritdoc
      */
@@ -68,15 +74,20 @@ class AdminController extends Controller
             $query->andWhere(['custom_form.status' => CustomForm::STATUS_OPEN]);
         }
 
-        $provider = new ActiveDataProvider([
-            'query' => $query->with('fields'),
-            'pagination' => ['pageSize' => 20],
-        ]);
+        [$provider, $filters] = FormListService::provider($query, Yii::$app->request->queryParams, null);
+        $browse = FolderService::browse(null, Yii::$app->request->queryParams);
 
         return $this->render('@thiscovery-forms/views/global/index', [
             'dataProvider' => $provider,
+            'filters' => $filters,
             'canCreate' => Yii::$app->user->can(CreateGlobalForm::class) || Yii::$app->user->isAdmin(),
             'canConfigure' => Yii::$app->user->isAdmin() || Yii::$app->user->can(ManageModules::class),
+            'templates' => Yii::$app->user->can(CreateGlobalForm::class) || Yii::$app->user->isAdmin()
+                ? CustomForm::findAvailableTemplates(null)
+                : [],
+            'folderBrowse' => $browse,
+            'canManagePanels' => true,
+            'canViewHelp' => true,
         ]);
     }
 

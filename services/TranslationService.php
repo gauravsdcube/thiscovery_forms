@@ -21,7 +21,22 @@ class TranslationService
             'de' => Yii::t('ThiscoveryFormsModule.base', 'German'),
             'es' => Yii::t('ThiscoveryFormsModule.base', 'Spanish'),
             'ar' => Yii::t('ThiscoveryFormsModule.base', 'Arabic'),
+            'ur' => Yii::t('ThiscoveryFormsModule.base', 'Urdu'),
         ];
+    }
+
+    /**
+     * @return string[] Language bases that must render fill UI right-to-left
+     */
+    public static function rtlLanguageBases(): array
+    {
+        return ['ar', 'ur', 'fa', 'he', 'pnb'];
+    }
+
+    public static function isRtl(string $code): bool
+    {
+        $base = strtolower(explode('-', str_replace('_', '-', trim($code)))[0] ?? '');
+        return $base !== '' && in_array($base, self::rtlLanguageBases(), true);
     }
 
     public static function normalizeLanguage(string $code): ?string
@@ -30,9 +45,16 @@ class TranslationService
         if ($code === '') {
             return null;
         }
-        foreach (array_keys(self::languageLabels()) as $known) {
-            if (strcasecmp($known, $code) === 0) {
-                return $known;
+        $known = array_keys(self::languageLabels());
+        foreach ($known as $id) {
+            if (strcasecmp($id, $code) === 0) {
+                return $id;
+            }
+        }
+        $base = strtolower(explode('-', $code)[0] ?? '');
+        foreach ($known as $id) {
+            if (strtolower($id) === $base) {
+                return $id;
             }
         }
         return null;
@@ -46,20 +68,23 @@ class TranslationService
             return $source;
         }
 
-        $requested = trim((string)Yii::$app->request->get('lang', ''));
-        if ($requested !== '' && in_array($requested, $enabled, true)) {
+        $requested = self::normalizeLanguage((string)Yii::$app->request->get('lang', ''));
+        if ($requested !== null && in_array($requested, $enabled, true)) {
             Yii::$app->session->set($this->sessionKey($form), $requested);
             return $requested;
         }
 
-        $sessionLang = (string)Yii::$app->session->get($this->sessionKey($form), '');
-        if ($sessionLang !== '' && in_array($sessionLang, $enabled, true)) {
+        $sessionLang = self::normalizeLanguage((string)Yii::$app->session->get($this->sessionKey($form), ''));
+        if ($sessionLang !== null && in_array($sessionLang, $enabled, true)) {
             return $sessionLang;
         }
 
         $user = Yii::$app->user->getIdentity();
-        if ($user && !empty($user->language) && in_array($user->language, $enabled, true)) {
-            return $user->language;
+        if ($user && !empty($user->language)) {
+            $userLang = self::normalizeLanguage((string)$user->language);
+            if ($userLang !== null && in_array($userLang, $enabled, true)) {
+                return $userLang;
+            }
         }
 
         $preferred = Yii::$app->request->getPreferredLanguage($enabled);

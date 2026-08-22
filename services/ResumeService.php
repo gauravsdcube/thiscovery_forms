@@ -65,14 +65,15 @@ class ResumeService
         ?FormAnswer $existing = null,
         bool $anonymous = false,
         ?string $email = null,
-        ?int $currentPage = null
+        ?int $currentPage = null,
+        bool $isTest = false
     ): ?FormAnswer {
         if ($existing && !$existing->isInProgress()) {
             $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This response has already been submitted.'));
             return null;
         }
 
-        $answer = $submit->save($existing, $anonymous || $form->allowsAnonymous(), true);
+        $answer = $submit->save($existing, $anonymous || $form->allowsAnonymous() || $isTest, true, $isTest);
         if (!$answer) {
             return null;
         }
@@ -92,6 +93,105 @@ class ResumeService
         }
 
         return $answer;
+    }
+
+    /**
+     * Remove autosave snapshot rows: keep one in-progress draft per person per fill session,
+     * and drop leftovers from sessions that already completed.
+     *
+     * @return int Number of in-progress answers deleted
+     */
+    public function collapseSnapshotDrafts(): int
+    {
+        $drafts = FormAnswer::find()
+            ->where([
+                'status' => FormAnswer::STATUS_IN_PROGRESS,
+                'is_test' => 0,
+            ])
+            ->andWhere(['IS NOT', 'created_by', null])
+            ->orderBy(['form_id' => SORT_ASC, 'created_by' => SORT_ASC, 'id' => SORT_ASC])
+            ->all();
+
+        $groups = [];
+        foreach ($drafts as $draft) {
+            $key = (int)$draft->form_id . ':' . (int)$draft->created_by;
+            $groups[$key][] = $draft;
+        }
+
+        $deleted = 0;
+        foreach ($groups as $rows) {
+            $chains = $this->splitDraftChains($rows);
+            foreach ($chains as $chain) {
+                $deleted += $this->collapseChain($chain);
+            }
+        }
+
+        return $deleted;
+    }
+
+    /**
+     * @param FormAnswer[] $rows
+     * @return FormAnswer[][]
+     */
+    protected function splitDraftChains(array $rows): array
+    {
+        $chains = [];
+        $current = [];
+        $prevTs = null;
+        foreach ($rows as $row) {
+            $ts = strtotime((string)$row->created_at) ?: 0;
+            if ($current && $prevTs !== null && ($ts - $prevTs) > 120) {
+                $chains[] = $current;
+                $current = [];
+            }
+            $current[] = $row;
+            $prevTs = $ts;
+        }
+        if ($current) {
+            $chains[] = $current;
+        }
+        return $chains;
+    }
+
+    /**
+     * @param FormAnswer[] $chain
+     */
+    protected function collapseChain(array $chain): int
+    {
+        if (!$chain) {
+            return 0;
+        }
+        $first = $chain[0];
+        $last = $chain[count($chain) - 1];
+        $start = date('Y-m-d H:i:s', (strtotime((string)$first->created_at) ?: time()) - 5);
+        $end = date('Y-m-d H:i:s', (strtotime((string)$last->updated_at ?: $last->created_at) ?: time()) + 15);
+
+        $completedNearby = FormAnswer::find()
+            ->where([
+                'form_id' => $first->form_id,
+                'status' => FormAnswer::STATUS_COMPLETE,
+                'is_test' => 0,
+            ])
+            ->andWhere(['>=', 'created_at', $start])
+            ->andWhere(['<=', 'created_at', $end])
+            ->andWhere([
+                'or',
+                ['created_by' => $first->created_by],
+                ['created_by' => null],
+            ])
+            ->exists();
+
+        $keepId = $completedNearby ? 0 : (int)$last->id;
+        $deleted = 0;
+        foreach ($chain as $row) {
+            if ((int)$row->id === $keepId) {
+                continue;
+            }
+            if ($row->delete()) {
+                $deleted++;
+            }
+        }
+        return $deleted;
     }
 
     public function sendResumeEmail(CustomForm $form, FormAnswer $answer, string $email): bool

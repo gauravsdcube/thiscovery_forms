@@ -27,6 +27,11 @@ use yii\helpers\Url;
 class Module extends ContentContainerModule
 {
     public const SETTING_ENABLED_KINDS = 'enabled_kinds';
+    public const SETTING_WAVES_FOR_SURVEYS = 'waves_for_surveys';
+    public const SETTING_WAVE_SCOPE = 'wave_scope';
+
+    public const WAVE_SCOPE_SURVEY = 'survey';
+    public const WAVE_SCOPE_PANEL = 'panel';
 
     public $resourcesPath = 'resources';
     public $icon = 'fa-wpforms';
@@ -124,6 +129,43 @@ class Module extends ContentContainerModule
     public function isKindEnabled(string $kind): bool
     {
         return in_array($kind, $this->getEnabledKinds(), true);
+    }
+
+    public function wavesEnabledForSurveys(): bool
+    {
+        $raw = $this->settings->get(self::SETTING_WAVES_FOR_SURVEYS);
+        return $raw === '1' || $raw === 1 || $raw === true;
+    }
+
+    public function getWaveScope(): string
+    {
+        $raw = (string)$this->settings->get(self::SETTING_WAVE_SCOPE, self::WAVE_SCOPE_SURVEY);
+        return $raw === self::WAVE_SCOPE_PANEL ? self::WAVE_SCOPE_PANEL : self::WAVE_SCOPE_SURVEY;
+    }
+
+    public function wavesLiveOnPanel(): bool
+    {
+        return $this->getWaveScope() === self::WAVE_SCOPE_PANEL;
+    }
+
+    public static function wavesEnabledForSurveysStatic(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        return $module instanceof self && $module->wavesEnabledForSurveys();
+    }
+
+    public static function waveScope(): string
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self) {
+            return self::WAVE_SCOPE_SURVEY;
+        }
+        return $module->getWaveScope();
+    }
+
+    public static function wavesLiveOnPanelStatic(): bool
+    {
+        return self::waveScope() === self::WAVE_SCOPE_PANEL;
     }
 
     /**
