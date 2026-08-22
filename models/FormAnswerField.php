@@ -5,6 +5,7 @@ namespace humhub\modules\thiscoveryForms\models;
 use humhub\components\ActiveRecord;
 use humhub\modules\file\models\File;
 use yii\db\ActiveQuery;
+use yii\helpers\Html;
 
 /**
  * @property int $id
@@ -51,11 +52,15 @@ class FormAnswerField extends ActiveRecord
         $field = $this->field;
         $decoded = json_decode($this->value, true);
 
+        if ($field && $field->type === FormField::TYPE_RESPONDENT_META) {
+            return (new \humhub\modules\thiscoveryForms\services\RespondentMetaService())->formatDisplay($this->value);
+        }
+
         if ($field && $field->type === FormField::TYPE_RANKING) {
             if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
                 $parts = [];
                 foreach ($decoded as $index => $item) {
-                    $parts[] = ((int)$index + 1) . '. ' . (string)$item;
+                    $parts[] = ((int)$index + 1) . '. ' . $field->formatChoiceDisplay((string)$item);
                 }
                 return implode(', ', $parts);
             }
@@ -78,16 +83,52 @@ class FormAnswerField extends ActiveRecord
             return (string)$this->value;
         }
 
-        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
-            return implode(', ', $decoded);
-        }
-
         if ($field && $field->type === FormField::TYPE_FILE) {
-            $file = File::findOne(['guid' => $this->value]);
+            $file = $this->getUploadedFile();
             return $file ? $file->file_name : $this->value;
         }
 
+        if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+            if ($field && FormField::isChoiceType($field->type)) {
+                return $field->formatChoiceDisplay($decoded);
+            }
+            return implode(', ', $decoded);
+        }
+
+        if ($field && FormField::isChoiceType($field->type)) {
+            return $field->formatChoiceDisplay($this->value);
+        }
+
         return (string)$this->value;
+    }
+
+    public function getUploadedFile(): ?File
+    {
+        if (!$this->value) {
+            return null;
+        }
+        if ($this->field && $this->field->type !== FormField::TYPE_FILE) {
+            return null;
+        }
+        return File::findOne(['guid' => $this->value]);
+    }
+
+    public function getAnswerHtml(): string
+    {
+        $file = $this->getUploadedFile();
+        if ($file) {
+            return Html::a(Html::encode($file->file_name), $file->getUrl(['download' => 1]), [
+                'target' => '_blank',
+                'rel' => 'noopener noreferrer',
+            ]);
+        }
+
+        $text = $this->getDisplayValue();
+        if ($text === '') {
+            return '';
+        }
+
+        return nl2br(Html::encode($text));
     }
 
     public function beforeDelete()

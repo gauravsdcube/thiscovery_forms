@@ -34,6 +34,7 @@ if ($formModel->isPoll() && $formModel->isOpen()): ?>
         <?php endif; ?>
         <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', $formModel->isPoll() ? 'Open poll' : 'Open form'))
             ->link(Url::toView($formModel))
+            ->pjax(!$formModel->hidesHumhubHeader())
             ->sm() ?>
     </div>
 </div>

@@ -4,6 +4,7 @@ use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
+use humhub\modules\thiscoveryForms\services\TranslationService;
 use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
 
@@ -15,9 +16,15 @@ ThiscoveryFormsAsset::register($this);
 
 $css = $formModel->getSafeCustomCss();
 $answer = $answer ?? null;
+$isPreview = !empty($isPreview);
+$fillLang = (new TranslationService())->resolve($formModel);
+(new TranslationService())->overlay($formModel, $fillLang);
+$fillRtl = TranslationService::isRtl($fillLang);
 ?>
 
-<div class="cf-fill-page cf-thankyou" id="cf-fill">
+<div class="cf-fill-page cf-thankyou" id="cf-fill"
+     dir="<?= $fillRtl ? 'rtl' : 'ltr' ?>"
+     lang="<?= Html::encode($fillLang) ?>">
     <?php if ($css !== ''): ?>
         <style type="text/css"><?= $css ?></style>
     <?php endif; ?>
@@ -26,12 +33,17 @@ $answer = $answer ?? null;
         <div class="cf-fill-toolbar">
             <div class="cf-fill-toolbar__actions">
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Edit'))
-                    ->link(Url::toEdit($formModel))->sm()->icon('pencil') ?>
+                    ->link(Url::toEdit($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('pencil') ?>
             </div>
         </div>
     <?php endif; ?>
 
     <div class="cf-fill-body">
+        <?php if ($isPreview): ?>
+            <div class="alert alert-warning">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'This was a test submission. It is not counted in participant results.') ?>
+            </div>
+        <?php endif; ?>
         <div class="cf-thankyou__body">
             <?php if ($formModel->hasThankYouContent()): ?>
                 <div class="cf-thankyou__content richtext-output">
@@ -57,7 +69,8 @@ $answer = $answer ?? null;
             <?php elseif ($formModel->allow_multiple || $formModel->canManage()): ?>
                 <div class="cf-thankyou__actions">
                     <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Back to form'))
-                        ->link(Url::toView($formModel)) ?>
+                        ->link(Url::toView($formModel))
+                        ->pjax(!$formModel->hidesHumhubHeader()) ?>
                 </div>
             <?php endif; ?>
         </div>

@@ -31,5 +31,7 @@ return [
         'thiscovery-forms/global/edit/<id:\d+>' => 'thiscovery-forms/global/edit',
         'thiscovery-forms/global/project/<id:\d+>/<answerId:\d+>' => 'thiscovery-forms/global/project',
         'thiscovery-forms/global/catalogue/<id:\d+>' => 'thiscovery-forms/global/catalogue',
+        'thiscovery-forms/admin/help' => 'thiscovery-forms/admin/help',
+        'thiscovery-forms/admin/help/<page:[\\w\\-]+>' => 'thiscovery-forms/admin/help',
     ],
 ];

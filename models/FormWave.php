@@ -8,7 +8,8 @@ use yii\db\ActiveQuery;
 
 /**
  * @property int $id
- * @property int $form_id
+ * @property int|null $form_id
+ * @property int|null $panel_id
  * @property int $wave_number
  * @property string|null $title
  * @property string $status
@@ -18,7 +19,8 @@ use yii\db\ActiveQuery;
  * @property string|null $created_at
  * @property string|null $updated_at
  *
- * @property-read CustomForm $form
+ * @property-read CustomForm|null $form
+ * @property-read FormPanel|null $panel
  */
 class FormWave extends ActiveRecord
 {
@@ -34,8 +36,8 @@ class FormWave extends ActiveRecord
     public function rules()
     {
         return [
-            [['form_id', 'wave_number'], 'required'],
-            [['form_id', 'wave_number'], 'integer'],
+            [['form_id', 'panel_id', 'wave_number'], 'integer'],
+            [['form_id', 'panel_id'], 'validateOwner'],
             [['title'], 'string', 'max' => 255],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
             [['opens_at', 'closes_at', 'invited_at', 'created_at', 'updated_at'], 'safe'],
@@ -66,9 +68,21 @@ class FormWave extends ActiveRecord
         return true;
     }
 
+    public function validateOwner($attribute): void
+    {
+        if (!(int)$this->form_id && !(int)$this->panel_id) {
+            $this->addError($attribute, Yii::t('ThiscoveryFormsModule.base', 'A wave must belong to a form or a panel.'));
+        }
+    }
+
     public function getForm(): ActiveQuery
     {
         return $this->hasOne(CustomForm::class, ['id' => 'form_id']);
+    }
+
+    public function getPanel(): ActiveQuery
+    {
+        return $this->hasOne(FormPanel::class, ['id' => 'panel_id']);
     }
 
     public static function getStatusLabels(): array

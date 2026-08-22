@@ -4,19 +4,38 @@ use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use humhub\modules\thiscoveryForms\services\AnswerListService;
 use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
+use yii\web\View;
 use yii\widgets\LinkPager;
 
 /** @var CustomForm $formModel */
 /** @var yii\data\ActiveDataProvider $dataProvider */
+/** @var array $filters */
 /** @var $contentContainer */
+/** @var int $selectedAnswerId */
 
 ThiscoveryFormsAsset::register($this);
+$filters = array_merge([
+    'q' => '',
+    'status' => '',
+    'pageSize' => AnswerListService::DEFAULT_PAGE_SIZE,
+], $filters ?? []);
+$selectedAnswerId = (int)($selectedAnswerId ?? 0);
+$hasFilters = $filters['q'] !== '' || $filters['status'] !== '';
+$sort = $dataProvider->sort;
 $total = (int)$dataProvider->getTotalCount();
+$clearUrl = Url::toAnswers($formModel);
+$this->registerJsConfig('thiscoveryForms', [
+    'loadingAnswer' => Yii::t('ThiscoveryFormsModule.base', 'Loading…'),
+]);
+$this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");', View::POS_READY);
 ?>
 
-<div class="cf-answers-page">
+<div class="cf-answers-page" id="cf-answers"
+     data-cf-open-answer="<?= $selectedAnswerId ?: '' ?>"
+     data-cf-answer-detail-template="<?= Html::encode(preg_replace('/answerId=\d+/', 'answerId=__ID__', Url::toAnswerDetail($formModel, 0))) ?>">
     <div class="cf-list-header">
         <div>
             <div class="cf-dash-kicker"><?= Yii::t('ThiscoveryFormsModule.base', 'Submissions') ?></div>
@@ -28,8 +47,14 @@ $total = (int)$dataProvider->getTotalCount();
             </p>
         </div>
         <div class="cf-list-header__actions">
-            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to form'))
+            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
+                ->link(Url::toManageIndex($contentContainer))
+                ->sm()
+                ->icon('arrow-left')
+                ->loader(false) ?>
+            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Open form'))
                 ->link(Url::toView($formModel))
+                ->pjax(!$formModel->hidesHumhubHeader())
                 ->sm()
                 ->loader(false) ?>
             <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Dashboard'))
@@ -52,124 +77,127 @@ $total = (int)$dataProvider->getTotalCount();
         </div>
     </div>
 
+    <form method="get" class="cf-list-filters" action="<?= Html::encode($clearUrl) ?>">
+        <?php if (!empty(Yii::$app->request->get('sort'))): ?>
+            <?= Html::hiddenInput('sort', Yii::$app->request->get('sort')) ?>
+        <?php endif; ?>
+        <div class="cf-list-filters__search">
+            <i class="fa fa-search" aria-hidden="true"></i>
+            <input type="search" name="q" value="<?= Html::encode($filters['q']) ?>"
+                   placeholder="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Search answers')) ?>"
+                   aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Search answers')) ?>">
+        </div>
+        <select name="status" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Status')) ?>" onchange="this.form.submit()">
+            <option value=""><?= Yii::t('ThiscoveryFormsModule.base', 'All statuses') ?></option>
+            <option value="complete"<?= $filters['status'] === 'complete' ? ' selected' : '' ?>>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Complete') ?>
+            </option>
+            <option value="progress"<?= $filters['status'] === 'progress' ? ' selected' : '' ?>>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'In progress') ?>
+            </option>
+        </select>
+        <select name="per-page" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Per page')) ?>" onchange="this.form.submit()">
+            <?php foreach (AnswerListService::PAGE_SIZES as $size): ?>
+                <option value="<?= (int)$size ?>"<?= (int)$filters['pageSize'] === (int)$size ? ' selected' : '' ?>>
+                    <?= Yii::t('ThiscoveryFormsModule.base', '{n} per page', ['n' => $size]) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <button type="submit" class="btn btn-default btn-sm"><?= Yii::t('ThiscoveryFormsModule.base', 'Search') ?></button>
+        <?php if ($hasFilters): ?>
+            <a class="btn btn-link btn-sm" href="<?= Html::encode($clearUrl) ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Clear') ?></a>
+        <?php endif; ?>
+    </form>
+
     <?php if (!$dataProvider->getCount()): ?>
         <div class="cf-list-empty">
             <i class="fa fa-inbox"></i>
-            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'No submissions yet.') ?></h3>
-            <p><?= Yii::t('ThiscoveryFormsModule.base', 'Responses will appear here once members complete this form.') ?></p>
+            <h3><?= $hasFilters
+                ? Yii::t('ThiscoveryFormsModule.base', 'No matching answers.')
+                : Yii::t('ThiscoveryFormsModule.base', 'No submissions yet.') ?></h3>
+            <p><?= $hasFilters
+                ? Yii::t('ThiscoveryFormsModule.base', 'Try a different search or clear the filters.')
+                : Yii::t('ThiscoveryFormsModule.base', 'Responses will appear here once members complete this form.') ?></p>
         </div>
     <?php else: ?>
-        <div class="cf-answer-list">
-            <?php foreach ($dataProvider->getModels() as $index => $answer): ?>
-                <?php
-                /** @var FormAnswer $answer */
-                $displayName = $answer->getSubmitterDisplayName();
-                $created = $answer->created_at ? Yii::$app->formatter->asDatetime($answer->created_at, 'medium') : '';
-                $updated = ($answer->updated_at && $answer->updated_at !== $answer->created_at)
-                    ? Yii::$app->formatter->asDatetime($answer->updated_at, 'medium')
-                    : null;
-
-                $valueMap = [];
-                $justMap = [];
-                foreach ($answer->answerFields as $af) {
-                    $valueMap[(int)$af->field_id] = $af->getDisplayValue();
-                    if (trim((string)$af->justification) !== '') {
-                        $justMap[(int)$af->field_id] = (string)$af->justification;
-                    }
-                }
-                $answeredCount = 0;
-                $answerableTotal = 0;
-                foreach ($formModel->fields as $field) {
-                    if (!$field->collectsAnswer()) {
-                        continue;
-                    }
-                    $answerableTotal++;
-                    $v = $valueMap[(int)$field->id] ?? '';
-                    if ($v !== '') {
-                        $answeredCount++;
-                    }
-                }
-                $page = $dataProvider->pagination;
-                $seq = $page ? ($page->page * $page->pageSize) + $index + 1 : $index + 1;
-                ?>
-                <article class="cf-answer-card">
-                    <header class="cf-answer-card__header">
-                        <div class="cf-answer-card__who">
-                            <span class="cf-answer-card__avatar" aria-hidden="true">
-                                <?= Html::encode(mb_strtoupper(mb_substr($displayName, 0, 1))) ?>
-                            </span>
-                            <div>
-                                <div class="cf-answer-card__name"><?= Html::encode($displayName) ?></div>
-                                <div class="cf-answer-card__when">
-                                    <span><?= Html::encode($created) ?></span>
-                                    <?php if ($updated): ?>
-                                        <span class="cf-answer-card__dot">·</span>
-                                        <span><?= Yii::t('ThiscoveryFormsModule.base', 'Updated {date}', ['date' => $updated]) ?></span>
-                                    <?php endif; ?>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="cf-answer-card__badges">
-                            <span class="cf-answer-card__chip">#<?= (int)$seq ?></span>
-                            <?php if ($answer->wave): ?>
-                                <span class="cf-answer-card__chip"><?= Html::encode($answer->wave->getDisplayTitle()) ?></span>
-                            <?php endif; ?>
-                            <?php if ($answer->round): ?>
-                                <span class="cf-answer-card__chip"><?= Html::encode($answer->round->getDisplayTitle()) ?></span>
-                            <?php endif; ?>
-                            <span class="cf-answer-card__chip">
-                                <?= Yii::t('ThiscoveryFormsModule.base', '{answered}/{total} fields', [
-                                    'answered' => $answeredCount,
-                                    'total' => $answerableTotal,
-                                ]) ?>
+        <div class="cf-form-table-wrap">
+            <table class="cf-form-table cf-answer-table">
+                <thead>
+                <tr>
+                    <th><?= $sort->link('submitter', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Respondent')]) ?></th>
+                    <th><?= $sort->link('status', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Status')]) ?></th>
+                    <th><?= $sort->link('created_at', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Date created')]) ?></th>
+                    <th><?= $sort->link('updated_at', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Date modified')]) ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Details') ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($dataProvider->getModels() as $index => $answer): ?>
+                    <?php
+                    /** @var FormAnswer $answer */
+                    $displayName = $answer->getSubmitterDisplayName();
+                    $created = $answer->created_at ? Yii::$app->formatter->asDatetime($answer->created_at, 'short') : '';
+                    $updated = $answer->updated_at ? Yii::$app->formatter->asDatetime($answer->updated_at, 'short') : '';
+                    $page = $dataProvider->pagination;
+                    $seq = $page ? ($page->page * $page->pageSize) + $index + 1 : $index + 1;
+                    $detailUrl = Url::toAnswerDetail($formModel, $answer->id);
+                    $isActive = $selectedAnswerId === (int)$answer->id;
+                    ?>
+                    <tr class="cf-answer-row<?= $isActive ? ' is-active' : '' ?>"
+                        data-cf-answer-id="<?= (int)$answer->id ?>"
+                        data-cf-answer-url="<?= Html::encode($detailUrl) ?>">
+                        <td>
+                            <button type="button" class="cf-answer-row__open" data-cf-answer-open
+                                    data-cf-answer-id="<?= (int)$answer->id ?>"
+                                    data-cf-answer-url="<?= Html::encode($detailUrl) ?>">
+                                <span class="cf-answer-card__avatar" aria-hidden="true">
+                                    <?= Html::encode(mb_strtoupper(mb_substr($displayName, 0, 1))) ?>
+                                </span>
+                                <span>
+                                    <span class="cf-answer-row__name"><?= Html::encode($displayName) ?></span>
+                                    <span class="cf-answer-row__meta">#<?= (int)$seq ?></span>
+                                </span>
+                            </button>
+                        </td>
+                        <td>
+                            <span class="cf-form-row__chip">
+                                <?= $answer->isComplete()
+                                    ? Yii::t('ThiscoveryFormsModule.base', 'Complete')
+                                    : Yii::t('ThiscoveryFormsModule.base', 'In progress') ?>
                             </span>
                             <?php if ($formModel->isProject()): ?>
-                                <span class="cf-answer-card__chip"><?= Html::encode($answer->getWorkflowLabel()) ?></span>
-                                <a class="cf-answer-card__chip" href="<?= Html::encode(Url::toProject($formModel, $answer)) ?>">
-                                    <?= Yii::t('ThiscoveryFormsModule.base', 'Open record') ?>
-                                </a>
+                                <span class="cf-form-row__chip"><?= Html::encode($answer->getWorkflowLabel()) ?></span>
                             <?php endif; ?>
-                        </div>
-                    </header>
-
-                    <div class="cf-answer-card__body">
-                        <?php if (!count($formModel->fields)): ?>
-                            <p class="cf-answer-empty"><?= Yii::t('ThiscoveryFormsModule.base', 'This form has no fields.') ?></p>
-                        <?php else: ?>
-                            <div class="cf-answer-fields">
-                                <?php foreach ($formModel->fields as $field): ?>
-                                    <?php
-                                    if (!$field->collectsAnswer()) {
-                                        continue;
-                                    }
-                                    $afValue = $valueMap[(int)$field->id] ?? '';
-                                    $isEmpty = $afValue === '';
-                                    ?>
-                                    <div class="cf-answer-field<?= $isEmpty ? ' is-empty' : '' ?>">
-                                        <div class="cf-answer-field__label"><?= Html::encode($field->label) ?></div>
-                                        <div class="cf-answer-field__value">
-                                            <?php if ($isEmpty): ?>
-                                                <span class="cf-answer-field__blank"><?= Yii::t('ThiscoveryFormsModule.base', 'No answer') ?></span>
-                                            <?php else: ?>
-                                                <?= nl2br(Html::encode($afValue)) ?>
-                                                <?php if (!empty($justMap[(int)$field->id])): ?>
-                                                    <div class="cf-answer-just">
-                                                        <?= nl2br(Html::encode($justMap[(int)$field->id])) ?>
-                                                    </div>
-                                                <?php endif; ?>
-                                            <?php endif; ?>
-                                        </div>
-                                    </div>
-                                <?php endforeach; ?>
-                            </div>
-                        <?php endif; ?>
-                    </div>
-                </article>
-            <?php endforeach; ?>
+                        </td>
+                        <td class="cf-form-table__date-col"><?= Html::encode($created) ?></td>
+                        <td class="cf-form-table__date-col"><?= Html::encode($updated) ?></td>
+                        <td>
+                            <?php if ($answer->wave): ?>
+                                <span class="cf-form-row__chip"><?= Html::encode($answer->wave->getDisplayTitle()) ?></span>
+                            <?php endif; ?>
+                            <?php if ($answer->round): ?>
+                                <span class="cf-form-row__chip"><?= Html::encode($answer->round->getDisplayTitle()) ?></span>
+                            <?php endif; ?>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
 
         <div class="cf-list-pager">
             <?= LinkPager::widget(['pagination' => $dataProvider->pagination]) ?>
         </div>
     <?php endif; ?>
+
+    <div class="cf-answer-overlay" data-cf-answer-overlay></div>
+    <aside class="cf-answer-drawer" data-cf-answer-drawer aria-hidden="true">
+        <header class="cf-answer-drawer__head">
+            <h2><?= Yii::t('ThiscoveryFormsModule.base', 'Answer') ?></h2>
+            <button type="button" class="cf-answer-drawer__close" data-cf-answer-close aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Close')) ?>">
+                <i class="fa fa-times"></i>
+            </button>
+        </header>
+        <div class="cf-answer-drawer__body" data-cf-answer-drawer-body></div>
+    </aside>
 </div>

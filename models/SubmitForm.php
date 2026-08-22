@@ -2,6 +2,7 @@
 
 namespace humhub\modules\thiscoveryForms\models;
 
+use humhub\modules\thiscoveryForms\services\FormPager;
 use Yii;
 use yii\base\Model;
 
@@ -23,6 +24,9 @@ class SubmitForm extends Model
 
     /** @var int|null */
     public $waveId;
+
+    /** @var array<int, true>|null */
+    private $onPathFieldIds;
 
     /** @var int|null */
     public $roundId;
@@ -68,7 +72,7 @@ class SubmitForm extends Model
             }
             if ($field->type === FormField::TYPE_CHECKBOX) {
                 $val = $fieldPost[$key] ?? [];
-                $this->values[$field->id] = is_array($val) ? array_values($val) : [];
+                $this->values[$field->id] = $this->sanitizeChoiceValue($field, is_array($val) ? array_values($val) : []);
                 continue;
             }
             if ($field->type === FormField::TYPE_RANKING) {
@@ -105,8 +109,17 @@ class SubmitForm extends Model
                 }
                 continue;
             }
-            $this->values[$field->id] = isset($fieldPost[$key]) ? $fieldPost[$key] : '';
+            $posted = isset($fieldPost[$key]) ? $fieldPost[$key] : '';
+            if (in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN], true)) {
+                $posted = $this->sanitizeChoiceValue($field, $posted);
+            }
+            if ($field->type === FormField::TYPE_RATING && ($posted === '' || $posted === null || $posted === [])) {
+                $posted = '';
+            }
+            $this->values[$field->id] = $posted;
         }
+
+        $this->applyHiddenDefaultsAndMeta();
 
         $this->applyOtherSpecify($post);
 
@@ -123,6 +136,33 @@ class SubmitForm extends Model
         }
 
         return true;
+    }
+
+    protected function applyHiddenDefaultsAndMeta(): void
+    {
+        $meta = new \humhub\modules\thiscoveryForms\services\RespondentMetaService();
+        $member = $this->panelMemberId ? FormPanelMember::findOne((int)$this->panelMemberId) : null;
+        foreach ($this->form->fields as $field) {
+            if ($field->type === FormField::TYPE_RESPONDENT_META) {
+                $this->values[$field->id] = $meta->valueFor($field->getRespondentMetaKey(), $this->values[$field->id] ?? null);
+                continue;
+            }
+            if ($field->type === FormField::TYPE_PANEL_ATTR) {
+                $key = $field->getPanelAttrKey();
+                $posted = $this->values[$field->id] ?? null;
+                if ($this->isEmptyValue($posted) && $member && $key !== '') {
+                    $this->values[$field->id] = \humhub\modules\thiscoveryForms\services\PanelFieldService::memberValue($member, $key);
+                }
+                continue;
+            }
+            if (!$field->isHiddenFromRespondent()) {
+                continue;
+            }
+            $value = $this->values[$field->id] ?? null;
+            if ($this->isEmptyValue($value) && $field->getDefaultValue() !== '') {
+                $this->values[$field->id] = $field->getDefaultValue();
+            }
+        }
     }
 
     /**
@@ -194,7 +234,10 @@ class SubmitForm extends Model
             if (!$field->collectsAnswer()) {
                 continue;
             }
-            if (!$field->isVisible($this->values)) {
+            if (!$this->isOnAnswerPath($field)) {
+                continue;
+            }
+            if (!$field->isVisible($this->values, $this->form->fields)) {
                 continue;
             }
 
@@ -205,9 +248,15 @@ class SubmitForm extends Model
             if ($field->type === FormField::TYPE_HTML) {
                 $required = (bool)$field->getHtmlConfig()['required'];
             }
+            if ($field->isHiddenFromRespondent() || $field->type === FormField::TYPE_RESPONDENT_META) {
+                $required = false;
+            }
 
             if ($required && $empty) {
                 if ($this->scenario === self::SCENARIO_DRAFT) {
+                    continue;
+                }
+                if ($field->type === FormField::TYPE_CHECKBOX && $this->addCheckboxMinError($field)) {
                     continue;
                 }
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required.', [
@@ -217,10 +266,21 @@ class SubmitForm extends Model
             }
 
             if ($empty) {
+                if ($this->scenario !== self::SCENARIO_DRAFT) {
+                    $this->addCheckboxMinError($field);
+                }
                 continue;
             }
 
             switch ($field->type) {
+                case FormField::TYPE_RESPONDENT_META:
+                case FormField::TYPE_PANEL_ATTR:
+                    if ($field->getPanelAttrKey() === 'email' && !filter_var((string)$value, FILTER_VALIDATE_EMAIL)) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid email.', [
+                            'label' => $field->label,
+                        ]));
+                    }
+                    break;
                 case FormField::TYPE_EMAIL:
                     if (!filter_var((string)$value, FILTER_VALIDATE_EMAIL)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid email.', [
@@ -267,16 +327,17 @@ class SubmitForm extends Model
                             'label' => $field->label,
                         ]));
                     }
+                    $exclusiveList = $field->getExclusiveOptions();
+                    $selected = array_map('strval', is_array($value) ? $value : []);
+                    $hit = array_values(array_intersect($exclusiveList, $selected));
+                    $this->addCheckboxMinError($field, $selected, (bool)$hit);
                     $maxSelect = $field->getMaxSelect();
-                    if ($maxSelect !== null && count($value) > $maxSelect) {
+                    if ($maxSelect !== null && count($selected) > $maxSelect) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" allows at most {max} selections.', [
                             'label' => $field->label,
                             'max' => $maxSelect,
                         ]));
                     }
-                    $exclusiveList = $field->getExclusiveOptions();
-                    $selected = array_map('strval', $value);
-                    $hit = array_values(array_intersect($exclusiveList, $selected));
                     if ($hit && count($selected) > 1) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" cannot combine "{option}" with other choices.', [
                             'label' => $field->label,
@@ -367,8 +428,9 @@ class SubmitForm extends Model
      * @param FormAnswer|null $existing
      * @param bool $anonymous When true, do not record submitter identity.
      * @param bool $asDraft When true, skip required checks and keep in-progress status.
+     * @param bool $isTest When true, store as a preview/test run (excluded from participant stats).
      */
-    public function save(?FormAnswer $existing = null, bool $anonymous = false, bool $asDraft = false): ?FormAnswer
+    public function save(?FormAnswer $existing = null, bool $anonymous = false, bool $asDraft = false, bool $isTest = false): ?FormAnswer
     {
         if ($asDraft) {
             $this->scenario = self::SCENARIO_DRAFT;
@@ -409,6 +471,13 @@ class SubmitForm extends Model
             $answer->current_page = null;
         }
 
+        if ($isTest || ($existing && $existing->isTest())) {
+            $answer->is_test = 1;
+            $answer->forceAnonymous = true;
+            $answer->created_by = null;
+            $answer->updated_by = null;
+        }
+
         if (!$answer->save()) {
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
             return null;
@@ -423,7 +492,7 @@ class SubmitForm extends Model
             if (!$field->collectsAnswer()) {
                 continue;
             }
-            $visible = $field->isVisible($this->values);
+            $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
             $value = $visible ? ($this->values[$field->id] ?? null) : null;
 
             if (!$visible || $this->isEmptyValue($value)) {
@@ -461,7 +530,50 @@ class SubmitForm extends Model
             }
         }
 
+        unset($answer->answerFields);
+
         return $answer;
+    }
+
+    /**
+     * Drop posted values that are not real options (hidden uncheck "0", browser prefill).
+     */
+    private function sanitizeChoiceValue(FormField $field, $value)
+    {
+        $allowed = $field->getOptions();
+        $isAllowed = static function (string $item) use ($allowed): bool {
+            if ($item === '') {
+                return false;
+            }
+            foreach ($allowed as $opt) {
+                $opt = (string)$opt;
+                if ($item === $opt) {
+                    return true;
+                }
+                if (FormField::isOtherOption($opt) && str_starts_with($item, FormField::otherSpecifyPrefix($opt))) {
+                    return true;
+                }
+            }
+            return FormField::isOtherOption($item);
+        };
+
+        if ($field->type === FormField::TYPE_CHECKBOX) {
+            $items = is_array($value) ? $value : [];
+            $out = [];
+            foreach ($items as $item) {
+                $item = is_scalar($item) ? (string)$item : '';
+                if ($isAllowed($item)) {
+                    $out[] = $item;
+                }
+            }
+            return array_values($out);
+        }
+
+        if (is_array($value)) {
+            return '';
+        }
+        $item = is_scalar($value) ? (string)$value : '';
+        return $isAllowed($item) ? $item : '';
     }
 
     private function isEmptyValue($value): bool
@@ -500,6 +612,33 @@ class SubmitForm extends Model
         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid value.', [
             'label' => $field->label,
         ]));
+    }
+
+    /**
+     * @param string[]|null $selected
+     */
+    private function addCheckboxMinError(FormField $field, ?array $selected = null, bool $exclusiveHit = false): bool
+    {
+        if ($field->type !== FormField::TYPE_CHECKBOX || $this->scenario === self::SCENARIO_DRAFT) {
+            return false;
+        }
+        $minSelect = $field->resolveMinSelect();
+        if ($minSelect === null || $exclusiveHit) {
+            return false;
+        }
+        $count = $selected === null ? 0 : count($selected);
+        if ($count >= $minSelect) {
+            return false;
+        }
+        $this->addError('values', $field->isMinSelectAll()
+            ? Yii::t('ThiscoveryFormsModule.base', '"{label}" requires every option to be selected.', [
+                'label' => $field->label,
+            ])
+            : Yii::t('ThiscoveryFormsModule.base', '"{label}" requires at least {min} selections.', [
+                'label' => $field->label,
+                'min' => $minSelect,
+            ]));
+        return true;
     }
 
     private function validateGrid(FormField $field, $value): void
@@ -643,5 +782,16 @@ class SubmitForm extends Model
             'regions' => $picked,
             'score' => $score,
         ];
+    }
+
+    private function isOnAnswerPath(FormField $field): bool
+    {
+        if ($field->isHiddenFromRespondent() || $field->type === FormField::TYPE_RESPONDENT_META) {
+            return true;
+        }
+        if ($this->onPathFieldIds === null) {
+            $this->onPathFieldIds = (new FormPager())->visitedFieldIds($this->form->fields, $this->values);
+        }
+        return isset($this->onPathFieldIds[(int)$field->id]);
     }
 }

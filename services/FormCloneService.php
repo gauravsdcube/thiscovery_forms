@@ -23,13 +23,30 @@ class FormCloneService
         $target->custom_css = $source->custom_css;
         $target->kind = $overrides['kind'] ?? $source->kind;
         $settings = $source->getSettings();
-        unset($settings['panel_id']);
+        unset($settings['panel_id'], $settings['enrol_panel_id'], $settings['test_token'], $settings['public_dashboard_token']);
+        if (($settings['enrol_panel_mode'] ?? '') === 'existing') {
+            $settings['enrol_panel_mode'] = 'none';
+        }
+        $settings['public_dashboard_enabled'] = false;
         $target->settings_json = json_encode($settings, JSON_UNESCAPED_UNICODE);
         $target->answers_visibility = $source->answers_visibility;
         $target->allow_multiple = $source->allow_multiple;
         $target->allow_anonymous = $source->allow_anonymous;
         $target->allow_edit = $source->allow_edit;
         $target->allow_resume = $source->allow_resume;
+        $target->keep_partials = $source->keep_partials;
+        $target->enrol_panel_mode = $settings['enrol_panel_mode'] ?? CustomForm::ENROL_PANEL_NONE;
+        $target->enrol_panel_id = 0;
+        $target->enrol_panel_title = (string)($settings['enrol_panel_title'] ?? '');
+        $target->log_panel_activity = !empty($settings['log_panel_activity']) ? 1 : 0;
+        $target->invite_email_template_id = (int)($settings['invite_email_template_id'] ?? 0);
+        $target->wave_email_template_id = (int)($settings['wave_email_template_id'] ?? 0);
+        $target->reminder_email_template_id = (int)($settings['reminder_email_template_id'] ?? 0);
+        $target->reminder_days = (int)($settings['reminder_days'] ?? 0);
+        $target->completion_email_template_id = (int)($settings['completion_email_template_id'] ?? 0);
+        $target->submit_actions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeList($settings['submit_actions'] ?? []);
+        $target->custom_functions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeFunctions($settings['custom_functions'] ?? []);
+        $target->public_dashboard_enabled = 0;
         $target->show_in_menu = $overrides['show_in_menu'] ?? 0;
         $target->status = $overrides['status'] ?? CustomForm::STATUS_DRAFT;
         $target->is_template = $overrides['is_template'] ?? 0;

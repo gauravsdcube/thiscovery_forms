@@ -1,20 +1,30 @@
-type,label,help,required,options
-radio,How did you hear about this study?,Please choose one.,1,"Search
+type,key,label,help,required,options,page_key,page_title,branches,rating_min,rating_max,rating_step,rating_low_label,rating_high_label,rating_display,grid_rows,grid_columns,items,maxdiff_set_size,maxdiff_set_count,exclusive_option,max_select,randomize,rich_content,html_content,html_collect,html_variable,html_instructions,html_required,drilldown_tree,image_url,image_mode,image_multi,image_regions,carry_from,carry_mode,prefill_profile,logic_action,logic_combinator,logic_goto,logic_rules,min_select,min_select_all
+rich_text,welcome,Welcome,,0,,,,,,,,,,,,,,,,,,,"<p>Thank you for taking part. This sample file shows how to import questions, including a page break.</p>",,,,,,,,,,,,,,,,,
+radio,hear_about,"How did you hear about this study?","Please choose one.",1,"Search
 A friend or colleague
 NHS staff
 Social media
-Other"
-checkbox,Which topics interest you?,Select all that apply.,0,"Access to care
+Other",,,,,,,,,,,,,,,,,0,,,,,,,,,,,,,,,,,,
+checkbox,topics,"Which topics interest you?","Select all that apply.",0,"Access to care
 Communication
 Waiting times
-Support after treatment"
-rating,Overall how would you rate this service?,1 is poor and 5 is excellent,1,
-dropdown,Age group,,0,"Under 18
+Support after treatment
+None of these",,,,,,,,,,,,,,,"None of these",,0,,,,,,,,,,,,,,,,,,
+rating,overall,"Overall how would you rate this service?","1 is poor and 5 is excellent",1,,,,,1,5,1,Poor,Excellent,pills,,,,,,,,0,,,,,,,,,,,,,,,,,,
+page_break,page_about_you,"Page break",,0,,about-you,"About you",,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+dropdown,age,"Age group",,0,"Under 18
 18-24
 25-34
 35-44
 45-54
 55-64
 65 or over
-Prefer not to say"
-textarea,Is there anything else you would like to tell us?,Optional.,0,
+Prefer not to say",,,,,,,,,,,,,,,,,0,,,,,,,,,,,,,,,,,,
+grid_single,agree,"How much do you agree with the following?","Choose one answer in each row.",0,,,,,,,,,,,"I understood what was being asked of me
+I had enough time to take part
+I would take part again","Strongly disagree
+Disagree
+Neutral
+Agree
+Strongly agree",,,,,,0,,,,,,,,,,,,,,,,,,
+textarea,other,"Is there anything else you would like to tell us?",Optional.,0,,,,,,,,,,,,,,,,,,0,,,,,,,,,,,,,,,,,,

@@ -5,6 +5,12 @@ use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormField;
+use humhub\modules\thiscoveryForms\models\FormLibraryItem;
+use humhub\modules\thiscoveryForms\services\FolderService;
+use humhub\modules\thiscoveryForms\services\EmailTemplateService;
+use humhub\modules\thiscoveryForms\services\PanelFieldService;
+use humhub\modules\thiscoveryForms\services\PanelService;
+use humhub\modules\thiscoveryForms\services\RespondentMetaService;
 use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
 
@@ -16,11 +22,24 @@ use yii\helpers\Html;
 ThiscoveryFormsAsset::register($this);
 
 $isPoll = $formModel->isPoll();
+$enrolPanels = (new PanelService())->listAvailableForContainer($contentContainer ? $contentContainer->contentcontainer_id : null);
+$emailTemplateOptions = (new EmailTemplateService())->optionsForContainer($contentContainer ? $contentContainer->contentcontainer_id : null);
+$enrolPanelOptions = ['' => Yii::t('ThiscoveryFormsModule.base', 'Choose a panel')];
+foreach ($enrolPanels as $enrolPanel) {
+    $enrolPanelOptions[(int)$enrolPanel->id] = $enrolPanel->title;
+}
+if ((int)$formModel->enrol_panel_id && !isset($enrolPanelOptions[(int)$formModel->enrol_panel_id])) {
+    $attached = \humhub\modules\thiscoveryForms\models\FormPanel::findOne((int)$formModel->enrol_panel_id);
+    if ($attached) {
+        $enrolPanelOptions[(int)$attached->id] = $attached->title;
+    }
+}
 $allowedTypes = $formModel->getAllowedFieldTypes();
 $palette = [
     ['type' => FormField::TYPE_RICH_TEXT, 'icon' => 'fa-paragraph', 'group' => 'content'],
     ['type' => FormField::TYPE_HTML, 'icon' => 'fa-code', 'group' => 'content'],
     ['type' => FormField::TYPE_PAGE_BREAK, 'icon' => 'fa-files-o', 'group' => 'content'],
+    ['type' => FormField::TYPE_QUESTION_GROUP, 'icon' => 'fa-object-group', 'group' => 'content'],
     ['type' => FormField::TYPE_TEXT, 'icon' => 'fa-font', 'group' => 'input'],
     ['type' => FormField::TYPE_TEXTAREA, 'icon' => 'fa-align-left', 'group' => 'input'],
     ['type' => FormField::TYPE_NUMBER, 'icon' => 'fa-hashtag', 'group' => 'input'],
@@ -39,6 +58,42 @@ $palette = [
     ['type' => FormField::TYPE_IMAGE_AREA, 'icon' => 'fa-picture-o', 'group' => 'research'],
     ['type' => FormField::TYPE_FILE, 'icon' => 'fa-cloud-upload', 'group' => 'input'],
 ];
+$metaIcons = [
+    RespondentMetaService::KEY_IP => 'fa-globe',
+    RespondentMetaService::KEY_BROWSER => 'fa-window-maximize',
+    RespondentMetaService::KEY_OS => 'fa-cogs',
+    RespondentMetaService::KEY_DEVICE => 'fa-desktop',
+    RespondentMetaService::KEY_SCREEN => 'fa-arrows-alt',
+    RespondentMetaService::KEY_LANGUAGE => 'fa-language',
+    RespondentMetaService::KEY_TIMEZONE => 'fa-clock-o',
+    RespondentMetaService::KEY_USER_AGENT => 'fa-info-circle',
+];
+foreach (RespondentMetaService::keyLabels() as $metaKey => $metaLabel) {
+    $palette[] = [
+        'type' => FormField::TYPE_RESPONDENT_META,
+        'meta' => $metaKey,
+        'label' => $metaLabel,
+        'icon' => $metaIcons[$metaKey] ?? 'fa-eye-slash',
+        'group' => 'metadata',
+    ];
+}
+$attachedPanel = $formModel->getAttachedPanel();
+$panelAttrKeys = PanelFieldService::surveyFieldLabels($attachedPanel);
+$panelIcons = [
+    PanelFieldService::KEY_FIRST => 'fa-user',
+    PanelFieldService::KEY_LAST => 'fa-user',
+    PanelFieldService::KEY_EMAIL => 'fa-envelope-o',
+    PanelFieldService::KEY_DISPLAY => 'fa-id-card-o',
+];
+foreach ($panelAttrKeys as $panelKey => $panelLabel) {
+    $palette[] = [
+        'type' => FormField::TYPE_PANEL_ATTR,
+        'panel' => $panelKey,
+        'label' => $panelLabel,
+        'icon' => $panelIcons[$panelKey] ?? 'fa-address-card-o',
+        'group' => 'panel',
+    ];
+}
 if ($allowedTypes !== null) {
     $palette = array_values(array_filter($palette, static fn($p) => in_array($p['type'], $allowedTypes, true)));
 }
@@ -51,14 +106,19 @@ if ($allowedTypes !== null) {
 $this->registerJsConfig('thiscoveryForms', [
     'none' => Yii::t('ThiscoveryFormsModule.base', 'None'),
     'untitled' => Yii::t('ThiscoveryFormsModule.base', 'Untitled field'),
-    'required' => Yii::t('ThiscoveryFormsModule.base', 'Required'),
+    'hiddenBadge' => Yii::t('ThiscoveryFormsModule.base', 'Hidden'),
     'types' => $typeLabels,
     'optionTypes' => [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX, FormField::TYPE_RANKING],
     'ratingType' => FormField::TYPE_RATING,
     'pageBreakType' => FormField::TYPE_PAGE_BREAK,
+    'questionGroupType' => FormField::TYPE_QUESTION_GROUP,
     'richTextType' => FormField::TYPE_RICH_TEXT,
     'htmlType' => FormField::TYPE_HTML,
+    'metaKeys' => RespondentMetaService::keyLabels(),
+    'panelKeys' => $panelAttrKeys,
     'operators' => FormField::getOperatorLabels(),
+    'logicActions' => \humhub\modules\thiscoveryForms\services\LogicEngine::actionLabels(),
+    'groupLogicActions' => \humhub\modules\thiscoveryForms\services\LogicEngine::actionLabelsForType(FormField::TYPE_QUESTION_GROUP),
     'clearConfirm' => Yii::t('ThiscoveryFormsModule.base', 'Remove all fields from this form?'),
     'copied' => Yii::t('ThiscoveryFormsModule.base', 'Copied!'),
     'kind' => $formModel->kind,
@@ -72,12 +132,21 @@ $this->registerJsConfig('thiscoveryForms', [
     'libraryTitlePrompt' => Yii::t('ThiscoveryFormsModule.base', 'Name this library item'),
     'libraryEmpty' => Yii::t('ThiscoveryFormsModule.base', 'No library items yet. Save a question or block from the canvas.'),
     'libraryInsertError' => Yii::t('ThiscoveryFormsModule.base', 'Could not insert that library item.'),
+    'libraryDeleteError' => Yii::t('ThiscoveryFormsModule.base', 'Could not delete that library item.'),
+    'libraryTypes' => FormLibraryItem::getTypeLabels(),
+    'libraryFieldOne' => Yii::t('ThiscoveryFormsModule.base', '{n} field'),
+    'libraryFieldMany' => Yii::t('ThiscoveryFormsModule.base', '{n} fields'),
+    'libraryGlobal' => Yii::t('ThiscoveryFormsModule.base', 'global'),
+    'healthStatusInsertUrl' => Url::toHealthStatusInsert($contentContainer),
+    'healthStatusInsertError' => Yii::t('ThiscoveryFormsModule.base', 'Could not insert the health-status pages.'),
     'deleteConfirm' => Yii::t('ThiscoveryFormsModule.base', 'Delete this library item?'),
     'uploadUrl' => \yii\helpers\Url::to(['/file/file/upload']),
     'uploadModel' => !$isNew ? CustomForm::class : '',
     'uploadModelId' => !$isNew ? (string)$formModel->id : '',
     'uploadError' => Yii::t('ThiscoveryFormsModule.base', 'Could not upload that image.'),
     'notImage' => Yii::t('ThiscoveryFormsModule.base', 'Please choose an image file.'),
+    'guideShow' => Yii::t('ThiscoveryFormsModule.base', 'Guidance'),
+    'guideHide' => Yii::t('ThiscoveryFormsModule.base', 'Hide guidance'),
     'uploading' => Yii::t('ThiscoveryFormsModule.base', 'Uploading…'),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initBuilder("#cf-builder");', \yii\web\View::POS_READY);
@@ -87,13 +156,53 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
 ?>
 
 <div class="cf-studio panel panel-default" id="cf-builder" data-cf-kind="<?= Html::encode($formModel->kind) ?>">
+    <div class="cf-studio__nav">
+        <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
+            ->link(Url::toManageIndex($contentContainer))
+            ->icon('arrow-left')
+            ->loader(false) ?>
+        <div class="cf-studio__nav-title">
+            <?= Html::encode($isNew
+                ? Yii::t('ThiscoveryFormsModule.base', 'New form')
+                : $formModel->title) ?>
+        </div>
+        <div class="cf-studio__nav-actions">
+            <button type="submit" name="after_save" value="preview" form="cf-studio-form" class="btn btn-primary cf-studio__preview-btn">
+                <i class="fa fa-eye" aria-hidden="true"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Preview') ?>
+            </button>
+            <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))
+                ->submit()
+                ->icon('floppy-o')
+                ->options(['form' => 'cf-studio-form'])
+                ->cssClass('cf-studio__preview-btn')
+                ->loader(false) ?>
+            <?php if (!$isNew && $formModel->canManage()): ?>
+                <?= Html::beginForm(Url::toDelete($formModel), 'post', [
+                    'id' => 'cf-delete-form',
+                    'class' => 'cf-studio__delete-form',
+                    'data-pjax-prevent' => true,
+                ]) ?>
+                <?= Button::danger(Yii::t('ThiscoveryFormsModule.base', 'Delete form'))
+                    ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Delete this form and all submissions?'))
+                    ->submit()
+                    ->icon('trash')
+                    ->cssClass('cf-studio__delete-btn')
+                    ->loader(false) ?>
+                <?= Html::endForm() ?>
+            <?php endif; ?>
+        </div>
+    </div>
     <?= Html::beginForm($isNew ? Url::toCreate($contentContainer, ['kind' => $formModel->kind]) : Url::toEdit($formModel), 'post', [
         'class' => 'cf-studio__form',
+        'id' => 'cf-studio-form',
         'enctype' => 'multipart/form-data',
     ]) ?>
+    <?= Html::hiddenInput('studio_tab', (string)Yii::$app->request->get('tab', 'builder'), ['data-cf-studio-tab' => true]) ?>
     <?= Html::activeHiddenInput($formModel, 'kind') ?>
     <?= Html::activeHiddenInput($formModel, 'is_template') ?>
     <?= Html::activeHiddenInput($formModel, 'source_template_id') ?>
+    <?= Html::hiddenInput('fields_json', '', ['data-cf-fields-json' => true]) ?>
 
     <div class="cf-studio__tabs" role="tablist">
         <button type="button" class="cf-studio__tab is-active" data-cf-tab="builder" role="tab" aria-selected="true">
@@ -102,7 +211,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
         <button type="button" class="cf-studio__tab" data-cf-tab="settings" role="tab" aria-selected="false">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Settings') ?>
         </button>
-        <?php if ($formModel->isLongitudinal()): ?>
+        <?php if ($formModel->usesWaves()): ?>
             <button type="button" class="cf-studio__tab" data-cf-tab="panel" role="tab" aria-selected="false">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Panel & waves') ?>
             </button>
@@ -126,6 +235,24 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
         <button type="button" class="cf-studio__tab" data-cf-tab="share" role="tab" aria-selected="false">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Share') ?>
         </button>
+        <a class="cf-studio__help-link"
+           href="<?= Html::encode(Url::toHelp($contentContainer, 'creators-builder')) ?>"
+           target="_blank"
+           rel="noopener"
+           data-cf-studio-help
+           data-cf-help-pages="<?= Html::encode(json_encode([
+               'builder' => Url::toHelp($contentContainer, 'creators-builder'),
+               'settings' => Url::toHelp($contentContainer, 'creators-settings'),
+               'panel' => Url::toHelp($contentContainer, 'creators-panels'),
+               'rounds' => Url::toHelp($contentContainer, 'creators-form-types'),
+               'approval' => Url::toHelp($contentContainer, 'creators-form-types'),
+               'translations' => Url::toHelp($contentContainer, 'creators-settings'),
+               'css' => Url::toHelp($contentContainer, 'creators-settings'),
+               'share' => Url::toHelp($contentContainer, 'creators-results'),
+           ])) ?>">
+            <i class="fa fa-question-circle" aria-hidden="true"></i>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Help') ?>
+        </a>
     </div>
 
     <div class="cf-studio__panel is-active" data-cf-panel="builder">
@@ -140,6 +267,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                     </button>
                 </div>
 
+                <div class="cf-palette__scroll">
                 <div data-cf-palette-panel="fields">
                 <div class="cf-palette__title"><?= $isPoll
                     ? Yii::t('ThiscoveryFormsModule.base', 'Poll question')
@@ -151,6 +279,8 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                     'input' => Yii::t('ThiscoveryFormsModule.base', 'Inputs'),
                     'choice' => Yii::t('ThiscoveryFormsModule.base', 'Choices'),
                     'research' => Yii::t('ThiscoveryFormsModule.base', 'Research'),
+                    'panel' => Yii::t('ThiscoveryFormsModule.base', 'Panel member'),
+                    'metadata' => Yii::t('ThiscoveryFormsModule.base', 'Respondent metadata'),
                 ];
                 foreach ($groups as $groupKey => $groupLabel):
                     $items = array_filter($palette, static fn($p) => $p['group'] === $groupKey);
@@ -165,9 +295,11 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                                     class="cf-palette__item"
                                     draggable="true"
                                     data-cf-palette-type="<?= Html::encode($item['type']) ?>"
-                                    title="<?= Html::encode($typeLabels[$item['type']] ?? $item['type']) ?>">
+                                    <?php if (!empty($item['meta'])): ?>data-cf-palette-meta="<?= Html::encode($item['meta']) ?>"<?php endif; ?>
+                                    <?php if (!empty($item['panel'])): ?>data-cf-palette-panel="<?= Html::encode($item['panel']) ?>"<?php endif; ?>
+                                    title="<?= Html::encode($item['label'] ?? ($typeLabels[$item['type']] ?? $item['type'])) ?>">
                                 <span class="cf-palette__icon"><i class="fa <?= Html::encode($item['icon']) ?>"></i></span>
-                                <span class="cf-palette__label"><?= Html::encode($typeLabels[$item['type']] ?? $item['type']) ?></span>
+                                <span class="cf-palette__label"><?= Html::encode($item['label'] ?? ($typeLabels[$item['type']] ?? $item['type'])) ?></span>
                             </button>
                         <?php endforeach; ?>
                     </div>
@@ -176,15 +308,24 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                 <button type="button" class="btn btn-sm btn-dark cf-palette__clear" data-cf-clear-fields>
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Clear') ?>
                 </button>
+                <?php if (!$isPoll): ?>
+                    <button type="button" class="btn btn-sm btn-light cf-palette__clear" data-cf-insert-health-status>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Insert health-status pages') ?>
+                    </button>
+                    <p class="cf-hint text-muted cf-palette__hint">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Adds five one-question pages and a vertical 0–100 scale. Paste licensed wording; this is not an official instrument.') ?>
+                    </p>
+                <?php endif; ?>
                 </div>
 
                 <div class="d-none" data-cf-palette-panel="library">
                     <div class="cf-palette__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Library') ?></div>
-                    <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Reuse saved questions and blocks.') ?></p>
+                    <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Click a saved question to add it, or drag it onto the form.') ?></p>
                     <div class="cf-library-list" data-cf-library-list></div>
                     <button type="button" class="btn btn-sm btn-light cf-palette__clear" data-cf-library-save-block>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Save all fields as block') ?>
                     </button>
+                </div>
                 </div>
             </aside>
 
@@ -207,6 +348,8 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                             'allFields' => $fieldList,
                             'collapsed' => true,
                             'allowedTypes' => $allowedTypes,
+                            'emailTemplateOptions' => $emailTemplateOptions,
+                            'panelAttrKeys' => $panelAttrKeys,
                         ]);
                         $i++;
                     endforeach;
@@ -217,196 +360,15 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
     </div>
 
     <div class="cf-studio__panel" data-cf-panel="settings">
-        <div class="cf-studio__settings">
-            <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Form details') ?></h5>
-            <p class="cf-hint text-muted">
-                <?= Html::encode(CustomForm::getKindLabels()[$formModel->kind] ?? $formModel->kind) ?>
-                <?php if ($formModel->isTemplate()): ?>
-                    · <?= Yii::t('ThiscoveryFormsModule.base', 'Template') ?>
-                <?php endif; ?>
-            </p>
-            <?php if ($formModel->isLongitudinal()): ?>
-                <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'One submission per panel member per wave. Set up the panel and waves on the Panel & waves tab.') ?>
-                </p>
-            <?php endif; ?>
-            <?php if ($formModel->isConsensus()): ?>
-                <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'One submission per person per round. Set up rounds on the Rounds tab.') ?>
-                </p>
-            <?php endif; ?>
-            <?php if ($formModel->isProject()): ?>
-                <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Submissions go through the approval stages on the Approval tab before they appear in the catalogue.') ?>
-                </p>
-            <?php endif; ?>
-
-            <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
-                <?= Html::activeTextInput($formModel, 'title', [
-                    'class' => 'form-control form-control-lg',
-                    'required' => true,
-                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. Membership feedback'),
-                ]) ?>
-            </div>
-
-            <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Description') ?>
-                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
-                </label>
-                <?= Html::activeTextarea($formModel, 'description', [
-                    'class' => 'form-control',
-                    'rows' => 3,
-                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Explain what this form is for'),
-                ]) ?>
-            </div>
-
-            <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Thank you message') ?>
-                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
-                </label>
-                <div class="cf-field-note">
-                    <i class="fa fa-info-circle" aria-hidden="true"></i>
-                    <div><?= Yii::t('ThiscoveryFormsModule.base', 'Shown after a successful submission. Leave empty for the default thank-you message.') ?></div>
-                </div>
-                <div class="cf-rich-editor" data-cf-rich-editor>
-                    <?= EditorField::widget([
-                        'model' => $formModel,
-                        'attribute' => 'thank_you_content',
-                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Thanks for completing this form…'),
-                        'height' => 220,
-                        'profile' => 'simple',
-                    ]) ?>
-                </div>
-            </div>
-
-            <div class="row g-3">
-                <div class="col-md-4 form-group mb-0">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Status') ?></label>
-                    <?= Html::activeDropDownList($formModel, 'status', CustomForm::getStatusLabels(), ['class' => 'form-control']) ?>
-                </div>
-                <div class="col-md-4 form-group mb-0">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Who can view answers') ?></label>
-                    <?= Html::activeDropDownList($formModel, 'answers_visibility', CustomForm::getAnswersVisibilityLabels(), ['class' => 'form-control']) ?>
-                </div>
-                <div class="col-md-4">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Options') ?></label>
-                    <div class="cf-checks">
-                        <?php if (!$formModel->isLongitudinal() && !$formModel->isConsensus()): ?>
-                        <label>
-                            <?= Html::activeCheckbox($formModel, 'allow_multiple', ['label' => false]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Allow multiple submissions') ?>
-                        </label>
-                        <?php endif; ?>
-                        <?php if (!$formModel->isProject()): ?>
-                        <label>
-                            <?= Html::activeCheckbox($formModel, 'allow_anonymous', ['label' => false]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Allow anonymous submissions') ?>
-                        </label>
-                        <?php endif; ?>
-                        <label>
-                            <?= Html::activeCheckbox($formModel, 'allow_edit', ['label' => false]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Allow respondents to edit their answers') ?>
-                        </label>
-                        <label>
-                            <?= Html::activeCheckbox($formModel, 'allow_resume', ['label' => false]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Allow save and resume') ?>
-                        </label>
-                        <label>
-                            <?= Html::activeCheckbox($formModel, 'show_in_menu', ['label' => false]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Show in side menu') ?>
-                        </label>
-                        <?php if ($isPoll): ?>
-                        <label>
-                            <?= Html::activeCheckbox($formModel, 'show_results', ['label' => false]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Show results after voting') ?>
-                        </label>
-                        <?php endif; ?>
-                    </div>
-                    <p class="cf-hint text-muted">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Anonymous mode does not store who submitted the form. Guests can fill the form when this is enabled.') ?>
-                    </p>
-                    <p class="cf-hint text-muted">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'If save and resume is enabled, people are asked whether they are continuing a saved response or starting a new one. Save & continue later is hidden when this is off.') ?>
-                    </p>
-                    <p class="cf-hint text-muted">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'If respondents cannot edit, they will see a confirmation after submitting and cannot change that response. Form managers can still update answers.') ?>
-                    </p>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Already submitted message') ?>
-                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
-                </label>
-                <div class="cf-field-note">
-                    <i class="fa fa-info-circle" aria-hidden="true"></i>
-                    <div><?= Yii::t('ThiscoveryFormsModule.base', 'Shown when this person has already submitted and multiple submissions are not allowed. Use {formName} for the form title. Leave empty for the default message.', ['formName' => '{formName}']) ?></div>
-                </div>
-                <?= Html::activeTextarea($formModel, 'already_submitted_message', [
-                    'class' => 'form-control',
-                    'rows' => 3,
-                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'You have already submitted {formName}. Multiple submissions are not allowed', ['formName' => '{formName}']),
-                ]) ?>
-            </div>
-
-            <h5 class="cf-section__title mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Languages') ?></h5>
-            <p class="cf-hint text-muted">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'The source language is what you write in the builder. Extra languages are edited on the Translations tab.') ?>
-            </p>
-            <div class="row g-3">
-                <div class="col-md-4 form-group">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Source language') ?></label>
-                    <?= Html::activeDropDownList(
-                        $formModel,
-                        'source_language',
-                        \humhub\modules\thiscoveryForms\services\TranslationService::languageLabels(),
-                        ['class' => 'form-control']
-                    ) ?>
-                </div>
-                <div class="col-md-8 form-group">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Enabled languages') ?></label>
-                    <div class="cf-checks">
-                        <?php foreach (\humhub\modules\thiscoveryForms\services\TranslationService::languageLabels() as $code => $label): ?>
-                            <label>
-                                <?= Html::checkbox('CustomForm[enabled_languages][]', in_array($code, $formModel->getEnabledLanguages(), true), [
-                                    'value' => $code,
-                                    'uncheck' => null,
-                                ]) ?>
-                                <?= Html::encode($label) ?>
-                            </label>
-                        <?php endforeach; ?>
-                    </div>
-                </div>
-            </div>
-
-            <?php if ($formModel->isConsensus()): ?>
-                <h5 class="cf-section__title mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Consensus') ?></h5>
-                <div class="row g-3">
-                    <div class="col-md-6 form-group">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Identity') ?></label>
-                        <?= Html::activeDropDownList($formModel, 'identity_mode', CustomForm::getIdentityModeLabels(), ['class' => 'form-control']) ?>
-                    </div>
-                    <div class="col-md-3 form-group">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Consensus threshold (%)') ?></label>
-                        <?= Html::activeInput('number', $formModel, 'consensus_threshold', ['class' => 'form-control', 'min' => 1, 'max' => 100]) ?>
-                    </div>
-                    <div class="col-md-3">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Options') ?></label>
-                        <div class="cf-checks">
-                            <label>
-                                <?= Html::activeCheckbox($formModel, 'freeze_on_consensus', ['label' => false]) ?>
-                                <?= Yii::t('ThiscoveryFormsModule.base', 'Freeze items that reach consensus') ?>
-                            </label>
-                            <label>
-                                <?= Html::activeCheckbox($formModel, 'require_justification', ['label' => false]) ?>
-                                <?= Yii::t('ThiscoveryFormsModule.base', 'Require a comment after each choice') ?>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            <?php endif; ?>
-        </div>
+        <?= $this->render('_studio_settings', [
+            'formModel' => $formModel,
+            'isNew' => $isNew,
+            'contentContainer' => $contentContainer,
+            'isPoll' => $isPoll,
+            'fieldList' => $fieldList,
+            'emailTemplateOptions' => $emailTemplateOptions,
+            'enrolPanelOptions' => $enrolPanelOptions,
+        ]) ?>
     </div>
 
     <div class="cf-studio__panel" data-cf-panel="css">
@@ -423,7 +385,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                 <hr>
                 <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Sample import file') ?></h5>
                 <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Download an example, then import it after you save. JSON keeps types, options, page breaks, and research questions. CSV is a simple type/label/options list.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Download an example, then import it after you save. CSV can include every question type, including page breaks. JSON keeps extra settings such as skip logic.') ?>
                 </p>
                 <p>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Sample JSON'))
@@ -434,6 +396,11 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                         ->link(Url::toSampleQuestions($contentContainer, 'csv'))
                         ->icon('download')
                         ->loader(false) ?>
+                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'CSV import help'))
+                        ->link(Url::toHelp($contentContainer, 'creators-csv-import'))
+                        ->icon('question-circle')
+                        ->loader(false)
+                        ->options(['target' => '_blank', 'rel' => 'noopener']) ?>
                 </p>
             <?php else: ?>
                 <p class="cf-hint text-muted">
@@ -469,11 +436,74 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                         <i class="fa fa-external-link"></i>
                     </a>
                 </p>
+                <hr>
+                <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview and test') ?></h5>
+                <p class="cf-hint text-muted">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Share this link to try the form. Test answers are stored separately and are not counted as participant submissions, dashboard totals, or CSV export.') ?>
+                </p>
+                <p class="cf-hint text-muted">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Preview in the studio saves your latest work, then opens the test form. Use Edit on that page to come back.') ?>
+                </p>
+                <?php $previewUrl = Url::toPreview($formModel, true); ?>
+                <div class="form-group">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview URL') ?></label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" readonly value="<?= Html::encode($previewUrl) ?>">
+                        <button type="button" class="btn btn-primary" data-cf-copy-url>
+                            <i class="fa fa-clipboard"></i>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Copy link') ?>
+                        </button>
+                    </div>
+                </div>
+                <p>
+                    <a href="<?= Html::encode($previewUrl) ?>" target="_blank" rel="noopener">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Open preview') ?>
+                        <i class="fa fa-external-link"></i>
+                    </a>
+                    <button type="submit" class="btn btn-link btn-sm" form="cf-regen-preview-form">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Regenerate link') ?>
+                    </button>
+                </p>
+                <hr>
+                <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Share dashboard') ?></h5>
+                <p class="cf-hint text-muted">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'When enabled in Settings, anyone with this link can see aggregate results without signing in. Individual answers and CSV export stay private.') ?>
+                </p>
+                <?php if ($formModel->allowsPublicDashboard()): ?>
+                    <?php $dashUrl = Url::toPublicDashboard($formModel, true); ?>
+                    <div class="form-group">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Dashboard URL') ?></label>
+                        <div class="input-group">
+                            <input type="text" class="form-control" readonly value="<?= Html::encode($dashUrl) ?>">
+                            <button type="button" class="btn btn-primary" data-cf-copy-url>
+                                <i class="fa fa-clipboard"></i>
+                                <?= Yii::t('ThiscoveryFormsModule.base', 'Copy link') ?>
+                            </button>
+                        </div>
+                    </div>
+                    <p>
+                        <a href="<?= Html::encode($dashUrl) ?>" target="_blank" rel="noopener">
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Open shared dashboard') ?>
+                            <i class="fa fa-external-link"></i>
+                        </a>
+                        <button type="submit" class="btn btn-link btn-sm" form="cf-regen-dash-form">
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Regenerate link') ?>
+                        </button>
+                    </p>
+                <?php else: ?>
+                    <div class="alert alert-info">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Enable “Share dashboard without sign-in” on the Settings tab and save the form to generate a public dashboard link.') ?>
+                    </div>
+                <?php endif; ?>
                 <?php if (!$formModel->isTemplate()): ?>
                     <hr>
                     <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Save as template') ?></h5>
                     <p class="cf-hint text-muted">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Stores a copy of this form (without answers) that you can reuse later.') ?>
+                        <?= Yii::t(
+                            'ThiscoveryFormsModule.base',
+                            'Stores a copy of this {type} (without answers) so you can create new {type} forms from it later.',
+                            ['type' => CustomForm::getKindLabels()[$formModel->kind] ?? $formModel->kind]
+                        ) ?>
                     </p>
                     <button type="submit" class="btn btn-light" form="cf-template-form">
                         <i class="fa fa-clone"></i>
@@ -483,7 +513,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                 <hr>
                 <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Import and export questions') ?></h5>
                 <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'JSON keeps types, options, and page breaks. CSV is a simple type/label/options list.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'CSV can include every question type, including page breaks. Tick Replace to overwrite the form; leave it unticked to append. See Help for columns and examples.') ?>
                 </p>
                 <p>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Export JSON'))
@@ -502,12 +532,29 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                         ->link(Url::toSampleQuestions($contentContainer, 'csv'))
                         ->icon('download')
                         ->loader(false) ?>
+                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'CSV import help'))
+                        ->link(Url::toHelp($contentContainer, 'creators-csv-import'))
+                        ->icon('question-circle')
+                        ->loader(false)
+                        ->options(['target' => '_blank', 'rel' => 'noopener']) ?>
                 </p>
                 <div class="form-group">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Import file') ?></label>
                     <input type="file" name="import_file" class="form-control" form="cf-import-form" accept=".json,.csv,application/json,text/csv">
                 </div>
-                <button type="submit" class="btn btn-primary" form="cf-import-form">
+                <div class="cf-checks mb-3">
+                    <div class="cf-check-setting">
+                        <label>
+                            <input type="checkbox" name="replace_fields" value="1" id="cf-import-replace" form="cf-import-form">
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Replace all existing questions') ?>
+                        </label>
+                        <p class="cf-hint text-muted mb-0">
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Leave this unticked to add the imported questions after the ones already on the form.') ?>
+                        </p>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary" form="cf-import-form"
+                    onclick="var r=document.getElementById('cf-import-replace'); return !r || !r.checked || confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'This will delete every question currently on the form and replace them with the import. This cannot be undone. Continue?')) ?>);">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Import questions') ?>
                 </button>
             <?php endif; ?>
@@ -525,19 +572,35 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
             'allFields' => [],
             'collapsed' => false,
             'allowedTypes' => $allowedTypes,
+            'emailTemplateOptions' => $emailTemplateOptions,
+            'panelAttrKeys' => $panelAttrKeys,
         ]) ?>
     </script>
 
     <div class="cf-studio__footer">
-        <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Close'))
-            ->link($isNew ? Url::toIndex($contentContainer) : Url::toView($formModel)) ?>
-        <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))->submit()->icon('floppy-o') ?>
+        <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
+            ->link(Url::toManageIndex($contentContainer))
+            ->icon('arrow-left') ?>
+        <div class="cf-studio__footer-actions">
+            <button type="submit" name="after_save" value="preview" class="btn btn-primary">
+                <i class="fa fa-eye" aria-hidden="true"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Preview') ?>
+            </button>
+            <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))->submit()->icon('floppy-o') ?>
+            <?php if (!$isNew && $formModel->canManage()): ?>
+                <button type="submit" form="cf-delete-form" class="btn btn-danger cf-studio__delete-btn"
+                    onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Delete this form and all submissions?')) ?>);">
+                    <i class="fa fa-trash" aria-hidden="true"></i>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Delete form') ?>
+                </button>
+            <?php endif; ?>
+        </div>
     </div>
 
     <?= Html::endForm() ?>
 
     <div class="cf-studio__extra">
-    <?php if ($formModel->isLongitudinal()): ?>
+    <?php if ($formModel->usesWaves()): ?>
         <div class="cf-studio__panel" data-cf-panel="panel">
             <?= $this->render('_studio_panel', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
         </div>
@@ -562,6 +625,10 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
 
     <?php if (!$isNew): ?>
         <?= Html::beginForm(Url::toSaveTemplate($formModel), 'post', ['id' => 'cf-template-form', 'class' => 'd-none']) ?>
+        <?= Html::endForm() ?>
+        <?= Html::beginForm(Url::toRegeneratePreview($formModel), 'post', ['id' => 'cf-regen-preview-form', 'class' => 'd-none']) ?>
+        <?= Html::endForm() ?>
+        <?= Html::beginForm(Url::toRegenerateDashboardShare($formModel), 'post', ['id' => 'cf-regen-dash-form', 'class' => 'd-none']) ?>
         <?= Html::endForm() ?>
         <?= Html::beginForm(Url::toImportQuestions($formModel), 'post', [
             'id' => 'cf-import-form',

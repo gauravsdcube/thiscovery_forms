@@ -10,8 +10,12 @@ use humhub\widgets\bootstrap\Button;
 
 echo $this->render('@thiscovery-forms/views/form/index', [
     'dataProvider' => $dataProvider,
+    'filters' => $filters ?? [],
     'contentContainer' => null,
     'canCreate' => $canCreate,
     'templates' => $templates ?? [],
     'canConfigure' => $canConfigure ?? false,
+    'folderBrowse' => $folderBrowse ?? [],
+    'canManagePanels' => $canManagePanels ?? false,
+    'canViewHelp' => $canViewHelp ?? false,
 ]);

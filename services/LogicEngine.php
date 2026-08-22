@@ -28,6 +28,17 @@ class LogicEngine
         ];
     }
 
+    public static function actionLabelsForType(string $type): array
+    {
+        if ($type === FormField::TYPE_QUESTION_GROUP) {
+            return [
+                self::ACTION_SHOW => \Yii::t('ThiscoveryFormsModule.base', 'Show this group if'),
+                self::ACTION_HIDE => \Yii::t('ThiscoveryFormsModule.base', 'Hide this group if'),
+            ];
+        }
+        return self::actionLabels();
+    }
+
     public static function defaultLogic(): array
     {
         return [
@@ -68,7 +79,7 @@ class LogicEngine
             $rules[] = [
                 'fieldKey' => $fieldKey,
                 'operator' => $operator,
-                'value' => (string)($rule['value'] ?? ''),
+                'value' => self::normalizeRuleValue($rule['value'] ?? ''),
             ];
         }
 
@@ -78,6 +89,22 @@ class LogicEngine
             'gotoPageKey' => trim((string)($logic['gotoPageKey'] ?? '')),
             'rules' => $rules,
         ];
+    }
+
+    /**
+     * Option text as listed in the studio. Surrounding quotation marks are ignored.
+     */
+    public static function normalizeRuleValue($value): string
+    {
+        $value = trim((string)$value);
+        $len = strlen($value);
+        if ($len >= 2) {
+            $quote = $value[0];
+            if (($quote === '"' || $quote === "'") && $value[$len - 1] === $quote) {
+                return trim(substr($value, 1, $len - 2));
+            }
+        }
+        return $value;
     }
 
     public static function fromLegacy(?int $fieldId, ?string $operator, ?string $value): array
@@ -94,7 +121,7 @@ class LogicEngine
         return self::normalize($logic);
     }
 
-    public function evaluateRule(array $rule, array $values): bool
+    public function evaluateRule(array $rule, array $values, array $fields = []): bool
     {
         $fieldKey = (string)($rule['fieldKey'] ?? '');
         if ($fieldKey === '') {
@@ -104,13 +131,23 @@ class LogicEngine
         if ($raw === null && ctype_digit($fieldKey)) {
             $raw = $values[(int)$fieldKey] ?? null;
         }
+        if ($raw === null && str_starts_with($fieldKey, 'id') && ctype_digit(substr($fieldKey, 2))) {
+            $id = substr($fieldKey, 2);
+            $raw = $values[$id] ?? $values[(int)$id] ?? null;
+        }
         $op = (string)($rule['operator'] ?? FormField::OP_EQUALS);
-        $expected = (string)($rule['value'] ?? '');
+        $expected = self::normalizeRuleValue($rule['value'] ?? '');
+
+        $source = $this->fieldByKey($fields, $fieldKey);
+        if ($source && FormField::isChoiceType($source->type) && in_array($op, [FormField::OP_EQUALS, FormField::OP_NOT_EQUALS], true)) {
+            $hit = $source->choiceMatchesExpected($raw, $expected);
+            return $op === FormField::OP_EQUALS ? $hit : !$hit;
+        }
 
         return $this->compare($raw, $op, $expected);
     }
 
-    public function rulesMet(array $logic, array $values): bool
+    public function rulesMet(array $logic, array $values, array $fields = []): bool
     {
         $logic = self::normalize($logic);
         if (!$logic['rules']) {
@@ -118,7 +155,7 @@ class LogicEngine
         }
         $results = [];
         foreach ($logic['rules'] as $rule) {
-            $results[] = $this->evaluateRule($rule, $values);
+            $results[] = $this->evaluateRule($rule, $values, $fields);
         }
         if ($logic['combinator'] === 'or') {
             return in_array(true, $results, true);
@@ -126,19 +163,51 @@ class LogicEngine
         return !in_array(false, $results, true);
     }
 
-    public function isVisible(FormField $field, array $values): bool
+    public function isVisible(FormField $field, array $values, array $allFields = []): bool
     {
         $logic = $field->getLogic();
         if (empty($logic['rules'])) {
             return true;
         }
-        $met = $this->rulesMet($logic, $values);
+        $met = $this->rulesMet($logic, $values, $allFields);
         $action = $logic['action'] ?? self::ACTION_SHOW;
         if ($action === self::ACTION_HIDE || $action === self::ACTION_SKIP) {
             return !$met;
         }
         if ($action === self::ACTION_SHOW) {
             return $met;
+        }
+        return true;
+    }
+
+    /**
+     * Own logic plus any enclosing question group.
+     *
+     * @param FormField[] $orderedFields
+     */
+    public function isFieldVisible(FormField $field, array $orderedFields, array $values): bool
+    {
+        if (!$this->isVisible($field, $values, $orderedFields)) {
+            return false;
+        }
+        if (!$orderedFields) {
+            return true;
+        }
+        $open = [];
+        foreach ($orderedFields as $candidate) {
+            if ((int)$candidate->id === (int)$field->id) {
+                break;
+            }
+            if ($candidate->type === FormField::TYPE_QUESTION_GROUP) {
+                $open[] = $candidate;
+            } elseif ($candidate->type === FormField::TYPE_GROUP_END && $open) {
+                array_pop($open);
+            }
+        }
+        foreach ($open as $group) {
+            if (!$this->isVisible($group, $values, $orderedFields)) {
+                return false;
+            }
         }
         return true;
     }
@@ -184,12 +253,54 @@ class LogicEngine
                 return true;
             }
         }
+        return !$this->pageHasVisibleContent($fieldsOnPage, $values);
+    }
+
+    /**
+     * @param FormField[] $fieldsOnPage
+     */
+    public function pageHasVisibleContent(array $fieldsOnPage, array $values): bool
+    {
         foreach ($fieldsOnPage as $field) {
-            if ($this->isVisible($field, $values)) {
-                return false;
+            if ($field->type === FormField::TYPE_GROUP_END) {
+                continue;
+            }
+            if ($field->isHiddenFromRespondent()) {
+                continue;
+            }
+            if ($this->isFieldVisible($field, $fieldsOnPage, $values)) {
+                return true;
             }
         }
-        return true;
+        return false;
+    }
+
+    /**
+     * @param FormField[] $fields
+     */
+    private function fieldByKey(array $fields, string $fieldKey): ?FormField
+    {
+        if ($fieldKey === '' || !$fields) {
+            return null;
+        }
+        $wantId = null;
+        if (ctype_digit($fieldKey)) {
+            $wantId = (int)$fieldKey;
+        } elseif (str_starts_with($fieldKey, 'id') && ctype_digit(substr($fieldKey, 2))) {
+            $wantId = (int)substr($fieldKey, 2);
+        }
+        foreach ($fields as $field) {
+            if (!$field instanceof FormField) {
+                continue;
+            }
+            if ($wantId !== null && (int)$field->id === $wantId) {
+                return $field;
+            }
+            if (FormField::studioKey((int)$field->id) === $fieldKey) {
+                return $field;
+            }
+        }
+        return null;
     }
 
     private function compare($raw, string $op, string $expected): bool

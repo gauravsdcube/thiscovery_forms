@@ -35,6 +35,7 @@ $submitUrl = Url::toSubmitJson($formModel);
             <?= Html::beginForm($submitUrl, 'post', [
                 'class' => 'cf-poll-embed__form',
                 'data-cf-poll-form' => 1,
+                'autocomplete' => 'off',
             ]) ?>
                 <div class="cf-poll-embed__question">
                     <?= $this->render('@thiscovery-forms/views/form/_field_fill', [

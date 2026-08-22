@@ -54,6 +54,49 @@ class FormPager
     }
 
     /**
+     * Questions on the page plus the trailing page break, whose Logic runs when leaving this page.
+     *
+     * @param array{items?:FormField[],break?:FormField|null} $page
+     * @return FormField[]
+     */
+    public static function navigationFields(array $page): array
+    {
+        $fields = array_values($page['items'] ?? []);
+        $break = $page['break'] ?? null;
+        if ($break instanceof FormField) {
+            $fields[] = $break;
+        }
+        return $fields;
+    }
+
+    /**
+     * Whether a question group at $startIndex has a matching group_end on this page.
+     *
+     * @param FormField[] $items
+     */
+    public static function groupClosesInItems(array $items, int $startIndex): bool
+    {
+        $items = array_values($items);
+        if (!isset($items[$startIndex]) || $items[$startIndex]->type !== FormField::TYPE_QUESTION_GROUP) {
+            return false;
+        }
+        $depth = 0;
+        $count = count($items);
+        for ($i = $startIndex; $i < $count; $i++) {
+            $type = $items[$i]->type ?? '';
+            if ($type === FormField::TYPE_QUESTION_GROUP) {
+                $depth++;
+            } elseif ($type === FormField::TYPE_GROUP_END && $depth > 0) {
+                $depth--;
+                if ($depth === 0) {
+                    return $i > $startIndex;
+                }
+            }
+        }
+        return false;
+    }
+
+    /**
      * Resolve next page index after leaving $fromIndex using field logic then branch rules.
      * @param array $pages from buildPages
      * @param array $pageKeyIndex
@@ -66,7 +109,7 @@ class FormPager
         }
 
         $engine = new LogicEngine();
-        $nav = $engine->pageNavigation($pages[$fromIndex]['items'] ?? [], $values);
+        $nav = $engine->pageNavigation(self::navigationFields($pages[$fromIndex]), $values);
         if ($nav) {
             if ($nav['action'] === LogicEngine::ACTION_GOTO_END) {
                 return null;
@@ -74,7 +117,7 @@ class FormPager
             if ($nav['action'] === LogicEngine::ACTION_GOTO_PAGE) {
                 $goto = (string)$nav['gotoPageKey'];
                 if ($goto !== '' && isset($pageKeyIndex[$goto])) {
-                    return $this->skipForward($pages, (int)$pageKeyIndex[$goto], $values, $engine);
+                    return (int)$pageKeyIndex[$goto];
                 }
             }
         }
@@ -86,13 +129,49 @@ class FormPager
                 if (FormField::evaluateBranch($branch, $values)) {
                     $goto = (string)($branch['gotoPageKey'] ?? '');
                     if ($goto !== '' && isset($pageKeyIndex[$goto])) {
-                        return $this->skipForward($pages, (int)$pageKeyIndex[$goto], $values, $engine);
+                        return (int)$pageKeyIndex[$goto];
                     }
                 }
             }
         }
 
         return $this->skipForward($pages, $fromIndex + 1, $values, $engine);
+    }
+
+    /**
+     * Field ids on pages the respondent actually reaches with the current answers.
+     * Pages jumped over by go-to-page / go-to-end, or skipped because they have
+     * nothing visible, are omitted so their required questions are not validated.
+     *
+     * @param FormField[] $fields
+     * @return array<int, true>
+     */
+    public function visitedFieldIds(array $fields, array $values): array
+    {
+        $built = $this->buildPages($fields);
+        $pages = $built['pages'];
+        $pageKeyIndex = $built['pageKeyIndex'];
+        $visited = [];
+        $idx = 0;
+        $guard = 0;
+        while (isset($pages[$idx]) && $guard++ < 80) {
+            if (isset($visited[$idx])) {
+                break;
+            }
+            $visited[$idx] = true;
+            $next = $this->resolveNextPage($pages, $pageKeyIndex, $idx, $values);
+            if ($next === null) {
+                break;
+            }
+            $idx = (int)$next;
+        }
+        $ids = [];
+        foreach ($visited as $pageIndex => $_) {
+            foreach ($pages[$pageIndex]['items'] as $field) {
+                $ids[(int)$field->id] = true;
+            }
+        }
+        return $ids;
     }
 
     private function skipForward(array $pages, int $idx, array $values, LogicEngine $engine): ?int

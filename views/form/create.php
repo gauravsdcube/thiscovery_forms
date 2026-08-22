@@ -9,8 +9,11 @@ use yii\helpers\Html;
 /** @var CustomForm $formModel */
 /** @var $contentContainer */
 /** @var CustomForm[] $templates */
+/** @var int $folderId */
 
 ThiscoveryFormsAsset::register($this);
+$folderId = (int)($folderId ?? 0);
+$createExtra = $folderId ? ['folder' => $folderId] : [];
 
 $kinds = CustomForm::getEnabledKindLabels();
 $descriptions = CustomForm::getKindDescriptions();
@@ -18,7 +21,8 @@ $icons = [
     CustomForm::KIND_SURVEY => 'fa-wpforms',
     CustomForm::KIND_POLL => 'fa-bar-chart',
     CustomForm::KIND_FEEDBACK => 'fa-commenting-o',
-    CustomForm::KIND_LONGITUDINAL => 'fa-line-chart',
+            CustomForm::KIND_EQ5D => 'fa-thermometer-half',
+            CustomForm::KIND_LONGITUDINAL => 'fa-line-chart',
     CustomForm::KIND_CONSENSUS => 'fa-balance-scale',
     CustomForm::KIND_PROJECT => 'fa-folder-open',
 ];
@@ -30,8 +34,8 @@ $icons = [
             <h1 class="cf-list-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Create') ?></h1>
             <p class="cf-list-sub"><?= Yii::t('ThiscoveryFormsModule.base', 'Choose a type, or start from a saved template.') ?></p>
         </div>
-        <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back'))
-            ->link(Url::toIndex($contentContainer))
+        <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
+            ->link(Url::toManageIndex($contentContainer))
             ->icon('arrow-left')
             ->loader(false) ?>
     </div>
@@ -43,7 +47,7 @@ $icons = [
             </p>
         <?php else: ?>
             <?php foreach ($kinds as $kind => $label): ?>
-                <a class="cf-kind-card" href="<?= Html::encode(Url::toCreate($contentContainer, ['kind' => $kind])) ?>">
+                <a class="cf-kind-card" href="<?= Html::encode(Url::toCreate($contentContainer, array_merge($createExtra, ['kind' => $kind]))) ?>">
                     <span class="cf-kind-card__icon"><i class="fa <?= Html::encode($icons[$kind] ?? 'fa-wpforms') ?>"></i></span>
                     <h3 class="cf-kind-card__title"><?= Html::encode($label) ?></h3>
                     <p class="cf-kind-card__desc"><?= Html::encode($descriptions[$kind] ?? '') ?></p>
@@ -52,12 +56,26 @@ $icons = [
         <?php endif; ?>
     </div>
 
+    <?php if (isset($kinds[CustomForm::KIND_SURVEY]) && !isset($kinds[CustomForm::KIND_EQ5D])): ?>
+        <h2 class="cf-create-wizard__h"><?= Yii::t('ThiscoveryFormsModule.base', 'Starters') ?></h2>
+        <div class="cf-kind-grid">
+            <a class="cf-kind-card" href="<?= Html::encode(Url::toCreate($contentContainer, array_merge($createExtra, [
+                'kind' => CustomForm::KIND_SURVEY,
+                'starter' => 'health-status',
+            ]))) ?>">
+                <span class="cf-kind-card__icon"><i class="fa fa-thermometer-half"></i></span>
+                <h3 class="cf-kind-card__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Health status pages') ?></h3>
+                <p class="cf-kind-card__desc"><?= Yii::t('ThiscoveryFormsModule.base', 'Five one-question pages plus a vertical 0–100 thermometer. Paste your licensed wording; this is not an official instrument.') ?></p>
+            </a>
+        </div>
+    <?php endif; ?>
+
     <?php if (!empty($templates)): ?>
         <h2 class="cf-create-wizard__h"><?= Yii::t('ThiscoveryFormsModule.base', 'From a template') ?></h2>
         <ul class="cf-template-list">
             <?php foreach ($templates as $template): ?>
                 <li>
-                    <a href="<?= Html::encode(Url::toCreate($contentContainer, ['template' => $template->id])) ?>">
+                    <a href="<?= Html::encode(Url::toCreate($contentContainer, array_merge($createExtra, ['template' => $template->id]))) ?>">
                         <strong><?= Html::encode($template->title) ?></strong>
                         <span class="text-muted">
                             <?= Html::encode(CustomForm::getKindLabels()[$template->kind] ?? $template->kind) ?>

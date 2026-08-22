@@ -16,16 +16,19 @@ class FillContextService
         $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
         $panel = new PanelService();
 
-        if ($form->isLongitudinal()) {
-            $this->resolveLongitudinal($ctx, $panel, $token);
+        if ($form->usesWaves()) {
+            $this->resolveWaves($ctx, $panel, $token);
         } elseif ($form->isConsensus()) {
             $this->resolveConsensus($ctx, $panel, $token);
+        } else {
+            $ctx->member = $panel->resolveMember($form, $token !== '' ? $token : null);
+            $ctx->tokenAccess = $ctx->member && $token !== '' && $ctx->member->token === $token;
         }
 
         return $ctx;
     }
 
-    private function resolveLongitudinal(FillContext $ctx, PanelService $panel, string $token): void
+    private function resolveWaves(FillContext $ctx, PanelService $panel, string $token): void
     {
         $form = $ctx->form;
         $ctx->wave = (new WaveService())->getCurrentOpen($form);
@@ -37,12 +40,20 @@ class FillContextService
         $ctx->member = $panel->resolveMember($form, $token ?: null);
         $ctx->tokenAccess = $ctx->member && $token !== '' && $ctx->member->token === $token;
 
-        if (!$ctx->member) {
-            $ctx->blockReason = Yii::t(
-                'ThiscoveryFormsModule.base',
-                'You need a panel invitation to take part in this survey.'
-            );
+        if ($ctx->member) {
+            return;
         }
+
+        $firstWave = (int)$ctx->wave->wave_number < 2;
+        $openFill = $form->canAnswer() || $form->allowsAnonymous();
+        if ($firstWave && $openFill) {
+            return;
+        }
+
+        $ctx->blockReason = Yii::t(
+            'ThiscoveryFormsModule.base',
+            'You need a panel invitation to take part in this survey.'
+        );
     }
 
     private function resolveConsensus(FillContext $ctx, PanelService $panel, string $token): void
@@ -73,7 +84,7 @@ class FillContextService
         if (!$scopeId) {
             return null;
         }
-        $query = FormAnswer::find()->where(['form_id' => $form->id, $column => $scopeId]);
+        $query = FormAnswer::find()->where(['form_id' => $form->id, $column => $scopeId, 'is_test' => 0]);
         if ($ctx->member) {
             $query->andWhere(['panel_member_id' => $ctx->member->id]);
         } else {

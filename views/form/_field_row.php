@@ -3,6 +3,7 @@
 use humhub\modules\thiscoveryEditor\widgets\EditorField;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
+use humhub\modules\thiscoveryForms\services\RespondentMetaService;
 use yii\helpers\Html;
 
 /** @var string|int $key */
@@ -19,19 +20,28 @@ $type = $field->type ?: FormField::TYPE_TEXT;
 $needsOptions = FormField::isChoiceType($type);
 $isRating = ($type === FormField::TYPE_RATING);
 $isPageBreak = ($type === FormField::TYPE_PAGE_BREAK);
+$isQuestionGroup = ($type === FormField::TYPE_QUESTION_GROUP);
+$isGroupEnd = ($type === FormField::TYPE_GROUP_END);
 $isRichText = ($type === FormField::TYPE_RICH_TEXT);
 $isHtml = ($type === FormField::TYPE_HTML);
+$isPanelAttr = ($type === FormField::TYPE_PANEL_ATTR);
 $isGrid = in_array($type, [FormField::TYPE_GRID_SINGLE, FormField::TYPE_GRID_MULTI], true);
 $isItems = in_array($type, [FormField::TYPE_BEST_WORST, FormField::TYPE_MAXDIFF], true);
 $isMaxDiff = ($type === FormField::TYPE_MAXDIFF);
 $isDrilldown = ($type === FormField::TYPE_DRILLDOWN);
 $isImageArea = ($type === FormField::TYPE_IMAGE_AREA);
 $isCarry = FormField::isCarryForwardType($type);
-$isAnswerable = !in_array($type, [FormField::TYPE_PAGE_BREAK, FormField::TYPE_RICH_TEXT], true)
+$isAnswerable = !in_array($type, [
+        FormField::TYPE_PAGE_BREAK,
+        FormField::TYPE_QUESTION_GROUP,
+        FormField::TYPE_GROUP_END,
+        FormField::TYPE_RICH_TEXT,
+    ], true)
     && !($type === FormField::TYPE_HTML && !$field->getHtmlConfig()['collect']);
 $rating = $field->getRatingScale();
 $pageBreak = $field->getPageBreakConfig();
 $htmlCfg = $field->getHtmlConfig();
+$emailTemplateOptions = $emailTemplateOptions ?? [0 => Yii::t('ThiscoveryFormsModule.base', 'Default email text')];
 $gridCfg = $field->getGridConfig();
 $itemsCfg = $field->getItemsConfig();
 $imageCfg = $field->getImageAreaConfig();
@@ -39,28 +49,24 @@ $logic = $field->getLogic();
 $carry = $field->getCarryForward();
 $hasCondition = $field->hasCondition();
 $randomize = $field->isRandomizeOptions();
+$panelAttrKeys = $panelAttrKeys ?? \humhub\modules\thiscoveryForms\services\PanelFieldService::surveyFieldLabels(null);
 
 $conditionOptions = ['' => Yii::t('ThiscoveryFormsModule.base', 'None')];
 $pageKeyOptions = ['' => Yii::t('ThiscoveryFormsModule.base', 'Select page…')];
 foreach ($allFields as $other) {
-    if ((string)$other->id === (string)$key || (string)($other->id ?: '') === '') {
-        // still list by key for unsaved
-    }
-    $otherKey = $other->id ?: null;
-    if ($otherKey && (string)$otherKey === (string)$key) {
+    $otherStudioKey = $other->id ? FormField::studioKey((int)$other->id) : '';
+    if ($otherStudioKey === '' || $otherStudioKey === (string)$key) {
         continue;
     }
-    if ($other->id && (string)$other->id !== (string)$key) {
-        if ($other->collectsAnswer() || FormField::isChoiceType($other->type) || !FormField::isStructuralType($other->type)) {
-            if ($other->type !== FormField::TYPE_PAGE_BREAK && $other->type !== FormField::TYPE_RICH_TEXT) {
-                $conditionOptions[$other->id] = $other->label ?: ('#' . $other->id);
-            }
+    if ($other->collectsAnswer() || FormField::isChoiceType($other->type) || !FormField::isStructuralType($other->type)) {
+        if ($other->type !== FormField::TYPE_PAGE_BREAK && $other->type !== FormField::TYPE_RICH_TEXT && $other->type !== FormField::TYPE_QUESTION_GROUP && $other->type !== FormField::TYPE_GROUP_END) {
+            $conditionOptions[$otherStudioKey] = $other->label ?: ('#' . $other->id);
         }
-        if ($other->type === FormField::TYPE_PAGE_BREAK) {
-            $pk = $other->getPageBreakConfig()['pageKey'];
-            $title = $other->getPageBreakConfig()['title'] ?: $pk;
-            $pageKeyOptions[$pk] = $title . ' (' . $pk . ')';
-        }
+    }
+    if ($other->type === FormField::TYPE_PAGE_BREAK) {
+        $pk = $other->getPageBreakConfig()['pageKey'];
+        $title = $other->getPageBreakConfig()['title'] ?: $pk;
+        $pageKeyOptions[$pk] = $title . ' (' . $pk . ')';
     }
 }
 // Always include own page key option when editing page break targets from other breaks
@@ -69,16 +75,25 @@ if ($isPageBreak && !empty($pageBreak['pageKey'])) {
 }
 
 $typeLabels = FormField::getTypeLabels();
+unset($typeLabels[FormField::TYPE_GROUP_END]);
 if (is_array($allowedTypes) && $allowedTypes) {
     $typeLabels = array_intersect_key($typeLabels, array_flip($allowedTypes));
 }
+if ($isGroupEnd) {
+    $typeLabels = [FormField::TYPE_GROUP_END => FormField::getTypeLabels()[FormField::TYPE_GROUP_END]];
+}
 $operatorLabels = FormField::getOperatorLabels();
-$actionLabels = LogicEngine::actionLabels();
+$actionLabels = LogicEngine::actionLabelsForType($type);
+if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEngine::actionLabels()[$logic['action']])) {
+    $actionLabels = [$logic['action'] => LogicEngine::actionLabels()[$logic['action']]] + $actionLabels;
+}
 $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP_EQUALS, 'value' => '']];
 ?>
-<div class="cf-field-card thiscovery-forms-field-row<?= $collapsed ? ' is-collapsed' : ' is-expanded' ?>" data-cf-key="<?= Html::encode($key) ?>" data-cf-type="<?= Html::encode($type) ?>">
+<div class="cf-field-card thiscovery-forms-field-row<?= $collapsed ? ' is-collapsed' : ' is-expanded' ?><?= $isQuestionGroup ? ' is-group' : '' ?><?= $isGroupEnd ? ' is-group-end d-none' : '' ?>" data-cf-key="<?= Html::encode($key) ?>" data-cf-type="<?= Html::encode($type) ?>">
     <?= Html::hiddenInput($namePrefix . '[id]', $field->id ?: '') ?>
     <?= Html::hiddenInput($namePrefix . '[sort_order]', (int)$field->sort_order, ['data-cf-sort-order' => true]) ?>
+    <?= Html::hiddenInput($namePrefix . '[instrument_role]', $field->getInstrumentRole()) ?>
+    <?= Html::hiddenInput($namePrefix . '[logic_keep]', json_encode($logic, JSON_UNESCAPED_UNICODE), ['data-cf-logic-keep' => true]) ?>
 
     <div class="cf-field-card__header" data-cf-toggle-card>
         <div class="cf-field-card__handle" data-cf-drag-handle title="<?= Yii::t('ThiscoveryFormsModule.base', 'Drag to reorder') ?>">
@@ -94,6 +109,9 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             </span>
             <?php if ($field->required): ?>
                 <span class="cf-field-card__req"><?= Yii::t('ThiscoveryFormsModule.base', 'Required') ?></span>
+            <?php endif; ?>
+            <?php if ($field->isHiddenFromRespondent()): ?>
+                <span class="cf-field-card__req" data-cf-hidden-badge><?= Yii::t('ThiscoveryFormsModule.base', 'Hidden') ?></span>
             <?php endif; ?>
         </div>
         <div class="cf-field-card__actions">
@@ -147,6 +165,37 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Required') ?>
                     </label>
                 </div>
+                <div class="cf-switch mt-2<?= in_array($type, [FormField::TYPE_PAGE_BREAK, FormField::TYPE_QUESTION_GROUP, FormField::TYPE_GROUP_END, FormField::TYPE_RICH_TEXT], true) ? ' d-none' : '' ?>" data-cf-hidden-wrap>
+                    <label>
+                        <?= Html::checkbox($namePrefix . '[hidden]', $field->isHiddenFromRespondent(), [
+                            'value' => '1',
+                            'uncheck' => null,
+                            'data-cf-hidden-field' => true,
+                            'disabled' => $type === FormField::TYPE_RESPONDENT_META,
+                        ]) ?>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Hidden from respondents') ?>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1<?= $type === FormField::TYPE_RESPONDENT_META ? '' : ' d-none' ?>" data-cf-meta-key-wrap>
+            <div class="col-md-6">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Records') ?></label>
+                <?= Html::dropDownList($namePrefix . '[meta_key]', $field->getRespondentMetaKey() ?: RespondentMetaService::KEY_IP, RespondentMetaService::keyLabels(), [
+                    'class' => 'form-control',
+                    'data-cf-meta-key' => true,
+                ]) ?>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1<?= $type === FormField::TYPE_PANEL_ATTR ? '' : ' d-none' ?>" data-cf-panel-key-wrap>
+            <div class="col-md-6">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Panel field') ?></label>
+                <?= Html::dropDownList($namePrefix . '[panel_key]', $field->getPanelAttrKey() ?: 'first_name', $panelAttrKeys, [
+                    'class' => 'form-control',
+                    'data-cf-panel-key' => true,
+                ]) ?>
             </div>
         </div>
 
@@ -162,15 +211,50 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             </div>
         </div>
 
+        <div class="cf-field-note<?= $type === FormField::TYPE_RESPONDENT_META ? '' : ' d-none' ?>" data-cf-meta-note>
+            <i class="fa fa-info-circle" aria-hidden="true"></i>
+            <div>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Hidden from respondents. Stores this one value on the response for analysis.') ?>
+            </div>
+        </div>
+
+        <div class="cf-field-note<?= $type === FormField::TYPE_EMAIL ? '' : ' d-none' ?>" data-cf-email-note>
+            <i class="fa fa-info-circle" aria-hidden="true"></i>
+            <div>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Respondents must enter a valid email address. The form checks the format when they continue or submit.') ?>
+            </div>
+        </div>
+
+        <div class="cf-field-note<?= $type === FormField::TYPE_PANEL_ATTR ? '' : ' d-none' ?>" data-cf-panel-note>
+            <i class="fa fa-info-circle" aria-hidden="true"></i>
+            <div>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Copies this panel member value onto the response. Hidden by default; untick Hidden from respondents if people should confirm or update it. Use {{member.field_key}} in labels and email.') ?>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1<?= ($field->isHiddenFromRespondent() && $type !== FormField::TYPE_RESPONDENT_META) ? '' : ' d-none' ?>" data-cf-default-wrap>
+            <div class="col-md-12">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stored value') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                </label>
+                <?= Html::textInput($namePrefix . '[default_value]', $field->getDefaultValue(), [
+                    'class' => 'form-control',
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Value stored with the response'),
+                    'data-cf-default-value' => true,
+                ]) ?>
+                <p class="cf-hint text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'Use this for an internal variable. Respondents do not see or edit it.') ?></p>
+            </div>
+        </div>
+
         <div class="cf-options-panel<?= $needsOptions ? '' : ' d-none' ?>" data-cf-options-panel>
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Choices') ?>
-                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? ' d-none' : '' ?>" data-cf-options-hint-choice><?= Yii::t('ThiscoveryFormsModule.base', 'One option per line') ?></span>
+                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? ' d-none' : '' ?>" data-cf-options-hint-choice><?= Yii::t('ThiscoveryFormsModule.base', 'One option per line. Optional internal code before |') ?></span>
                 <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? '' : ' d-none' ?>" data-cf-options-hint-ranking><?= Yii::t('ThiscoveryFormsModule.base', 'Items respondents will rank (one per line)') ?></span>
             </label>
             <?= Html::textarea($namePrefix . '[options]', $field->getOptionsAsText(), [
                 'class' => 'form-control',
                 'rows' => 4,
-                'placeholder' => Yii::t('ThiscoveryFormsModule.base', "Option A\nOption B\nOption C"),
+                'placeholder' => Yii::t('ThiscoveryFormsModule.base', "P1 | Public sector\nP2 | Private sector\nP3 | Third sector"),
                 'data-cf-options' => true,
             ]) ?>
             <div class="cf-switch mt-2">
@@ -184,7 +268,18 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 </label>
             </div>
             <div class="row g-3 mt-1<?= $type === FormField::TYPE_CHECKBOX ? '' : ' d-none' ?>" data-cf-max-select-wrap>
-                <div class="col-md-6">
+                <div class="col-md-4">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Minimum selections') ?>
+                        <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                    </label>
+                    <?= Html::input('number', $namePrefix . '[min_select]', $field->getMinSelect(), [
+                        'class' => 'form-control',
+                        'min' => 1,
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'No minimum'),
+                        'data-cf-min-select' => true,
+                    ]) ?>
+                </div>
+                <div class="col-md-4">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Maximum selections') ?>
                         <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                     </label>
@@ -195,7 +290,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         'data-cf-max-select' => true,
                     ]) ?>
                 </div>
-                <div class="col-md-6">
+                <div class="col-md-4">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Exclusive option') ?>
                         <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                     </label>
@@ -204,6 +299,21 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. None of these'),
                         'data-cf-exclusive-option' => true,
                     ]) ?>
+                </div>
+                <div class="col-12">
+                    <div class="cf-switch">
+                        <label>
+                            <?= Html::checkbox($namePrefix . '[min_select_all]', $field->isMinSelectAll(), [
+                                'value' => '1',
+                                'uncheck' => '0',
+                                'data-cf-min-select-all' => true,
+                            ]) ?>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Require every option to be selected') ?>
+                        </label>
+                    </div>
+                    <p class="cf-hint text-muted mb-0">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Use a minimum to require some ticks, or require every option. An exclusive choice such as “None of these” still counts as a complete answer on its own.') ?>
+                    </p>
                 </div>
             </div>
             <div class="cf-field-note<?= $type === FormField::TYPE_RANKING ? '' : ' d-none' ?>" data-cf-ranking-note>
@@ -215,7 +325,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <div class="cf-field-note<?= in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true) ? '' : ' d-none' ?>" data-cf-choice-note>
                 <i class="fa fa-info-circle" aria-hidden="true"></i>
                 <div>
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Each line becomes one selectable choice. Duplicate or empty lines are ignored. Add a line called Other to let people type their own answer.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Each line is one choice. Use code | Label so respondents see the label and answers store the code. Add a line called Other to let people type their own answer.') ?>
                 </div>
             </div>
             <div class="cf-field-note" data-cf-randomize-note>
@@ -229,9 +339,10 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Carry forward choices from') ?>
                         <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                     </label>
-                    <?= Html::dropDownList($namePrefix . '[carry_from]', $carry['from'], $conditionOptions, [
+                    <?= Html::dropDownList($namePrefix . '[carry_from]', FormField::toStudioKey((string)$carry['from']), $conditionOptions, [
                         'class' => 'form-control',
                         'data-cf-carry-from' => true,
+                        'data-cf-selected-key' => FormField::toStudioKey((string)$carry['from']),
                     ]) ?>
                 </div>
                 <div class="col-md-6">
@@ -267,6 +378,21 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 </div>
             </div>
             <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Display') ?></label>
+                    <?= Html::dropDownList($namePrefix . '[rating_display]', $rating['display'] ?? FormField::RATING_DISPLAY_PILLS, FormField::getRatingDisplayLabels(), [
+                        'class' => 'form-control',
+                    ]) ?>
+                    <div class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Thermometer is a vertical scale. Use 0–100, step 1 for a health VAS.') ?></div>
+                </div>
+                <div class="col-md-12">
+                    <div class="cf-field-note">
+                        <i class="fa fa-info-circle" aria-hidden="true"></i>
+                        <div>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Official health-status wording and copyright must come from your own licence (for example EuroQol). This layout is a generic vertical scale.') ?>
+                        </div>
+                    </div>
+                </div>
                 <div class="col-md-2">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Min') ?></label>
                     <?= Html::input('number', $namePrefix . '[rating_min]', (int)$rating['min'], [
@@ -315,7 +441,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <div class="cf-field-note">
                 <i class="fa fa-info-circle" aria-hidden="true"></i>
                 <div>
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Inserts a new page after the previous fields. Respondents use Next/Back. Optional branch rules can jump to another page when leaving this page, based on an answer.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Inserts a new page after the previous fields. Respondents use Next/Back. Logic or branch rules on this break run when they click Next on the page before it.') ?>
                 </div>
             </div>
             <div class="row g-3">
@@ -348,9 +474,10 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     ?>
                         <div class="cf-branch-row row g-2 mb-2" data-cf-branch-row>
                             <div class="col-md-3">
-                                <?= Html::dropDownList($namePrefix . '[branches][' . $bi . '][fieldKey]', $branch['fieldKey'] ?? '', $conditionOptions, [
+                                <?= Html::dropDownList($namePrefix . '[branches][' . $bi . '][fieldKey]', FormField::toStudioKey((string)($branch['fieldKey'] ?? '')), $conditionOptions, [
                                     'class' => 'form-control',
                                     'data-cf-branch-field' => true,
+                                    'data-cf-selected-key' => FormField::toStudioKey((string)($branch['fieldKey'] ?? '')),
                                 ]) ?>
                             </div>
                             <div class="col-md-2">
@@ -592,9 +719,11 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             </div>
         </div>
 
-        <div class="cf-advanced-panel<?= $hasCondition ? ' is-open' : '' ?>" data-cf-advanced>
+        <div class="cf-advanced-panel<?= $hasCondition ? ' is-open' : '' ?>" data-cf-advanced data-cf-logic-panel>
             <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?></div>
-            <div class="cf-field-help mb-2"><?= Yii::t('ThiscoveryFormsModule.base', 'Simple: show or hide this question. Advanced: skip a page or jump when the rules match. Combine rules with AND or OR.') ?></div>
+            <div class="cf-field-help mb-2"><?= $isQuestionGroup
+                ? Yii::t('ThiscoveryFormsModule.base', 'Show or hide every question in this group from an earlier answer. Type option text exactly as listed, without quotation marks.')
+                : Yii::t('ThiscoveryFormsModule.base', 'Simple: show or hide this question. Advanced: skip a page or jump when the rules match. Combine rules with AND or OR. Type option text exactly as listed, without quotation marks.') ?></div>
             <div class="row g-3">
                 <div class="col-md-5">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Action') ?></label>
@@ -608,7 +737,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     <?= Html::dropDownList($namePrefix . '[logic_combinator]', $logic['combinator'], [
                         'and' => Yii::t('ThiscoveryFormsModule.base', 'All rules (AND)'),
                         'or' => Yii::t('ThiscoveryFormsModule.base', 'Any rule (OR)'),
-                    ], ['class' => 'form-control']) ?>
+                    ], ['class' => 'form-control', 'data-cf-logic-combinator' => true]) ?>
                 </div>
                 <div class="col-md-4<?= in_array($logic['action'], [LogicEngine::ACTION_GOTO_PAGE], true) ? '' : ' d-none' ?>" data-cf-logic-goto-wrap>
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Go to page key') ?></label>
@@ -624,20 +753,23 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     <?php foreach ($logicRules as $ri => $rule): ?>
                         <div class="cf-branch-row row g-2 mb-2" data-cf-logic-rule-row>
                             <div class="col-md-4">
-                                <?= Html::dropDownList($namePrefix . '[logic_rules][' . $ri . '][fieldKey]', $rule['fieldKey'] ?? '', $conditionOptions, [
+                                <?= Html::dropDownList($namePrefix . '[logic_rules][' . $ri . '][fieldKey]', FormField::toStudioKey((string)($rule['fieldKey'] ?? '')), $conditionOptions, [
                                     'class' => 'form-control',
                                     'data-cf-condition-field' => true,
+                                    'data-cf-selected-key' => FormField::toStudioKey((string)($rule['fieldKey'] ?? '')),
                                 ]) ?>
                             </div>
                             <div class="col-md-3">
                                 <?= Html::dropDownList($namePrefix . '[logic_rules][' . $ri . '][operator]', $rule['operator'] ?? FormField::OP_EQUALS, $operatorLabels, [
                                     'class' => 'form-control',
+                                    'data-cf-logic-operator' => true,
                                 ]) ?>
                             </div>
                             <div class="col-md-3">
                                 <?= Html::textInput($namePrefix . '[logic_rules][' . $ri . '][value]', $rule['value'] ?? '', [
                                     'class' => 'form-control',
                                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Value'),
+                                    'data-cf-logic-value' => true,
                                 ]) ?>
                             </div>
                             <div class="col-md-2">
@@ -652,6 +784,36 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     <i class="fa fa-plus"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Add rule') ?>
                 </button>
             </div>
+        </div>
+
+        <div class="cf-actions-panel<?= $field->hasActions() ? ' is-open' : '' ?>" data-cf-field-actions>
+            <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Actions') ?></div>
+            <div class="cf-field-help mb-2">
+                <?= $isPageBreak
+                    ? Yii::t('ThiscoveryFormsModule.base', 'These run when the respondent finishes the page before this break (Next), in the order listed. Custom function looks up a named formula from Settings → Custom functions.')
+                    : Yii::t('ThiscoveryFormsModule.base', 'These run when this question is answered, in the order listed. Custom function looks up a named formula from Settings → Custom functions.') ?>
+            </div>
+            <?= $this->render('@thiscovery-forms/views/form/_action_rows', [
+                'namePrefix' => $namePrefix . '[actions]',
+                'actions' => $field->getActions() ?: [\humhub\modules\thiscoveryForms\services\FormActionService::emptyAction()],
+                'emailTemplateOptions' => $emailTemplateOptions,
+                'pageKeyOptions' => $pageKeyOptions,
+            ]) ?>
+        </div>
+    </div>
+
+    <div class="cf-group-shell<?= $isQuestionGroup ? '' : ' d-none' ?>" data-cf-group-shell>
+        <div class="cf-group-toolbar">
+            <button type="button" class="btn btn-sm btn-light" data-cf-add-in-group>
+                <i class="fa fa-plus"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Add question to group') ?>
+            </button>
+            <button type="button" class="btn btn-sm btn-light" data-cf-toggle-advanced>
+                <i class="fa fa-code-fork"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?>
+            </button>
+            <span class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Use Logic on this group to show or hide every question inside it together.') ?></span>
+        </div>
+        <div class="cf-group-body" data-cf-group-body>
+            <div class="cf-group-empty" data-cf-group-empty><?= Yii::t('ThiscoveryFormsModule.base', 'No questions in this group yet.') ?></div>
         </div>
     </div>
 </div>

@@ -3,6 +3,8 @@
 namespace humhub\modules\thiscoveryForms\models;
 
 use humhub\components\ActiveRecord;
+use humhub\modules\thiscoveryForms\services\PanelFieldService;
+use humhub\modules\content\models\ContentContainer;
 use humhub\modules\user\models\User;
 use Yii;
 use yii\db\ActiveQuery;
@@ -13,6 +15,7 @@ use yii\db\ActiveQuery;
  * @property int|null $created_by
  * @property string $title
  * @property string|null $description
+ * @property string|null $fields_json
  * @property string|null $created_at
  * @property string|null $updated_at
  *
@@ -31,7 +34,7 @@ class FormPanel extends ActiveRecord
         return [
             [['title'], 'required'],
             [['title'], 'string', 'max' => 255],
-            [['description'], 'string'],
+            [['description', 'fields_json'], 'string'],
             [['contentcontainer_id', 'created_by'], 'integer'],
             [['created_at', 'updated_at'], 'safe'],
         ];
@@ -42,7 +45,28 @@ class FormPanel extends ActiveRecord
         return [
             'title' => Yii::t('ThiscoveryFormsModule.base', 'Panel name'),
             'description' => Yii::t('ThiscoveryFormsModule.base', 'Description'),
+            'fields_json' => Yii::t('ThiscoveryFormsModule.base', 'Member fields'),
         ];
+    }
+
+    /**
+     * Extra attributes collected on members of this panel.
+     *
+     * @return array<int, array{key:string,label:string,type:string,options:string[]}>
+     */
+    public function getMemberFields(): array
+    {
+        $decoded = json_decode((string)$this->fields_json, true);
+        if (!is_array($decoded)) {
+            return [];
+        }
+        return PanelFieldService::normalizeSchema($decoded);
+    }
+
+    public function setMemberFields(array $rows): void
+    {
+        $fields = PanelFieldService::normalizeSchema($rows);
+        $this->fields_json = $fields ? json_encode($fields, JSON_UNESCAPED_UNICODE) : null;
     }
 
     public function beforeSave($insert)
@@ -75,11 +99,35 @@ class FormPanel extends ActiveRecord
         return $this->hasOne(User::class, ['id' => 'created_by']);
     }
 
+    public function getActivities(): ActiveQuery
+    {
+        return $this->hasMany(FormPanelActivity::class, ['panel_id' => 'id'])
+            ->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC]);
+    }
+
+    public function getActiveMemberCount(): int
+    {
+        return (int)$this->getActiveMembers()->count();
+    }
+
+    /**
+     * Space this panel belongs to, or null for network-level panels.
+     */
+    public function getContentContainer()
+    {
+        if (!$this->contentcontainer_id) {
+            return null;
+        }
+        $row = ContentContainer::findOne((int)$this->contentcontainer_id);
+        return $row ? $row->getPolymorphicRelation() : null;
+    }
+
     public function beforeDelete()
     {
         if (!parent::beforeDelete()) {
             return false;
         }
+        FormPanelActivity::deleteAll(['panel_id' => $this->id]);
         foreach ($this->members as $member) {
             $member->delete();
         }

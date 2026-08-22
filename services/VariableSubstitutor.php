@@ -4,19 +4,29 @@ namespace humhub\modules\thiscoveryForms\services;
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormField;
+use humhub\modules\thiscoveryForms\models\FormPanelMember;
+use humhub\modules\thiscoveryForms\services\PanelFieldService;
 use humhub\modules\user\models\User;
 
 class VariableSubstitutor
 {
     /**
-     * Replace {{user.*}}, {{form.title}}, {{answer:ID|Label}}, {{field:ID}} placeholders.
+     * Replace {{user.*}}, {{form.title}}, {{answer:ID|Label}}, {{field:ID}}, {{var:name}} placeholders.
      *
      * @param array $answers fieldId => value
      * @param FormField[] $fields
+     * @param array<string,string> $vars
+     * @param FormPanelMember|null $member
      */
-    public function substitute(string $html, ?User $user, CustomForm $form, array $answers = [], array $fields = [], bool $escape = true): string
+    public function substitute(string $html, ?User $user, CustomForm $form, array $answers = [], array $fields = [], bool $escape = true, array $vars = [], ?FormPanelMember $member = null): string
     {
-        $map = $this->userFormMap($user, $form);
+        $map = $this->tokenMap($user, $form, $member, $escape);
+        foreach ($vars as $key => $value) {
+            $text = (string)$value;
+            $map[strtolower((string)$key)] = $escape
+                ? htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : $text;
+        }
 
         $html = preg_replace_callback('/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/', static function ($m) use ($map) {
             $key = strtolower($m[1]);
@@ -57,13 +67,52 @@ class VariableSubstitutor
             return $format($fieldId, true);
         }, $html) ?? $html;
 
+        $html = preg_replace_callback('/\{\{\s*var:([^}]+)\s*\}\}/i', static function ($m) use ($vars, $escape) {
+            $key = trim($m[1]);
+            if ($key === '' || !array_key_exists($key, $vars)) {
+                $lower = strtolower($key);
+                foreach ($vars as $name => $value) {
+                    if (strtolower((string)$name) === $lower) {
+                        $text = (string)$value;
+                        return $escape
+                            ? htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                            : $text;
+                    }
+                }
+                return '';
+            }
+            $text = (string)$vars[$key];
+            return $escape
+                ? htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                : $text;
+        }, $html) ?? $html;
+
         return $html;
     }
 
-    public function substitutePlain(string $text, ?User $user, CustomForm $form, array $answers = [], array $fields = []): string
+    public function substitutePlain(string $text, ?User $user, CustomForm $form, array $answers = [], array $fields = [], array $vars = [], ?FormPanelMember $member = null): string
     {
         $safe = htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-        return $this->substitute($safe, $user, $form, $answers, $fields, true);
+        return $this->substitute($safe, $user, $form, $answers, $fields, true, $vars, $member);
+    }
+
+    /**
+     * Lowercase placeholder keys for fill JS and PHP piping.
+     *
+     * @return array<string,string>
+     */
+    public function tokenMap(?User $user, CustomForm $form, ?FormPanelMember $member = null, bool $escape = false): array
+    {
+        $map = $this->userFormMap($user, $form);
+        foreach (PanelFieldService::variableMap($member, $member ? $member->panel : $form->getAttachedPanel()) as $key => $value) {
+            $map[strtolower((string)$key)] = (string)$value;
+        }
+        if ($escape) {
+            foreach ($map as $k => $v) {
+                $map[$k] = htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
+        }
+        return $map;
     }
 
     /**

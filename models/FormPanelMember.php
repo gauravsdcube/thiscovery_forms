@@ -12,6 +12,8 @@ use yii\db\ActiveQuery;
  * @property int $panel_id
  * @property int|null $user_id
  * @property string|null $email
+ * @property string|null $first_name
+ * @property string|null $last_name
  * @property string|null $display_name
  * @property string $token
  * @property string|null $demographics_json
@@ -39,7 +41,7 @@ class FormPanelMember extends ActiveRecord
         return [
             [['panel_id', 'token'], 'required'],
             [['panel_id', 'user_id'], 'integer'],
-            [['email', 'display_name'], 'string', 'max' => 255],
+            [['email', 'display_name', 'first_name', 'last_name'], 'string', 'max' => 255],
             [['email'], 'email'],
             [['token'], 'string', 'max' => 64],
             [['demographics_json'], 'string'],
@@ -76,11 +78,27 @@ class FormPanelMember extends ActiveRecord
             $this->status = self::STATUS_ACTIVE;
         }
         if (!$this->display_name) {
-            $this->display_name = $this->user
-                ? $this->user->displayName
-                : (string)$this->email;
+            $this->display_name = $this->buildDisplayName();
         }
         return true;
+    }
+
+    public function buildDisplayName(): string
+    {
+        $parts = array_filter([trim((string)$this->first_name), trim((string)$this->last_name)]);
+        if ($parts) {
+            return implode(' ', $parts);
+        }
+        if ($this->user) {
+            return $this->user->displayName;
+        }
+        return (string)$this->email;
+    }
+
+    public function getActivities(): ActiveQuery
+    {
+        return $this->hasMany(FormPanelActivity::class, ['member_id' => 'id'])
+            ->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC]);
     }
 
     public function getPanel(): ActiveQuery
@@ -100,11 +118,12 @@ class FormPanelMember extends ActiveRecord
 
     public function getDisplayLabel(): string
     {
+        $built = $this->buildDisplayName();
+        if (trim($built) !== '') {
+            return $built;
+        }
         if (trim((string)$this->display_name) !== '') {
             return (string)$this->display_name;
-        }
-        if ($this->user) {
-            return $this->user->displayName;
         }
         return (string)($this->email ?: Yii::t('ThiscoveryFormsModule.base', 'Panel member'));
     }
@@ -113,6 +132,20 @@ class FormPanelMember extends ActiveRecord
     {
         $decoded = json_decode((string)$this->demographics_json, true);
         return is_array($decoded) ? $decoded : [];
+    }
+
+    public function setDemographics(array $data): void
+    {
+        $clean = [];
+        foreach ($data as $key => $value) {
+            $key = trim((string)$key);
+            $value = is_array($value) ? trim(implode(', ', $value)) : trim((string)$value);
+            if ($key === '' || $value === '') {
+                continue;
+            }
+            $clean[$key] = $value;
+        }
+        $this->demographics_json = $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
     }
 
     public function markConsent(): void

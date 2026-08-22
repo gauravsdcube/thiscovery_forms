@@ -2,28 +2,58 @@
 
 namespace humhub\modules\thiscoveryForms\services;
 
+use humhub\modules\thiscoveryForms\Module;
 use humhub\modules\thiscoveryForms\models\CustomForm;
+use humhub\modules\thiscoveryForms\models\FormPanel;
 use humhub\modules\thiscoveryForms\models\FormWave;
 use Yii;
 
 class WaveService
 {
+    public function wavesLiveOnPanel(): bool
+    {
+        return Module::wavesLiveOnPanelStatic();
+    }
+
     public function ensureSetup(CustomForm $form): void
     {
-        if (!$form->id || !$form->isLongitudinal() || $form->isTemplate()) {
+        if (!$form->id || !$form->usesWaves() || $form->isTemplate()) {
             return;
         }
         (new PanelService())->ensurePanel($form);
-        if (!FormWave::find()->where(['form_id' => $form->id])->exists()) {
+        if (!$this->listWaves($form)) {
             $this->createWave($form, Yii::t('ThiscoveryFormsModule.base', 'Wave 1'));
         }
     }
 
     public function createWave(CustomForm $form, ?string $title = null, ?string $opensAt = null, ?string $closesAt = null): FormWave
     {
+        if ($this->wavesLiveOnPanel()) {
+            $panel = (new PanelService())->ensurePanel($form);
+            if ($panel) {
+                return $this->createWaveForPanel($panel, $title, $opensAt, $closesAt);
+            }
+        }
+
         $max = (int)FormWave::find()->where(['form_id' => $form->id])->max('wave_number');
         $wave = new FormWave();
         $wave->form_id = $form->id;
+        $wave->panel_id = null;
+        $wave->wave_number = $max + 1;
+        $wave->title = $title ?: Yii::t('ThiscoveryFormsModule.base', 'Wave {n}', ['n' => $wave->wave_number]);
+        $wave->status = FormWave::STATUS_DRAFT;
+        $wave->opens_at = $this->normalizeDateTime($opensAt);
+        $wave->closes_at = $this->normalizeDateTime($closesAt);
+        $wave->save(false);
+        return $wave;
+    }
+
+    public function createWaveForPanel(FormPanel $panel, ?string $title = null, ?string $opensAt = null, ?string $closesAt = null): FormWave
+    {
+        $max = (int)FormWave::find()->where(['panel_id' => $panel->id])->max('wave_number');
+        $wave = new FormWave();
+        $wave->form_id = null;
+        $wave->panel_id = $panel->id;
         $wave->wave_number = $max + 1;
         $wave->title = $title ?: Yii::t('ThiscoveryFormsModule.base', 'Wave {n}', ['n' => $wave->wave_number]);
         $wave->status = FormWave::STATUS_DRAFT;
@@ -35,12 +65,8 @@ class WaveService
 
     public function getCurrentOpen(CustomForm $form): ?FormWave
     {
-        $waves = FormWave::find()
-            ->where(['form_id' => $form->id, 'status' => FormWave::STATUS_OPEN])
-            ->orderBy(['wave_number' => SORT_DESC])
-            ->all();
-        foreach ($waves as $wave) {
-            if ($wave->isOpenNow()) {
+        foreach ($this->listWaves($form) as $wave) {
+            if ($wave->status === FormWave::STATUS_OPEN && $wave->isOpenNow()) {
                 return $wave;
             }
         }
@@ -52,10 +78,34 @@ class WaveService
      */
     public function listWaves(CustomForm $form): array
     {
+        if ($this->wavesLiveOnPanel()) {
+            $panel = (new PanelService())->getPanel($form);
+            return $panel ? $this->listWavesForPanel($panel) : [];
+        }
         return FormWave::find()
             ->where(['form_id' => $form->id])
             ->orderBy(['wave_number' => SORT_ASC])
             ->all();
+    }
+
+    /**
+     * @return FormWave[]
+     */
+    public function listWavesForPanel(FormPanel $panel): array
+    {
+        return FormWave::find()
+            ->where(['panel_id' => $panel->id])
+            ->orderBy(['wave_number' => SORT_ASC])
+            ->all();
+    }
+
+    public function waveBelongsToForm(FormWave $wave, CustomForm $form): bool
+    {
+        if ((int)$wave->panel_id) {
+            $panel = (new PanelService())->getPanel($form);
+            return $panel && (int)$panel->id === (int)$wave->panel_id;
+        }
+        return (int)$wave->form_id === (int)$form->id;
     }
 
     public function setStatus(FormWave $wave, string $status): bool
@@ -64,11 +114,14 @@ class WaveService
             return false;
         }
         if ($status === FormWave::STATUS_OPEN) {
+            $owner = (int)$wave->panel_id
+                ? ['panel_id' => (int)$wave->panel_id]
+                : ['form_id' => (int)$wave->form_id];
             FormWave::updateAll(
                 ['status' => FormWave::STATUS_CLOSED, 'updated_at' => date('Y-m-d H:i:s')],
                 [
                     'and',
-                    ['form_id' => $wave->form_id],
+                    $owner,
                     ['status' => FormWave::STATUS_OPEN],
                     ['<>', 'id', $wave->id],
                 ]
@@ -78,8 +131,7 @@ class WaveService
             }
         }
         $wave->status = $status;
-        $ok = $wave->save(false, ['status', 'opens_at', 'updated_at']);
-        return $ok;
+        return $wave->save(false, ['status', 'opens_at', 'updated_at']);
     }
 
     /**
@@ -89,31 +141,65 @@ class WaveService
      */
     public function inviteIfDue(FormWave $wave, bool $force = false): ?array
     {
-        $form = $wave->form;
-        if (!$form || $form->isTemplate() || !$form->isLongitudinal()) {
-            return null;
-        }
-        if (!$force && !$form->emailsOnWaveOpen()) {
-            return ['sent' => 0, 'failed' => 0, 'skipped' => 'off'];
-        }
         if ((int)$wave->wave_number < 2) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'first'];
         }
         if ($wave->status !== FormWave::STATUS_OPEN || !$wave->isOpenNow()) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'scheduled'];
         }
-        if (!$form->isOpen()) {
-            return ['sent' => 0, 'failed' => 0, 'skipped' => 'form'];
-        }
         if ($wave->invited_at) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'already'];
         }
 
-        $result = (new PanelService())->inviteAll($form, $wave);
+        $forms = $this->formsForWave($wave);
+        if (!$forms) {
+            return ['sent' => 0, 'failed' => 0, 'skipped' => 'form'];
+        }
+
+        $sent = 0;
+        $failed = 0;
+        $anyReady = false;
+        $anyEmailOn = false;
+        foreach ($forms as $form) {
+            if ($form->isTemplate() || !$form->usesWaves()) {
+                continue;
+            }
+            if (!$form->isOpen()) {
+                continue;
+            }
+            $anyReady = true;
+            if (!$force && !$form->emailsOnWaveOpen()) {
+                continue;
+            }
+            $anyEmailOn = true;
+            $result = (new PanelService())->inviteAll($form, $wave);
+            $sent += (int)($result['sent'] ?? 0);
+            $failed += (int)($result['failed'] ?? 0);
+        }
+
+        if (!$anyReady) {
+            return ['sent' => 0, 'failed' => 0, 'skipped' => 'form'];
+        }
+        if (!$force && !$anyEmailOn) {
+            return ['sent' => 0, 'failed' => 0, 'skipped' => 'off'];
+        }
+
         $wave->invited_at = date('Y-m-d H:i:s');
         $wave->save(false, ['invited_at', 'updated_at']);
-        $result['skipped'] = null;
-        return $result;
+        return ['sent' => $sent, 'failed' => $failed, 'skipped' => null];
+    }
+
+    /**
+     * @return CustomForm[]
+     */
+    public function formsForWave(FormWave $wave): array
+    {
+        if ((int)$wave->panel_id) {
+            $panel = $wave->panel ?: FormPanel::findOne((int)$wave->panel_id);
+            return $panel ? (new PanelService())->waveFormsForPanel($panel) : [];
+        }
+        $form = $wave->form;
+        return $form ? [$form] : [];
     }
 
     /**

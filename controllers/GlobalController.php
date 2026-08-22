@@ -14,10 +14,10 @@ use humhub\modules\thiscoveryForms\permissions\CreateGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\services\DashboardService;
 use humhub\modules\thiscoveryForms\services\ExportService;
+use humhub\modules\thiscoveryForms\services\FolderService;
+use humhub\modules\thiscoveryForms\services\FormListService;
 use Yii;
-use yii\data\ActiveDataProvider;
 use yii\web\ForbiddenHttpException;
-use yii\web\HttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -27,6 +27,11 @@ class GlobalController extends Controller
     use StudioTrait;
     use ProgrammeTrait;
     use ApprovalTrait;
+    use AnswersListTrait;
+    use FolderTrait;
+    use PanelAdminTrait;
+    use EmailAdminTrait;
+    use HelpTrait;
 
     public $subLayout = '@thiscovery-forms/views/layouts/default';
 
@@ -44,12 +49,21 @@ class GlobalController extends Controller
                 'dashboard', 'overview', 'export', 'delete',
                 'save-template', 'export-questions', 'import-questions', 'sample-questions',
                 'library-list', 'library-save', 'library-delete', 'library-insert',
+                'insert-health-status',
                 'panel-save', 'panel-add-member', 'panel-remove-member', 'panel-invite',
                 'wave-save', 'wave-status',
                 'round-save', 'round-status', 'round-publish', 'round-delphi',
                 'translations-save', 'export-translations', 'import-translations',
                 'stage-save', 'stage-delete', 'stage-move',
                 'catalogue', 'project', 'answer-approve', 'answer-changes', 'answer-archive',
+                'answer-detail',
+                'folder-edit', 'folder-delete', 'move-form',
+                'panels', 'panel-edit', 'panel-view', 'panel-delete', 'panel-member',
+                'panel-member-add', 'panel-member-remove', 'panel-import', 'panel-sample',
+                'panel-wave-save', 'panel-wave-status',
+                'email-templates', 'email-template-edit', 'email-template-delete',
+                'regenerate-preview', 'regenerate-dashboard-share',
+                'help',
             ]],
         ];
     }
@@ -70,17 +84,18 @@ class GlobalController extends Controller
             $query->andWhere(['custom_form.status' => CustomForm::STATUS_OPEN]);
         }
 
-        $provider = new ActiveDataProvider([
-            'query' => $query->with('fields'),
-            'pagination' => ['pageSize' => 20],
-        ]);
+        [$provider, $filters] = FormListService::provider($query, Yii::$app->request->queryParams, null);
 
         return $this->render('index', [
             'dataProvider' => $provider,
+            'filters' => $filters,
             'canCreate' => Yii::$app->user->can(CreateGlobalForm::class),
             'templates' => Yii::$app->user->can(CreateGlobalForm::class)
                 ? CustomForm::findAvailableTemplates(null)
                 : [],
+            'folderBrowse' => FolderService::browse(null, Yii::$app->request->queryParams),
+            'canManagePanels' => $canManage,
+            'canViewHelp' => $this->canViewHelp(),
         ]);
     }
 
@@ -103,6 +118,9 @@ class GlobalController extends Controller
 
     protected function handleEdit(CustomForm $form, bool $isNew, array $seedFields = [])
     {
+        // Keep Administration left menu when editing from the admin Forms area.
+        $this->subLayout = '@humhub/modules/admin/views/layouts/main';
+
         $request = Yii::$app->request;
 
         if ($request->isPost) {
@@ -111,15 +129,15 @@ class GlobalController extends Controller
             } elseif (!$form->save()) {
                 Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.'));
             } else {
-                $fieldRows = $request->post('fields', []);
-                if (!is_array($fieldRows)) {
-                    $fieldRows = [];
-                }
-                if (!$form->saveFieldsFromPost($fieldRows)) {
+                $fieldError = null;
+                $fieldRows = $this->postedFieldRows($fieldError);
+                if ($fieldRows === null) {
+                    Yii::$app->session->setFlash('error', $fieldError);
+                } elseif (!$form->saveFieldsFromPost($fieldRows)) {
                     Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Form saved, but some fields could not be stored.'));
                 } else {
                     Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
-                    return $this->redirect(Url::toView($form));
+                    return $this->redirectAfterStudioSave($form);
                 }
             }
         }
@@ -204,6 +222,7 @@ class GlobalController extends Controller
         ?FormAnswer $existing,
         array $extra = []
     ) {
+        $this->applyFillLayout($form);
         return $this->render('@thiscovery-forms/views/form/view', array_merge([
             'formModel' => $form,
             'submit' => $submit,
@@ -236,7 +255,9 @@ class GlobalController extends Controller
 
     protected function handleSubmit(CustomForm $form, SubmitForm $submit, ?FormAnswer $existing)
     {
-        $draft = $form->allowsResume() ? $this->resolveDraftFromRequest($form) : null;
+        $draft = ($form->allowsResume() || $form->keepsPartials())
+            ? $this->resolveDraftFromRequest($form)
+            : null;
         if ($draft) {
             $existing = $draft;
         }
@@ -248,9 +269,10 @@ class GlobalController extends Controller
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
-        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
+        $isPreview = $this->isPreviewMode($form);
+        $anonymous = $isPreview || $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
-        $answer = $submit->save($existing, $anonymous);
+        $answer = $submit->save($existing, $anonymous, false, $isPreview);
 
         if (!$answer) {
             Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
@@ -259,16 +281,21 @@ class GlobalController extends Controller
             ]);
         }
 
+        if ($isPreview) {
+            Yii::$app->session->set($this->previewAnswerSessionKey($form), (int)$answer->id);
+        }
         $this->afterCompleteSave($form, $ctx, $answer, $anonymous);
 
-        if ($wasNewComplete && !$anonymous && !$form->isProject()) {
+        if (!$isPreview && $wasNewComplete && !$anonymous && !$form->isProject()) {
             $this->notifySubmission($form, $answer);
         }
 
+        $this->applyFillLayout($form);
         return $this->render('@thiscovery-forms/views/form/thankyou', [
             'formModel' => $form,
             'contentContainer' => null,
-            'answer' => $form->isProject() ? $answer : null,
+            'answer' => $form->isProject() && !$isPreview ? $answer : null,
+            'isPreview' => $isPreview,
         ]);
     }
 
@@ -291,25 +318,6 @@ class GlobalController extends Controller
         }
     }
 
-    public function actionAnswers($id)
-    {
-        $form = $this->findForm($id);
-        if (!$form->canViewAnswers()) {
-            throw new ForbiddenHttpException();
-        }
-
-        $provider = new ActiveDataProvider([
-            'query' => $form->getAnswers()->with(['user', 'answerFields', 'wave', 'round', 'panelMember', 'currentStage']),
-            'pagination' => ['pageSize' => 30],
-        ]);
-
-        return $this->render('@thiscovery-forms/views/form/answers', [
-            'formModel' => $form,
-            'dataProvider' => $provider,
-            'contentContainer' => null,
-        ]);
-    }
-
     public function actionDashboard($id)
     {
         $form = $this->findForm($id);
@@ -323,6 +331,25 @@ class GlobalController extends Controller
             'formModel' => $form,
             'stats' => $stats,
             'contentContainer' => null,
+            'isPublic' => false,
+        ]);
+    }
+
+    public function actionPublicDashboard($id)
+    {
+        $form = $this->findForm($id);
+        $share = (string)Yii::$app->request->get('share', '');
+        if (!$form->isValidPublicDashboardToken($share)) {
+            throw new ForbiddenHttpException(Yii::t('ThiscoveryFormsModule.base', 'This dashboard link is not available.'));
+        }
+
+        $stats = (new DashboardService())->getFormDashboard($form);
+
+        return $this->render('@thiscovery-forms/views/form/dashboard', [
+            'formModel' => $form,
+            'stats' => $stats,
+            'contentContainer' => null,
+            'isPublic' => true,
         ]);
     }
 
@@ -364,17 +391,7 @@ class GlobalController extends Controller
 
     public function actionDelete($id)
     {
-        $form = $this->findForm($id);
-        if (!$form->canManage()) {
-            throw new ForbiddenHttpException();
-        }
-        if (!Yii::$app->request->isPost) {
-            throw new HttpException(405);
-        }
-
-        $form->delete();
-        Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form deleted.'));
-        return $this->redirect(Url::toIndex(null));
+        return $this->deleteManagedForm($this->findForm($id));
     }
 
     protected function findForm($id): CustomForm

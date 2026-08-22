@@ -1,0 +1,79 @@
+# Form types
+
+Choose a type when you create the form. Each type is a different workflow. Administrators can hide types you should not use.
+
+## Survey
+
+Full multi-page form. Any question type, logic, actions, translations, optional resume, optional anonymous fill.
+
+Use waves on a survey only if your administrator has allowed it **and** you tick **Use waves**. Otherwise treat it as a single fieldwork window.
+
+## Quick poll
+
+One question. Designed to drop on a **page** or the **stream**. Keep it short. Results can show after voting if you enable poll results.
+
+Do not use a poll when you need paging, waves, or a long questionnaire — use a survey.
+
+## Feedback form
+
+Starts as a short rating plus comments. Edit it like a survey. Good for event or service feedback.
+
+## EQ-5D survey
+
+A **layout** for a health-status style instrument:
+
+- Five pages with **one question each**
+- A vertical **0–100 thermometer** (rating display)
+
+Thiscovery Forms does **not** include official EQ-5D / EuroQol wording or copyright. Paste the text you are licensed to use on each page and on the thermometer instructions. Until you do, placeholder help text is only a reminder to replace it.
+
+EQ-5D **always uses waves**. Attach a panel for follow-up. Wave 1 may be filled anonymously without a token; later waves need invites.
+
+CSV can include a five-digit health profile and VAS (blank as 999). Only use those outputs in line with your licence and analysis protocol.
+
+## Longitudinal survey
+
+The same **panel** answers **repeating waves** of this questionnaire. Attrition appears on the dashboard.
+
+Always uses waves. Build the questions once; schedule waves and mail from **Panel & waves**.
+
+## Consensus / Delphi
+
+Multi-round process:
+
+- One submission per person **per round**
+- Published summaries between rounds
+- Identity modes, comments, and weighted votes as you configure them
+
+Set rounds on the **Rounds** tab. Do not use this type for a simple one-off survey.
+
+## Project
+
+A structured **record** (default title is like a project record) with:
+
+- Configurable **approval stages** (named users and/or groups)
+- Request-changes and a **decision log**
+- A **catalogue** of records that have been published through the workflow
+
+Submissions are not a public catalogue item until they pass the stages on the **Approval** tab. Use this for applications, case records, or anything that needs sign-off, not for anonymous opinion polls.
+
+## Which type should I pick?
+
+| You need | Type |
+| --- | --- |
+| Long questionnaire, one window | Survey |
+| Single question on a page or stream | Quick poll |
+| Quick rating and comment | Feedback form |
+| Licensed five-dimension + thermometer layout, waves | EQ-5D survey |
+| Same people, several time points | Longitudinal survey (or survey + waves if allowed) |
+| Experts, rounds, feedback of the group | Consensus / Delphi |
+| Record plus approvals and a published list | Project |
+
+If you are unsure, start with **Survey**. You can save it as a template after you like the structure.
+
+## Related pages
+
+- [Getting started](creators-getting-started.md)
+- [Builder and questions](creators-builder.md)
+- [Panels, waves, and email](creators-panels.md)
+- [Thiscovery Forms for administrators](admins.md)

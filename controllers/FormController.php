@@ -10,10 +10,10 @@ use humhub\modules\thiscoveryForms\models\SubmitForm;
 use humhub\modules\thiscoveryForms\notifications\FormAnsweredNotification;
 use humhub\modules\thiscoveryForms\services\DashboardService;
 use humhub\modules\thiscoveryForms\services\ExportService;
+use humhub\modules\thiscoveryForms\services\FolderService;
+use humhub\modules\thiscoveryForms\services\FormListService;
 use Yii;
-use yii\data\ActiveDataProvider;
 use yii\web\ForbiddenHttpException;
-use yii\web\HttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 
@@ -23,11 +23,16 @@ class FormController extends ContentContainerController
     use StudioTrait;
     use ProgrammeTrait;
     use ApprovalTrait;
+    use AnswersListTrait;
+    use FolderTrait;
+    use PanelAdminTrait;
+    use EmailAdminTrait;
+    use HelpTrait;
 
     protected function getAccessRules()
     {
         return [
-            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json']],
+            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file']],
         ];
     }
 
@@ -43,18 +48,20 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException();
         }
 
-        $provider = new ActiveDataProvider([
-            'query' => CustomForm::findLive()->contentContainer($this->contentContainer)->readable()->with('fields'),
-            'pagination' => ['pageSize' => 20],
-        ]);
+        $query = CustomForm::findLive()->contentContainer($this->contentContainer)->readable();
+        [$provider, $filters] = FormListService::provider($query, Yii::$app->request->queryParams, $this->contentContainer);
 
         return $this->render('index', [
             'dataProvider' => $provider,
+            'filters' => $filters,
             'contentContainer' => $this->contentContainer,
             'canCreate' => $probe->canCreate(),
             'templates' => $probe->canCreate() || $probe->canManage()
                 ? CustomForm::findAvailableTemplates($this->contentContainer)
                 : [],
+            'folderBrowse' => FolderService::browse($this->contentContainer, Yii::$app->request->queryParams),
+            'canManagePanels' => $probe->canCreate() || $probe->canManage(),
+            'canViewHelp' => $this->canViewHelp(),
         ]);
     }
 
@@ -78,15 +85,15 @@ class FormController extends ContentContainerController
             } elseif (!$form->save()) {
                 Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.'));
             } else {
-                $fieldRows = $request->post('fields', []);
-                if (!is_array($fieldRows)) {
-                    $fieldRows = [];
-                }
-                if (!$form->saveFieldsFromPost($fieldRows)) {
+                $fieldError = null;
+                $fieldRows = $this->postedFieldRows($fieldError);
+                if ($fieldRows === null) {
+                    Yii::$app->session->setFlash('error', $fieldError);
+                } elseif (!$form->saveFieldsFromPost($fieldRows)) {
                     Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Form saved, but some fields could not be stored.'));
                 } else {
                     Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
-                    return $this->redirect(Url::toView($form));
+                    return $this->redirectAfterStudioSave($form);
                 }
             }
         }
@@ -151,6 +158,7 @@ class FormController extends ContentContainerController
         ?FormAnswer $existing,
         array $extra = []
     ) {
+        $this->applyFillLayout($form);
         return $this->render('view', array_merge([
             'formModel' => $form,
             'submit' => $submit,
@@ -184,7 +192,9 @@ class FormController extends ContentContainerController
 
     protected function handleSubmit(CustomForm $form, SubmitForm $submit, ?FormAnswer $existing)
     {
-        $draft = $form->allowsResume() ? $this->resolveDraftFromRequest($form) : null;
+        $draft = ($form->allowsResume() || $form->keepsPartials())
+            ? $this->resolveDraftFromRequest($form)
+            : null;
         if ($draft) {
             $existing = $draft;
         }
@@ -196,9 +206,10 @@ class FormController extends ContentContainerController
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
-        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
+        $isPreview = $this->isPreviewMode($form);
+        $anonymous = $isPreview || $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
-        $answer = $submit->save($existing, $anonymous);
+        $answer = $submit->save($existing, $anonymous, false, $isPreview);
 
         if (!$answer) {
             Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
@@ -207,16 +218,21 @@ class FormController extends ContentContainerController
             ]);
         }
 
+        if ($isPreview) {
+            Yii::$app->session->set($this->previewAnswerSessionKey($form), (int)$answer->id);
+        }
         $this->afterCompleteSave($form, $ctx, $answer, $anonymous);
 
-        if ($wasNewComplete && !$anonymous && !$form->isProject()) {
+        if (!$isPreview && $wasNewComplete && !$anonymous && !$form->isProject()) {
             $this->notifySubmission($form, $answer);
         }
 
+        $this->applyFillLayout($form);
         return $this->render('thankyou', [
             'formModel' => $form,
             'contentContainer' => $this->contentContainer,
-            'answer' => $form->isProject() ? $answer : null,
+            'answer' => $form->isProject() && !$isPreview ? $answer : null,
+            'isPreview' => $isPreview,
         ]);
     }
 
@@ -246,25 +262,6 @@ class FormController extends ContentContainerController
         }
     }
 
-    public function actionAnswers($id)
-    {
-        $form = $this->findForm($id);
-        if (!$form->canViewAnswers()) {
-            throw new ForbiddenHttpException();
-        }
-
-        $provider = new ActiveDataProvider([
-            'query' => $form->getAnswers()->with(['user', 'answerFields', 'wave', 'round', 'panelMember', 'currentStage']),
-            'pagination' => ['pageSize' => 30],
-        ]);
-
-        return $this->render('answers', [
-            'formModel' => $form,
-            'dataProvider' => $provider,
-            'contentContainer' => $this->contentContainer,
-        ]);
-    }
-
     public function actionDashboard($id)
     {
         $form = $this->findForm($id);
@@ -278,6 +275,25 @@ class FormController extends ContentContainerController
             'formModel' => $form,
             'stats' => $stats,
             'contentContainer' => $this->contentContainer,
+            'isPublic' => false,
+        ]);
+    }
+
+    public function actionPublicDashboard($id)
+    {
+        $form = $this->findForm($id);
+        $share = (string)Yii::$app->request->get('share', '');
+        if (!$form->isValidPublicDashboardToken($share)) {
+            throw new ForbiddenHttpException(Yii::t('ThiscoveryFormsModule.base', 'This dashboard link is not available.'));
+        }
+
+        $stats = (new DashboardService())->getFormDashboard($form);
+
+        return $this->render('dashboard', [
+            'formModel' => $form,
+            'stats' => $stats,
+            'contentContainer' => $this->contentContainer,
+            'isPublic' => true,
         ]);
     }
 
@@ -327,18 +343,7 @@ class FormController extends ContentContainerController
 
     public function actionDelete($id)
     {
-        $form = $this->findForm($id);
-        if (!$form->canManage()) {
-            throw new ForbiddenHttpException();
-        }
-
-        if (!Yii::$app->request->isPost) {
-            throw new HttpException(405);
-        }
-
-        $form->delete();
-        Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form deleted.'));
-        return $this->redirect(Url::toIndex($this->contentContainer));
+        return $this->deleteManagedForm($this->findForm($id));
     }
 
     protected function findForm($id): CustomForm

@@ -7,14 +7,18 @@ use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormLibraryItem;
+use humhub\modules\thiscoveryForms\models\FormFolder;
 use humhub\modules\thiscoveryForms\models\SubmitForm;
 use humhub\modules\thiscoveryForms\notifications\FormAnsweredNotification;
 use humhub\modules\thiscoveryForms\services\DashboardService;
+use humhub\modules\thiscoveryForms\services\EmailTemplateService;
+use humhub\modules\thiscoveryForms\services\FolderService;
 use humhub\modules\thiscoveryForms\services\FormCloneService;
 use humhub\modules\thiscoveryForms\services\QuestionImportExportService;
 use Yii;
 use yii\helpers\Html;
 use yii\web\ForbiddenHttpException;
+use yii\web\HttpException;
 use yii\web\NotFoundHttpException;
 use yii\web\Response;
 use yii\web\UploadedFile;
@@ -31,6 +35,74 @@ trait StudioTrait
     abstract protected function prepareNewForm(): CustomForm;
 
     abstract protected function notifySubmission(CustomForm $form, FormAnswer $answer): void;
+
+    /**
+     * Field rows from the builder. Prefer the JSON payload so PHP max_input_vars
+     * cannot truncate a long form.
+     *
+     * @param string|null $error Set when fields_json is present but invalid
+     * @return array|null Null when the JSON payload cannot be read
+     */
+    protected function postedFieldRows(?string &$error = null): ?array
+    {
+        $json = Yii::$app->request->post('fields_json');
+        if (is_string($json) && $json !== '') {
+            $decoded = json_decode($json, true);
+            if (!is_array($decoded)) {
+                $error = Yii::t('ThiscoveryFormsModule.base', 'Could not read the form fields. Try saving again.');
+                return null;
+            }
+            return $decoded;
+        }
+        $rows = Yii::$app->request->post('fields', []);
+        return is_array($rows) ? $rows : [];
+    }
+
+    /**
+     * Stay in the studio after save. Optionally reopen a tab or the test preview.
+     */
+    protected function redirectAfterStudioSave(CustomForm $form)
+    {
+        $tab = trim((string)Yii::$app->request->post('studio_tab', ''));
+        $after = (string)Yii::$app->request->post('after_save', 'stay');
+        if ($after === 'preview') {
+            return $this->redirect(Url::toPreview($form));
+        }
+        $url = Url::toEdit($form);
+        if ($tab !== '' && $tab !== 'builder') {
+            $url .= (str_contains($url, '?') ? '&' : '?') . 'tab=' . rawurlencode($tab);
+        }
+        return $this->redirect($url);
+    }
+
+    /**
+     * Permanently remove a form (hard delete). ContentActiveRecord::delete() is only a
+     * soft delete and would leave the form on the list.
+     */
+    protected function deleteManagedForm(CustomForm $form)
+    {
+        if (!$form->canManage()) {
+            throw new ForbiddenHttpException();
+        }
+        if (!Yii::$app->request->isPost) {
+            throw new HttpException(405);
+        }
+
+        $ok = false;
+        try {
+            $ok = $form->hardDelete();
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms could not delete form #' . $form->id . ': ' . $e->getMessage(), 'thiscovery-forms');
+        }
+
+        if ($ok) {
+            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form deleted.'));
+        } else {
+            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not delete the form.'));
+        }
+
+        return $this->redirect(Url::toManageIndex($this->studioContainer()));
+    }
 
     protected function studioContainer()
     {
@@ -71,9 +143,15 @@ trait StudioTrait
         $form->answers_visibility = CustomForm::ANSWERS_MANAGERS;
         $form->allow_edit = 1;
         $form->applyKindDefaults();
+        $this->applyCreateFolder($form);
 
         $seed = [];
-        if ($form->isPoll()) {
+        $starter = (string)Yii::$app->request->get('starter', '');
+        if ($form->isEq5d()) {
+            $seed = CustomForm::seedHealthStatusFields();
+        } elseif ($starter === 'health-status' && !$form->isPoll()) {
+            $seed = CustomForm::seedHealthStatusFields();
+        } elseif ($form->isPoll()) {
             $seed = CustomForm::seedPollFields();
         } elseif ($form->isFeedback()) {
             $seed = CustomForm::seedFeedbackFields();
@@ -85,13 +163,34 @@ trait StudioTrait
     protected function renderCreateWizard(CustomForm $form)
     {
         $container = $this->studioContainer();
+        // Global (Administration) create wizard keeps the admin left menu.
+        if ($container === null) {
+            $this->subLayout = '@humhub/modules/admin/views/layouts/main';
+        }
         $templates = CustomForm::findAvailableTemplates($container);
 
         return $this->render('@thiscovery-forms/views/form/create', [
             'formModel' => $form,
             'contentContainer' => $container,
             'templates' => $templates,
+            'folderId' => (int)Yii::$app->request->get('folder', 0),
         ]);
+    }
+
+    protected function applyCreateFolder(CustomForm $form): void
+    {
+        $folderId = (int)Yii::$app->request->get('folder', 0);
+        if ($folderId < 1) {
+            return;
+        }
+        $folder = FormFolder::findForContainer($this->studioContainer())->andWhere(['id' => $folderId])->one();
+        if (!$folder) {
+            return;
+        }
+        if (!FolderService::canCreateIn($folder) && !FolderService::canManage($folder) && !FolderService::isFolderAdmin($this->studioContainer())) {
+            return;
+        }
+        $form->folder_id = (int)$folder->id;
     }
 
     protected function createFromTemplateId(int $templateId)
@@ -114,6 +213,10 @@ trait StudioTrait
         if (!$clone) {
             Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not create a form from that template.'));
             return $this->redirect(Url::toCreate($this->studioContainer()));
+        }
+        $this->applyCreateFolder($clone);
+        if ($clone->folder_id) {
+            $clone->save(false, ['folder_id']);
         }
 
         Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form created from template. Review and save.'));
@@ -138,6 +241,32 @@ trait StudioTrait
 
         Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Saved as template.'));
         return $this->redirect(Url::toEdit($clone));
+    }
+
+    public function actionRegeneratePreview($id)
+    {
+        $form = $this->findForm($id);
+        if (!$form->canManage()) {
+            throw new ForbiddenHttpException();
+        }
+        if (Yii::$app->request->isPost) {
+            $form->rotateTestToken();
+            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'A new preview link was created. The previous link no longer works.'));
+        }
+        return $this->redirect(Url::toEdit($form) . '?tab=share');
+    }
+
+    public function actionRegenerateDashboardShare($id)
+    {
+        $form = $this->findForm($id);
+        if (!$form->canManage()) {
+            throw new ForbiddenHttpException();
+        }
+        if (Yii::$app->request->isPost) {
+            $form->rotatePublicDashboardToken();
+            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'A new dashboard share link was created. The previous link no longer works.'));
+        }
+        return $this->redirect(Url::toEdit($form) . '?tab=share');
     }
 
     public function actionExportQuestions($id)
@@ -206,12 +335,15 @@ trait StudioTrait
 
         $service = new QuestionImportExportService();
         $ext = strtolower((string)$upload->extension);
+        $replace = (string)Yii::$app->request->post('replace_fields', '') === '1';
         $error = ($ext === 'csv')
-            ? $service->importCsv($form, $raw)
-            : $service->importJson($form, $raw);
+            ? $service->importCsv($form, $raw, $replace)
+            : $service->importJson($form, $raw, $replace);
 
         if ($error) {
             Yii::$app->session->setFlash('error', $error);
+        } elseif ($replace) {
+            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Existing questions were replaced with the imported file.'));
         } else {
             Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Questions imported.'));
         }
@@ -302,13 +434,14 @@ trait StudioTrait
         ];
     }
 
-    public function actionLibraryDelete($itemId)
+    public function actionLibraryDelete($itemId = null)
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
         if (!Yii::$app->request->isPost) {
             return ['success' => false];
         }
-        $item = FormLibraryItem::findOne((int)$itemId);
+        $itemId = (int)($itemId ?: Yii::$app->request->post('itemId', 0));
+        $item = FormLibraryItem::findOne($itemId);
         if (!$item || !$item->canManage()) {
             throw new ForbiddenHttpException();
         }
@@ -334,7 +467,23 @@ trait StudioTrait
                 continue;
             }
             $field = FormField::fromPostRow($post);
+            $field->id = null;
             $fields[] = $field;
+        }
+
+        $hasVisible = false;
+        foreach ($fields as $field) {
+            if ($field->type !== FormField::TYPE_GROUP_END) {
+                $hasVisible = true;
+                break;
+            }
+        }
+        if ($fields && !$hasVisible) {
+            $group = FormField::fromPostRow([
+                'type' => FormField::TYPE_QUESTION_GROUP,
+                'label' => $item->title !== '' ? $item->title : FormField::defaultLabelForType(FormField::TYPE_QUESTION_GROUP),
+            ]);
+            $fields = [$group];
         }
 
         foreach ($fields as $field) {
@@ -345,6 +494,29 @@ trait StudioTrait
                 'allFields' => $fields,
                 'collapsed' => false,
                 'allowedTypes' => null,
+                'emailTemplateOptions' => (new EmailTemplateService())->optionsForContainer($this->studioContainerId()),
+            ]);
+            $i++;
+        }
+
+        return ['success' => true, 'html' => $html, 'count' => $i];
+    }
+
+    public function actionInsertHealthStatus()
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        $fields = CustomForm::seedHealthStatusFields();
+        $html = '';
+        $i = 0;
+        foreach ($fields as $field) {
+            $key = 'hs' . uniqid() . $i;
+            $html .= $this->renderPartial('@thiscovery-forms/views/form/_field_row', [
+                'key' => $key,
+                'field' => $field,
+                'allFields' => $fields,
+                'collapsed' => true,
+                'allowedTypes' => null,
+                'emailTemplateOptions' => (new EmailTemplateService())->optionsForContainer($this->studioContainerId()),
             ]);
             $i++;
         }
