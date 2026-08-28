@@ -100,6 +100,16 @@ class SubmitForm extends Model
                 $this->values[$field->id] = $val;
                 continue;
             }
+            if ($field->type === FormField::TYPE_MAP) {
+                $val = $fieldPost[$key] ?? [];
+                if (is_string($val)) {
+                    $decoded = json_decode($val, true);
+                    $val = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $val;
+                }
+                $clean = $field->sanitizeMapAnswer($val);
+                $this->values[$field->id] = !empty($clean['features']) ? $clean : [];
+                continue;
+            }
             if ($field->type === FormField::TYPE_HTML) {
                 $val = $fieldPost[$key] ?? '';
                 if (is_array($val)) {
@@ -407,6 +417,9 @@ class SubmitForm extends Model
                     break;
                 case FormField::TYPE_IMAGE_AREA:
                     $this->validateImageArea($field, $value);
+                    break;
+                case FormField::TYPE_MAP:
+                    $this->validateMap($field, $value);
                     break;
             }
 
@@ -755,6 +768,16 @@ class SubmitForm extends Model
         if (!$cfg['multi'] && count($picked) > 1) {
             $this->invalid($field);
         }
+    }
+
+    private function validateMap(FormField $field, $value): void
+    {
+        $clean = $field->sanitizeMapAnswer($value);
+        if (empty($clean['features'])) {
+            $this->invalid($field);
+            return;
+        }
+        $this->values[$field->id] = $clean;
     }
 
     private function scoreImageArea(FormField $field, array $value): array

@@ -20,6 +20,9 @@ use yii\helpers\Html;
 /** @var $fields */
 
 ThiscoveryFormsAsset::register($this);
+if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingFormAsset::class) && Yii::$app->getModule('thiscovery-mapping')) {
+    \humhub\modules\thiscoveryMapping\assets\MappingFormAsset::register($this);
+}
 
 $isPoll = $formModel->isPoll();
 $enrolPanels = (new PanelService())->listAvailableForContainer($contentContainer ? $contentContainer->contentcontainer_id : null);
@@ -56,6 +59,7 @@ $palette = [
     ['type' => FormField::TYPE_MAXDIFF, 'icon' => 'fa-balance-scale', 'group' => 'research'],
     ['type' => FormField::TYPE_DRILLDOWN, 'icon' => 'fa-sitemap', 'group' => 'research'],
     ['type' => FormField::TYPE_IMAGE_AREA, 'icon' => 'fa-picture-o', 'group' => 'research'],
+    ['type' => FormField::TYPE_MAP, 'icon' => 'fa-map-marker', 'group' => 'research'],
     ['type' => FormField::TYPE_FILE, 'icon' => 'fa-cloud-upload', 'group' => 'input'],
 ];
 $metaIcons = [
@@ -211,6 +215,9 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
         <button type="button" class="cf-studio__tab" data-cf-tab="settings" role="tab" aria-selected="false">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Settings') ?>
         </button>
+        <button type="button" class="cf-studio__tab" data-cf-tab="integrity" role="tab" aria-selected="false">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity') ?>
+        </button>
         <?php if ($formModel->usesWaves()): ?>
             <button type="button" class="cf-studio__tab" data-cf-tab="panel" role="tab" aria-selected="false">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Panel & waves') ?>
@@ -243,6 +250,7 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
            data-cf-help-pages="<?= Html::encode(json_encode([
                'builder' => Url::toHelp($contentContainer, 'creators-builder'),
                'settings' => Url::toHelp($contentContainer, 'creators-settings'),
+               'integrity' => Url::toHelp($contentContainer, 'creators-response-integrity'),
                'panel' => Url::toHelp($contentContainer, 'creators-panels'),
                'rounds' => Url::toHelp($contentContainer, 'creators-form-types'),
                'approval' => Url::toHelp($contentContainer, 'creators-form-types'),
@@ -368,6 +376,14 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
             'fieldList' => $fieldList,
             'emailTemplateOptions' => $emailTemplateOptions,
             'enrolPanelOptions' => $enrolPanelOptions,
+        ]) ?>
+    </div>
+
+    <div class="cf-studio__panel" data-cf-panel="integrity">
+        <?= $this->render('_studio_integrity', [
+            'formModel' => $formModel,
+            'isNew' => $isNew,
+            'fieldList' => $fieldList,
         ]) ?>
     </div>
 

@@ -256,6 +256,11 @@ class FormAnswer extends ActiveRecord
         return $this->hasMany(FormAnswerApproval::class, ['answer_id' => 'id'])->orderBy(['created_at' => SORT_ASC, 'id' => SORT_ASC]);
     }
 
+    public function getIntegrityMeta(): ActiveQuery
+    {
+        return $this->hasOne(FormIntegrityMeta::class, ['answer_id' => 'id']);
+    }
+
     public function getFieldValue(int $fieldId): ?string
     {
         foreach ($this->answerFields as $af) {

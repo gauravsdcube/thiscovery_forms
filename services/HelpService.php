@@ -33,6 +33,7 @@ class HelpService
                     'creators-builder',
                     'creators-csv-import',
                     'creators-settings',
+                    'creators-response-integrity',
                     'creators-results',
                     'creators-panels',
                     'creators-form-types',
@@ -76,6 +77,12 @@ class HelpService
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Form settings'),
                 'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, emails, languages, and custom functions.'),
                 'icon' => 'wrench',
+            ],
+            'creators-response-integrity' => [
+                'file' => 'creators-response-integrity.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Response integrity'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Bot protection, quality scores, review, exclusion, and access modes.'),
+                'icon' => 'shield',
             ],
             'creators-results' => [
                 'file' => 'creators-results.md',

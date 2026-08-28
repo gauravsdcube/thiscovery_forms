@@ -103,7 +103,12 @@ class AdminController extends Controller
             if (!isset(Yii::$app->request->post('ModuleSettings')['enabledKinds'])) {
                 $model->enabledKinds = [];
             }
-            if ($model->save()) {
+            $integrityPost = Yii::$app->request->post('integrity');
+            $ok = $model->save();
+            if ($ok && is_array($integrityPost)) {
+                \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveGlobal($integrityPost);
+            }
+            if ($ok) {
                 $this->view->saved();
                 return $this->redirect(['settings']);
             }
@@ -111,6 +116,7 @@ class AdminController extends Controller
 
         return $this->render('settings', [
             'model' => $model,
+            'integrity' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::global(),
         ]);
     }
 }

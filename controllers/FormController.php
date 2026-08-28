@@ -24,6 +24,7 @@ class FormController extends ContentContainerController
     use ProgrammeTrait;
     use ApprovalTrait;
     use AnswersListTrait;
+    use IntegrityTrait;
     use FolderTrait;
     use PanelAdminTrait;
     use EmailAdminTrait;
@@ -92,6 +93,10 @@ class FormController extends ContentContainerController
                 } elseif (!$form->saveFieldsFromPost($fieldRows)) {
                     Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Form saved, but some fields could not be stored.'));
                 } else {
+                    $integrityPost = Yii::$app->request->post('integrity');
+                    if (is_array($integrityPost)) {
+                        \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveForm($form, $integrityPost);
+                    }
                     Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
                     return $this->redirectAfterStudioSave($form);
                 }
@@ -159,6 +164,9 @@ class FormController extends ContentContainerController
         array $extra = []
     ) {
         $this->applyFillLayout($form);
+        if (!$this->isPreviewMode($form)) {
+            (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onFillOpen($form, $existing);
+        }
         return $this->render('view', array_merge([
             'formModel' => $form,
             'submit' => $submit,
@@ -207,6 +215,15 @@ class FormController extends ContentContainerController
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
         $isPreview = $this->isPreviewMode($form);
+        if (!$isPreview) {
+            $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx);
+            if ($gate) {
+                Yii::$app->session->setFlash('error', $gate);
+                return $this->renderFillView($form, $submit, $existing, [
+                    'editingAnswer' => $existing && $existing->isComplete(),
+                ]);
+            }
+        }
         $anonymous = $isPreview || $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous, false, $isPreview);
@@ -331,7 +348,7 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException();
         }
 
-        $csv = (new ExportService())->toCsv($form);
+        $csv = (new ExportService())->toCsv($form, Yii::$app->request->queryParams);
         $filename = 'form-' . $form->id . '-' . date('Ymd-His') . '.csv';
 
         Yii::$app->response->format = Response::FORMAT_RAW;

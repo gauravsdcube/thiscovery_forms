@@ -41,7 +41,7 @@ Polls can show a simple result chart where you have enabled poll results.
 
 ## CSV export
 
-Managers can export answers to CSV. Incomplete rows are included only when you kept incomplete responses. Preview answers are not included.
+CSV export adds quality score, integrity status, analysis status, and flags when Response integrity is in use. Incomplete rows are included only when you kept incomplete responses. Preview answers are not included. Excluded responses are omitted from CSV unless you choose **Export including excluded**. Filter the Answers list (Trusted only, minimum score, flag type) before export if you want a subset.
 
 EQ-5D exports can add a five-digit **health profile** and a **VAS** column. Empty VAS is stored as **999** so analysis tools can treat “not completed” consistently. You are responsible for using those scores only with licensed instruments and your organisation’s analysis rules.
 
@@ -62,5 +62,6 @@ The form author and managers can be notified when someone submits. Check that si
 
 - [Getting started](creators-getting-started.md)
 - [Form settings](creators-settings.md)
+- [Response integrity](creators-response-integrity.md)
 - [Import questions from CSV](creators-csv-import.md)
 - [Form types](creators-form-types.md)

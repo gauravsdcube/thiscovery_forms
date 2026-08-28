@@ -56,6 +56,7 @@ class FormField extends ActiveRecord
     public const TYPE_MAXDIFF = 'maxdiff';
     public const TYPE_DRILLDOWN = 'drilldown';
     public const TYPE_IMAGE_AREA = 'image_area';
+    public const TYPE_MAP = 'map';
     public const TYPE_RESPONDENT_META = 'respondent_meta';
     public const TYPE_PANEL_ATTR = 'panel_attr';
 
@@ -127,6 +128,7 @@ class FormField extends ActiveRecord
             self::TYPE_MAXDIFF => Yii::t('ThiscoveryFormsModule.base', 'MaxDiff'),
             self::TYPE_DRILLDOWN => Yii::t('ThiscoveryFormsModule.base', 'Drill-down'),
             self::TYPE_IMAGE_AREA => Yii::t('ThiscoveryFormsModule.base', 'Image area'),
+            self::TYPE_MAP => Yii::t('ThiscoveryFormsModule.base', 'Map'),
             self::TYPE_RESPONDENT_META => Yii::t('ThiscoveryFormsModule.base', 'Respondent metadata'),
             self::TYPE_PANEL_ATTR => Yii::t('ThiscoveryFormsModule.base', 'Panel member field'),
         ];
@@ -206,6 +208,7 @@ class FormField extends ActiveRecord
             self::TYPE_MAXDIFF,
             self::TYPE_DRILLDOWN,
             self::TYPE_IMAGE_AREA,
+            self::TYPE_MAP,
             self::TYPE_RANKING,
             self::TYPE_CHECKBOX,
         ], true);
@@ -338,6 +341,39 @@ class FormField extends ActiveRecord
             $decoded['hidden'] = true;
         } else {
             unset($decoded['hidden']);
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    public function isAttentionCheck(): bool
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            return false;
+        }
+        return !empty($decoded['attentionCheck']);
+    }
+
+    public function getAttentionExpected(): string
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            return '';
+        }
+        return trim((string)($decoded['attentionExpected'] ?? ''));
+    }
+
+    public function setAttentionCheck(bool $enabled, string $expected = ''): void
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => array_values($decoded)];
+        }
+        if ($enabled) {
+            $decoded['attentionCheck'] = true;
+            $decoded['attentionExpected'] = trim($expected);
+        } else {
+            unset($decoded['attentionCheck'], $decoded['attentionExpected']);
         }
         $this->writeDecodedOptions($decoded);
     }
@@ -1452,6 +1488,77 @@ class FormField extends ActiveRecord
         return $url;
     }
 
+    public function setMapConfig(array $config): void
+    {
+        $types = [];
+        foreach ((array)($config['allowedTypes'] ?? ['Point']) as $type) {
+            $type = (string)$type;
+            if (in_array($type, ['Point', 'LineString', 'Polygon'], true) && !in_array($type, $types, true)) {
+                $types[] = $type;
+            }
+        }
+        $max = (int)($config['maxFeatures'] ?? 1);
+        if ($max < 1) {
+            $max = 1;
+        }
+        if ($max > 50) {
+            $max = 50;
+        }
+        $lat = (float)($config['lat'] ?? 52.4862);
+        $lng = (float)($config['lng'] ?? -1.8904);
+        $zoom = (int)($config['zoom'] ?? 7);
+        $this->options_json = json_encode([
+            '__type' => self::TYPE_MAP,
+            'lat' => max(-90.0, min(90.0, $lat)),
+            'lng' => max(-180.0, min(180.0, $lng)),
+            'zoom' => max(1, min(20, $zoom)),
+            'allowedTypes' => $types ?: ['Point'],
+            'maxFeatures' => $max,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function getMapConfig(): array
+    {
+        $decoded = $this->decodedOptions();
+        $module = Yii::$app->getModule('thiscovery-mapping');
+        $lat = isset($decoded['lat']) ? (float)$decoded['lat'] : (float)($module && method_exists($module, 'getDefaultCenterLat') ? $module->getDefaultCenterLat() : 52.4862);
+        $lng = isset($decoded['lng']) ? (float)$decoded['lng'] : (float)($module && method_exists($module, 'getDefaultCenterLng') ? $module->getDefaultCenterLng() : -1.8904);
+        $zoom = isset($decoded['zoom']) ? (int)$decoded['zoom'] : (int)($module && method_exists($module, 'getDefaultZoom') ? $module->getDefaultZoom() : 7);
+        $types = [];
+        foreach ((array)($decoded['allowedTypes'] ?? ['Point']) as $type) {
+            $type = (string)$type;
+            if (in_array($type, ['Point', 'LineString', 'Polygon'], true) && !in_array($type, $types, true)) {
+                $types[] = $type;
+            }
+        }
+        $max = (int)($decoded['maxFeatures'] ?? 1);
+        if ($max < 1) {
+            $max = 1;
+        }
+        if ($max > 50) {
+            $max = 50;
+        }
+        return [
+            'lat' => max(-90.0, min(90.0, $lat)),
+            'lng' => max(-180.0, min(180.0, $lng)),
+            'zoom' => max(1, min(20, $zoom)),
+            'allowedTypes' => $types ?: ['Point'],
+            'maxFeatures' => $max,
+        ];
+    }
+
+    public function sanitizeMapAnswer($value): array
+    {
+        $cfg = $this->getMapConfig();
+        $empty = ['type' => 'FeatureCollection', 'features' => []];
+        if (class_exists(\humhub\modules\thiscoveryMapping\services\GeoJsonValidator::class)) {
+            $clean = (new \humhub\modules\thiscoveryMapping\services\GeoJsonValidator())
+                ->sanitizeCollection($value, $cfg['allowedTypes'], $cfg['maxFeatures']);
+            return is_array($clean) ? $clean : $empty;
+        }
+        return $empty;
+    }
+
     public function getLogic(): array
     {
         $decoded = json_decode((string)$this->logic_json, true);
@@ -1607,6 +1714,13 @@ class FormField extends ActiveRecord
             $row['image_mode'] = $img['mode'];
             $row['image_multi'] = !empty($img['multi']) ? '1' : '';
             $row['image_regions'] = json_encode($img['regions'], JSON_UNESCAPED_UNICODE);
+        } elseif ($this->type === self::TYPE_MAP) {
+            $map = $this->getMapConfig();
+            $row['map_lat'] = $map['lat'];
+            $row['map_lng'] = $map['lng'];
+            $row['map_zoom'] = $map['zoom'];
+            $row['map_types'] = implode(',', $map['allowedTypes']);
+            $row['map_max'] = $map['maxFeatures'];
         }
 
         return $row;
@@ -1686,6 +1800,13 @@ class FormField extends ActiveRecord
             'image_regions' => is_array($payload['image_regions'] ?? null)
                 ? json_encode($payload['image_regions'], JSON_UNESCAPED_UNICODE)
                 : (string)($payload['image_regions'] ?? ''),
+            'map_lat' => $payload['map_lat'] ?? '',
+            'map_lng' => $payload['map_lng'] ?? '',
+            'map_zoom' => $payload['map_zoom'] ?? '',
+            'map_types' => is_array($payload['map_types'] ?? null)
+                ? implode(',', $payload['map_types'])
+                : (string)($payload['map_types'] ?? ''),
+            'map_max' => $payload['map_max'] ?? '',
             'logic_action' => $payload['logic_action'] ?? ($payload['logic']['action'] ?? 'show'),
             'logic_combinator' => $payload['logic_combinator'] ?? ($payload['logic']['combinator'] ?? 'and'),
             'logic_goto' => $payload['logic_goto'] ?? ($payload['logic']['gotoPageKey'] ?? ''),
@@ -1759,6 +1880,18 @@ class FormField extends ActiveRecord
                 'mode' => $row['image_mode'] ?? 'select',
                 'multi' => !empty($row['image_multi']),
                 'regions' => $regions,
+            ]);
+        } elseif ($field->type === self::TYPE_MAP) {
+            $types = $row['map_types'] ?? ['Point'];
+            if (is_string($types)) {
+                $types = array_filter(array_map('trim', explode(',', $types)));
+            }
+            $field->setMapConfig([
+                'lat' => $row['map_lat'] ?? 52.4862,
+                'lng' => $row['map_lng'] ?? -1.8904,
+                'zoom' => $row['map_zoom'] ?? 7,
+                'allowedTypes' => $types,
+                'maxFeatures' => $row['map_max'] ?? 1,
             ]);
         } elseif (self::isChoiceType($field->type)) {
             $maxSelect = null;

@@ -36,6 +36,8 @@ Use **Add question** (or the equivalent control on the builder) and choose a typ
 
 **Hidden from respondents:** tick this on any question to store an internal variable. People filling the form never see it. Set a **Stored value** if you want a fixed code on every response. Logic, piping, and export still use the stored value.
 
+**Attention check:** tick this on an instructed-response question (for example “Please select Agree”) and type the expected answer. Pass and fail are stored on the response. They add to the quality score; they do not auto-reject. Turn on **Attention checks** on the [Response integrity](creators-response-integrity.md) tab.
+
 **Choice codes:** each option can be `code | Label`. Respondents only see the label. Answers, logic, and CSV export use the code. A line without `|` keeps the same text for both.
 
 **Other:** if a dropdown, radio, or checkbox option is named exactly `Other` (the label), the fill page shows a text box so the person can type their own answer.
@@ -124,5 +126,6 @@ Arabic and Urdu fill pages use right-to-left layout, including a mirrored thermo
 
 - [Getting started](creators-getting-started.md)
 - [Form settings](creators-settings.md)
+- [Response integrity](creators-response-integrity.md)
 - [Import questions from CSV](creators-csv-import.md)
 - [Form types](creators-form-types.md)

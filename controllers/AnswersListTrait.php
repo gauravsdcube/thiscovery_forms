@@ -48,6 +48,8 @@ trait AnswersListTrait
         $html = $this->renderPartial('@thiscovery-forms/views/form/_answer_detail', [
             'formModel' => $form,
             'answer' => $answer,
+            'canManage' => $form->canManage(),
+            'canDecideAnalysis' => $form->canDecideAnalysis(),
         ]);
 
         return $this->asJson([

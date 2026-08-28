@@ -193,6 +193,7 @@ class FormStyleService
             FormField::TYPE_MAXDIFF => $block . ' .cf-maxdiff, ' . $block . ' .cf-best-worst',
             FormField::TYPE_DRILLDOWN => $block . ' select, ' . $block . ' .form-control',
             FormField::TYPE_IMAGE_AREA => $block . ' .cf-image-area',
+            FormField::TYPE_MAP => $block . ' .cf-map-field, ' . $block . ' .tm-shell',
             FormField::TYPE_RICH_TEXT => $block . ' .cf-rich-block',
             FormField::TYPE_HTML => $block . ' .cf-html-block',
             default => '',

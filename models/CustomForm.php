@@ -1365,6 +1365,27 @@ class CustomForm extends ContentActiveRecord implements Searchable
         return false;
     }
 
+    /**
+     * Reviewers who may include or exclude a response from analysis.
+     * Managers always can. People with View Answers permission can.
+     * Respondents who only see answers because they submitted cannot.
+     */
+    public function canDecideAnalysis($user = null): bool
+    {
+        $user = $user ?: Yii::$app->user->getIdentity();
+        if (!$user) {
+            return false;
+        }
+        if ($this->canManage($user)) {
+            return true;
+        }
+        $container = $this->isGlobal() ? null : $this->content->getContainer();
+        if ($container instanceof Space) {
+            return $container->getPermissionManager($user)->can(ViewAnswers::class);
+        }
+        return (new PermissionManager(['subject' => $user]))->can(ViewGlobalAnswers::class);
+    }
+
     public function allowsEdit(): bool
     {
         return (bool)$this->allow_edit;
@@ -1643,6 +1664,18 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'multi' => !empty($row['image_multi']),
                     'regions' => is_array($regions) ? $regions : [],
                 ]);
+            } elseif ($type === FormField::TYPE_MAP) {
+                $types = $row['map_types'] ?? ['Point'];
+                if (is_string($types)) {
+                    $types = array_filter(array_map('trim', explode(',', $types)));
+                }
+                $field->setMapConfig([
+                    'lat' => $row['map_lat'] ?? 52.4862,
+                    'lng' => $row['map_lng'] ?? -1.8904,
+                    'zoom' => $row['map_zoom'] ?? 7,
+                    'allowedTypes' => $types,
+                    'maxFeatures' => $row['map_max'] ?? 1,
+                ]);
             } elseif ($type === FormField::TYPE_RESPONDENT_META) {
                 $field->required = false;
                 $field->setRespondentMetaKey((string)($row['meta_key'] ?? ''));
@@ -1679,6 +1712,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
 
             $field->setHiddenFromRespondent(!empty($row['hidden']) || $type === FormField::TYPE_RESPONDENT_META);
+            if ($field->collectsAnswer()) {
+                $field->setAttentionCheck(!empty($row['attention_check']), (string)($row['attention_expected'] ?? ''));
+            }
             $field->setDefaultValue((string)($row['default_value'] ?? ''));
             if ($type === FormField::TYPE_RESPONDENT_META) {
                 $field->setRespondentMetaKey((string)($row['meta_key'] ?? $field->getRespondentMetaKey()));

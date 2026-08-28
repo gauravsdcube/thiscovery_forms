@@ -30,6 +30,11 @@ $ownDraft = $ownDraft ?? null;
 $startNew = !empty($startNew);
 $editingAnswer = !empty($editingAnswer);
 $isPreview = !empty($isPreview);
+$showCaptcha = !empty($showCaptcha);
+$integritySettings = $integritySettings ?? [];
+$integrityEnabled = !empty($integrityEnabled)
+    || \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::isOn($integritySettings, 'enabled');
+$accessToken = $accessToken ?? '';
 
 ThiscoveryFormsAsset::register($this);
 
@@ -86,6 +91,7 @@ $this->registerJsConfig('thiscoveryForms', [
     'startPage' => ($existing && $existing->isInProgress() && $existing->current_page !== null)
         ? (int)$existing->current_page
         : 0,
+    'questionTiming' => $integrityEnabled && !empty($integritySettings['question_timing']),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initFill("#cf-fill");', \yii\web\View::POS_READY);
 
@@ -96,7 +102,7 @@ $canSubmit = $isPreview
         ? $formModel->isOpen()
         : ($existing
             ? ($formModel->canEditOwnAnswer($existing) || $formModel->canManage())
-            : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member)))));
+            : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member)) || $accessToken !== '')));
 if (!$isPreview && $fillContext && $fillContext->blockReason && !$formModel->canManage() && !($existing && $existing->isComplete() && ($formModel->canEditOwnAnswer($existing) || $formModel->canManage()))) {
     $canSubmit = $existing && $existing->isInProgress() ? $canSubmit : false;
 }
@@ -328,7 +334,18 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?php if ($panelToken !== ''): ?>
                 <?= Html::hiddenInput('panel_token', $panelToken) ?>
             <?php endif; ?>
+            <?php if (!empty($accessToken)): ?>
+                <?= Html::hiddenInput('access_token', $accessToken) ?>
+            <?php endif; ?>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
+            <?php if ($integrityEnabled): ?>
+            <?= Html::hiddenInput(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::TIMING_NAME, '{}', ['data-cf-integrity-timing' => true]) ?>
+            <div class="cf-honeypot" aria-hidden="true">
+                <label><?= Yii::t('ThiscoveryFormsModule.base', 'Company website') ?>
+                    <input type="text" name="<?= Html::encode(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::HONEYPOT_NAME) ?>" value="" tabindex="-1" autocomplete="off">
+                </label>
+            </div>
+            <?php endif; ?>
             <?= Html::hiddenInput('action_vars', ($existing instanceof FormAnswer) ? json_encode($existing->getVars(), JSON_UNESCAPED_UNICODE) : '{}', ['data-cf-action-vars' => true]) ?>
 
             <?php foreach ($pages as $page): ?>
@@ -468,6 +485,12 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         </button>
                     <?php endif; ?>
                     <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
+                        <?php if (!empty($showCaptcha) && !empty($integritySettings['turnstile_site_key'])): ?>
+                            <div class="cf-turnstile-wrap mb-3">
+                                <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                                <div class="cf-turnstile" data-sitekey="<?= Html::encode($integritySettings['turnstile_site_key']) ?>"></div>
+                            </div>
+                        <?php endif; ?>
                         <?= Button::save($existing && !$isDraft
                             ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')
                             : ($formModel->isProject()

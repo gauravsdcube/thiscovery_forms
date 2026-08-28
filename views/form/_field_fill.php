@@ -725,6 +725,30 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                     'data-cf-hotspot-value' => true,
                 ]) ?>
             </div>
+        <?php elseif ($field->type === FormField::TYPE_MAP): ?>
+            <?php
+            $mapCfg = $field->getMapConfig();
+            $geo = '';
+            if (is_array($value) && ($value['type'] ?? '') === 'FeatureCollection') {
+                $geo = json_encode($value, JSON_UNESCAPED_UNICODE);
+            } elseif (is_string($value) && $value !== '') {
+                $geo = $value;
+            }
+            ?>
+            <div class="cf-map-field">
+                <?= Html::hiddenInput($inputName, $geo, ['data-cf-map-value' => true]) ?>
+                <?php if (class_exists(\humhub\modules\thiscoveryMapping\widgets\MapWidget::class) && Yii::$app->getModule('thiscovery-mapping')): ?>
+                    <?= \humhub\modules\thiscoveryMapping\widgets\MapWidget::widget([
+                        'mode' => 'form',
+                        'inputName' => $inputName,
+                        'inputValue' => $geo,
+                        'height' => 360,
+                        'formConfig' => $mapCfg,
+                    ]) ?>
+                <?php else: ?>
+                    <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'The mapping module is not enabled.') ?></p>
+                <?php endif; ?>
+            </div>
         <?php else: ?>
             <?php
             $textValue = is_array($value) ? '' : (string)$value;

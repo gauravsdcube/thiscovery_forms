@@ -29,6 +29,7 @@ class Module extends ContentContainerModule
     public const SETTING_ENABLED_KINDS = 'enabled_kinds';
     public const SETTING_WAVES_FOR_SURVEYS = 'waves_for_surveys';
     public const SETTING_WAVE_SCOPE = 'wave_scope';
+    public const SETTING_INTEGRITY = 'integrity';
 
     public const WAVE_SCOPE_SURVEY = 'survey';
     public const WAVE_SCOPE_PANEL = 'panel';

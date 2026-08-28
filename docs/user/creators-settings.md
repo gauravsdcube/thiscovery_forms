@@ -94,5 +94,6 @@ Appearance of the **fill page** only: page, card, questions, buttons, and per-qu
 
 - [Getting started](creators-getting-started.md)
 - [Builder and questions](creators-builder.md)
+- [Response integrity](creators-response-integrity.md)
 - [Sharing and results](creators-results.md)
 - [Panels, waves, and email](creators-panels.md)

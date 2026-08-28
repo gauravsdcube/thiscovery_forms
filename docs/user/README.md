@@ -12,8 +12,9 @@ Suggested page tree:
    2. [Builder and questions](creators-builder.md)
    3. [Import questions from CSV](creators-csv-import.md)
    4. [Form settings](creators-settings.md)
-   5. [Sharing and results](creators-results.md)
-   6. [Panels, waves, and email](creators-panels.md)
-   7. [Form types](creators-form-types.md)
+   5. [Response integrity](creators-response-integrity.md)
+   6. [Sharing and results](creators-results.md)
+   7. [Panels, waves, and email](creators-panels.md)
+   8. [Form types](creators-form-types.md)
 
-Written for Thiscovery Forms **1.18.5**.
+Written for Thiscovery Forms **1.21.0**.

@@ -51,6 +51,16 @@ EQ-5D surveys and longitudinal surveys **always** use waves. Ordinary surveys on
 
 Changing wave scope affects how creators schedule fieldwork. Agree this before a study goes live.
 
+### Response integrity defaults
+
+**Response integrity** is **off until you tick Enable integrity checks**. That checkbox is on this page (site default) and on each survey’s **Response integrity** tab. Scores and integrity metadata are stored only when it is on. The rest of the section is site-wide defaults (CAPTCHA keys, weights, and so on) that surveys can inherit or override.
+
+Cloudflare Turnstile **site** and **secret** keys are only stored here. Surveys cannot supply a different key.
+
+The product combines several signals. It does not treat a single fast completion, shared IP, or failed attention check as proof of fraud. Automatic exclusion stays **off** unless you switch it on, and even then it needs more than one signal type.
+
+Creators’ guide: [Response integrity](creators-response-integrity.md).
+
 ## Permissions
 
 Permissions are separate from “who can view answers” on an individual form. A person needs the right permission **and** the form must allow them in (status Open, anonymous or signed-in, and so on).
@@ -134,5 +144,6 @@ The **EQ-5D survey** type supplies a five-page layout and a vertical 0–100 sca
 ## Related pages
 
 - [Getting started](creators-getting-started.md) (form creators)
+- [Response integrity](creators-response-integrity.md) (form creators)
 - [Form types](creators-form-types.md) (form creators)
 - [Panels, waves, and email](creators-panels.md) (form creators)

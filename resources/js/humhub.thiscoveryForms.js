@@ -59,6 +59,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-maxdiff-panel], [data-cf-maxdiff-note]').toggleClass('d-none', type !== 'maxdiff');
             $own.find('[data-cf-drilldown-panel]').toggleClass('d-none', type !== 'drilldown');
             $own.find('[data-cf-image-panel]').toggleClass('d-none', type !== 'image_area');
+            $own.find('[data-cf-map-panel]').toggleClass('d-none', type !== 'map');
             $own.find('[data-cf-carry-wrap]').toggleClass('d-none', ['dropdown', 'radio', 'checkbox'].indexOf(type) === -1);
             $own.find('[data-cf-justify-wrap]').toggleClass('d-none', ['dropdown', 'radio', 'checkbox', 'rating', 'ranking'].indexOf(type) === -1);
             $own.find('[data-cf-ranking-note]').toggleClass('d-none', !isRanking);
@@ -69,6 +70,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-required-wrap]').toggleClass('d-none', hideRequired);
             $own.find('[data-cf-help-wrap]').toggleClass('d-none', hideHelp);
             $own.find('[data-cf-hidden-wrap]').toggleClass('d-none', isPage || type === 'question_group' || type === 'group_end' || isRich);
+            $own.find('[data-cf-attention-wrap]').toggleClass('d-none', hideRequired || isMeta || isPanelAttr);
             $own.find('[data-cf-hidden-field]').prop('disabled', isMeta);
             if (isMeta) {
                 $own.find('[data-cf-hidden-field]').prop('checked', true);
@@ -708,7 +710,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return $row;
         };
 
-        // Tabs: Form builder | Settings | CSS | Share
+        // Tabs: Form builder | Settings | Response integrity | CSS | Share
         $root.on('click', '[data-cf-tab]', function (e) {
             e.preventDefault();
             var tab = $(this).data('cf-tab');
@@ -716,7 +718,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $(this).addClass('is-active').attr('aria-selected', 'true');
             $root.find('[data-cf-panel]').removeClass('is-active');
             $root.find('[data-cf-panel="' + tab + '"]').addClass('is-active');
-            $root.find('.cf-studio__footer').toggle(tab === 'builder' || tab === 'settings' || tab === 'css' || tab === 'share');
+            $root.find('.cf-studio__footer').toggle(tab === 'builder' || tab === 'settings' || tab === 'integrity' || tab === 'css' || tab === 'share');
             $root.find('[data-cf-studio-tab]').val(tab);
             var $help = $root.find('[data-cf-studio-help]');
             if ($help.length) {
@@ -1670,6 +1672,47 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             reindexNamedRows($list, '[data-cf-fn-row]', /(custom_functions\[)\d+\]/);
         });
 
+        var reindexConsistency = function () {
+            $root.find('[data-cf-consistency-rule]').each(function (ri) {
+                $(this).find('[name^="integrity[consistency_rules]"]').each(function () {
+                    var name = $(this).attr('name') || '';
+                    name = name.replace(/integrity\[consistency_rules\]\[\d+\]/, 'integrity[consistency_rules][' + ri + ']');
+                    $(this).attr('name', name);
+                });
+                $(this).find('[data-cf-consistency-cond]').each(function (ci) {
+                    $(this).find('[name]').each(function () {
+                        var name = $(this).attr('name') || '';
+                        name = name.replace(/\[conditions\]\[\d+\]/, '[conditions][' + ci + ']');
+                        $(this).attr('name', name);
+                    });
+                });
+            });
+        };
+        $root.on('click', '[data-cf-add-consistency]', function (e) {
+            e.preventDefault();
+            var $list = $root.find('[data-cf-consistency-rules]');
+            var $proto = $list.find('[data-cf-consistency-rule]').first();
+            if (!$proto.length) {
+                return;
+            }
+            var $clone = $proto.clone();
+            $clone.find('input[type="text"]').val('');
+            $clone.find('select').prop('selectedIndex', 0);
+            $list.append($clone);
+            reindexConsistency();
+        });
+        $root.on('click', '[data-cf-remove-consistency]', function (e) {
+            e.preventDefault();
+            var $list = $root.find('[data-cf-consistency-rules]');
+            if ($list.find('[data-cf-consistency-rule]').length <= 1) {
+                $(this).closest('[data-cf-consistency-rule]').find('input[type="text"]').val('');
+                $(this).closest('[data-cf-consistency-rule]').find('select').prop('selectedIndex', 0);
+                return;
+            }
+            $(this).closest('[data-cf-consistency-rule]').remove();
+            reindexConsistency();
+        });
+
         $root.on('input change', '[data-cf-image-url]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
             var url = $.trim(String($(this).val() || ''));
@@ -1902,6 +1945,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             syncLogicKeep($(this));
         });
         layoutStudioPanes();
+        initIntegritySettings();
     };
 
     var initFill = function (root) {
@@ -1975,6 +2019,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     syncFileGuids();
                 }
             } catch (e) {}
+            if (typeof writeTimingField === 'function') {
+                flushPageTime(typeof currentPage !== 'undefined' ? currentPage : 0);
+                flushQuestionTimes();
+                writeTimingField();
+            }
             autosaveQueued = false;
             autosaveXhr = $.ajax({
                 url: saveUrl,
@@ -2015,6 +2064,59 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             autosaveTimer = setTimeout(autosaveProgress, 900);
         };
+
+        var timingState = {
+            startedAt: Date.now(),
+            pages: {},
+            questions: {},
+            pageEntered: Date.now(),
+            questionEntered: {}
+        };
+        var writeTimingField = function () {
+            var $field = $root.find('[data-cf-integrity-timing]');
+            if (!$field.length) {
+                return;
+            }
+            $field.val(JSON.stringify({
+                startedAt: timingState.startedAt,
+                pages: timingState.pages,
+                questions: timingState.questions
+            }));
+        };
+        var flushPageTime = function (idx) {
+            var now = Date.now();
+            var spent = now - timingState.pageEntered;
+            var key = String(idx);
+            timingState.pages[key] = (timingState.pages[key] || 0) + Math.max(0, spent);
+            timingState.pageEntered = now;
+        };
+        var flushQuestionTimes = function () {
+            var now = Date.now();
+            Object.keys(timingState.questionEntered).forEach(function (id) {
+                var spent = now - timingState.questionEntered[id];
+                timingState.questions[id] = (timingState.questions[id] || 0) + Math.max(0, spent);
+            });
+            timingState.questionEntered = {};
+        };
+        if (module.config.questionTiming) {
+            $root.on('focusin', '[data-cf-conditional]', function () {
+                var id = $(this).attr('data-cf-field-id');
+                if (id) {
+                    timingState.questionEntered[id] = Date.now();
+                }
+            });
+            $root.on('focusout', '[data-cf-conditional]', function () {
+                var id = $(this).attr('data-cf-field-id');
+                if (!id || !timingState.questionEntered[id]) {
+                    return;
+                }
+                var spent = Date.now() - timingState.questionEntered[id];
+                timingState.questions[id] = (timingState.questions[id] || 0) + Math.max(0, spent);
+                delete timingState.questionEntered[id];
+                writeTimingField();
+            });
+        }
+        writeTimingField();
 
         if (module.config.fillFileDeleteUrl && window.humhub && humhub.modules && humhub.modules.file
             && humhub.modules.file.config && humhub.modules.file.config.upload) {
@@ -3315,6 +3417,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         var showPage = function (idx, options) {
             options = options || {};
             var pageChanged = idx !== currentPage;
+            if (pageChanged && typeof flushPageTime === 'function') {
+                flushPageTime(currentPage);
+                writeTimingField();
+            }
             currentPage = idx;
             var $targetPage = $root.find('[data-cf-page="' + idx + '"]');
             if (pageChanged || !$targetPage.hasClass('is-active')) {
@@ -3772,6 +3878,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             captureRespondentMeta();
             syncHtmlValues();
             syncFileGuids();
+            if (typeof writeTimingField === 'function') {
+                flushPageTime(typeof currentPage !== 'undefined' ? currentPage : 0);
+                flushQuestionTimes();
+                writeTimingField();
+            }
             var $form = $(this);
             var saveUrl = $form.attr('data-cf-save-url') || '';
             if (saveUrl && $form.attr('action') === saveUrl) {
@@ -3893,6 +4004,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $.getJSON(url).done(function (res) {
                 if (res && res.html) {
                     $body.html(res.html);
+                    if (humhub.modules && humhub.modules.thiscoveryMapping && humhub.modules.thiscoveryMapping.init) {
+                        humhub.modules.thiscoveryMapping.init();
+                    }
                     return;
                 }
                 $body.html('<p class="cf-answer-empty">Could not load this answer.</p>');
@@ -4093,8 +4207,33 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
     };
 
+    var initIntegritySettings = function () {
+        $('[data-cf-integrity-settings]').each(function () {
+            var $root = $(this);
+            var sync = function () {
+                var $inherit = $root.find('[data-cf-integrity-inherit]');
+                var $enabled = $root.find('[data-cf-integrity-enabled]');
+                var inheritOn = $inherit.length && $inherit.is(':checked');
+                var on = false;
+                if ($enabled.length) {
+                    if (inheritOn) {
+                        on = $enabled.attr('data-cf-default-on') === '1';
+                        $enabled.prop('checked', on).prop('disabled', true);
+                    } else {
+                        $enabled.prop('disabled', false);
+                        on = $enabled.is(':checked');
+                    }
+                }
+                $root.find('[data-cf-integrity-when-on]').toggleClass('is-disabled', !on);
+            };
+            $root.off('change.cfIntegrity').on('change.cfIntegrity', '[data-cf-integrity-inherit], [data-cf-integrity-enabled]', sync);
+            sync();
+        });
+    };
+
     var init = function () {
         initListForms();
+        initIntegritySettings();
         $('[data-cf-poll-embed]').each(function () {
             initPollEmbed(this);
         });

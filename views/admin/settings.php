@@ -1,5 +1,6 @@
 <?php
 
+use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\ModuleSettings;
@@ -8,6 +9,7 @@ use yii\widgets\ActiveForm;
 
 /** @var ModuleSettings $model */
 
+ThiscoveryFormsAsset::register($this);
 $this->title = Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Forms');
 ?>
 
@@ -42,6 +44,22 @@ $this->title = Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Forms');
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Per survey: open and close waves on each form. Per panel: the panel has one calendar; every attached form uses the currently open wave. You still send invite emails from each form.') ?>
         </p>
+
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Tick Enable integrity checks to record quality scores. These are site-wide defaults. Each survey can inherit or override them on its Response integrity tab. Cloudflare Turnstile keys are only set here.') ?>
+            <a href="<?= Html::encode(Url::toHelp(null, 'creators-response-integrity')) ?>">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity help') ?>
+            </a>
+        </p>
+        <div data-cf-integrity-settings>
+        <?= $this->render('@thiscovery-forms/views/form/_integrity_settings_fields', [
+            'namePrefix' => 'integrity',
+            'values' => $integrity ?? \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::global(),
+            'defaults' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::defaults(),
+            'allowInherit' => false,
+        ]) ?>
+        </div>
 
         <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Save'), ['class' => 'btn btn-primary']) ?>
         <?php ActiveForm::end(); ?>

@@ -10,8 +10,12 @@ use Yii;
 
 class ExportService
 {
-    public function toCsv(CustomForm $form): string
+    public function toCsv(CustomForm $form, array $params = []): string
     {
+        $params['forExport'] = 1;
+        [$query] = AnswerListService::query($form, $params);
+        $query->with(['answerFields', 'user', 'wave', 'round', 'panelMember', 'integrityMeta']);
+
         $fields = array_values(array_filter($form->fields, static fn($f) => $f->collectsAnswer()));
         $fh = fopen('php://temp', 'r+');
 
@@ -21,6 +25,10 @@ class ExportService
             Yii::t('ThiscoveryFormsModule.base', 'User'),
             Yii::t('ThiscoveryFormsModule.base', 'Submitted at'),
             Yii::t('ThiscoveryFormsModule.base', 'Updated at'),
+            Yii::t('ThiscoveryFormsModule.base', 'Quality score'),
+            Yii::t('ThiscoveryFormsModule.base', 'Integrity status'),
+            Yii::t('ThiscoveryFormsModule.base', 'Analysis status'),
+            Yii::t('ThiscoveryFormsModule.base', 'Quality flags'),
         ];
         if ($form->usesWaves()) {
             $header[] = Yii::t('ThiscoveryFormsModule.base', 'Wave');
@@ -42,16 +50,27 @@ class ExportService
         fputcsv($fh, $header);
 
         /** @var FormAnswer $answer */
-        foreach ($form->getExportableAnswers()->with(['answerFields', 'user', 'wave', 'round', 'panelMember'])->each(100) as $answer) {
+        foreach ($query->each(100) as $answer) {
             $status = $answer->isComplete()
                 ? Yii::t('ThiscoveryFormsModule.base', 'Complete')
                 : Yii::t('ThiscoveryFormsModule.base', 'In progress');
+            $meta = $answer->integrityMeta;
+            $flagParts = [];
+            if ($meta) {
+                foreach ($meta->getFlagsForViewer(false) as $flag) {
+                    $flagParts[] = ($flag['category'] ?? '') . ':' . ($flag['code'] ?? '') . ' ' . ($flag['message'] ?? '');
+                }
+            }
             $row = [
                 $answer->id,
                 $status,
                 $answer->getSubmitterDisplayName($form),
                 $answer->created_at,
                 $answer->updated_at,
+                $meta ? $meta->overall_score : '',
+                $meta ? $meta->getStatusLabel() : '',
+                $meta ? $meta->getAnalysisLabel() : '',
+                implode('; ', $flagParts),
             ];
             $map = $answer->getValuesMap();
             $just = $answer->getJustificationsMap();
@@ -97,7 +116,13 @@ class ExportService
             return (string)$val;
         }
         if (array_is_list($val)) {
-            return implode(', ', array_map('strval', $val));
+            $parts = [];
+            foreach ($val as $item) {
+                if (is_scalar($item) || $item === null) {
+                    $parts[] = (string)$item;
+                }
+            }
+            return implode(', ', $parts);
         }
         return json_encode($val, JSON_UNESCAPED_UNICODE);
     }

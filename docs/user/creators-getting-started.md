@@ -28,6 +28,7 @@ The studio is the editor for one form. Tabs typically include:
 | --- | --- |
 | Builder | Add questions, pages, logic, and field actions |
 | Settings | Title, status, who can take part, emails, languages, functions |
+| Response integrity | Bot protection, quality scoring, consistency rules, invitation links |
 | CSS | Fill-page colours and layout; blank keeps the site theme |
 | Share | Live link, preview link, dashboard link, save as template |
 | Panel & waves | Shown when the form uses waves |
@@ -82,6 +83,7 @@ On Settings you can file the form in a folder, or leave it **Unfiled**. Folders 
 
 - [Builder and questions](creators-builder.md)
 - [Form settings](creators-settings.md)
+- [Response integrity](creators-response-integrity.md)
 - [Sharing and results](creators-results.md)
 - [Import questions from CSV](creators-csv-import.md)
 - [Panels, waves, and email](creators-panels.md)

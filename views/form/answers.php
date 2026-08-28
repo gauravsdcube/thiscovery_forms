@@ -4,6 +4,7 @@ use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use humhub\modules\thiscoveryForms\models\FormIntegrityMeta;
 use humhub\modules\thiscoveryForms\services\AnswerListService;
 use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
@@ -20,10 +21,17 @@ ThiscoveryFormsAsset::register($this);
 $filters = array_merge([
     'q' => '',
     'status' => '',
+    'integrity' => '',
+    'minScore' => null,
     'pageSize' => AnswerListService::DEFAULT_PAGE_SIZE,
 ], $filters ?? []);
 $selectedAnswerId = (int)($selectedAnswerId ?? 0);
-$hasFilters = $filters['q'] !== '' || $filters['status'] !== '';
+$canManage = $formModel->canManage();
+$hasFilters = $filters['q'] !== '' || $filters['status'] !== '' || $filters['integrity'] !== '' || $filters['minScore'] !== null;
+$exportParams = array_filter([
+    'integrity' => $filters['integrity'] !== '' ? $filters['integrity'] : null,
+    'min_score' => $filters['minScore'] !== null ? $filters['minScore'] : null,
+], static fn($v) => $v !== null && $v !== '');
 $sort = $dataProvider->sort;
 $total = (int)$dataProvider->getTotalCount();
 $clearUrl = Url::toAnswers($formModel);
@@ -31,6 +39,9 @@ $this->registerJsConfig('thiscoveryForms', [
     'loadingAnswer' => Yii::t('ThiscoveryFormsModule.base', 'Loading…'),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");', View::POS_READY);
+if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class) && Yii::$app->getModule('thiscovery-mapping')) {
+    \humhub\modules\thiscoveryMapping\assets\MappingAsset::register($this);
+}
 ?>
 
 <div class="cf-answers-page" id="cf-answers"
@@ -62,6 +73,11 @@ $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");
                 ->sm()
                 ->icon('bar-chart')
                 ->loader(false) ?>
+            <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Response integrity'))
+                ->link(Url::toIntegrity($formModel))
+                ->sm()
+                ->icon('shield')
+                ->loader(false) ?>
             <?php if ($formModel->isProject()): ?>
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Catalogue'))
                     ->link(Url::toCatalogue($formModel))
@@ -70,7 +86,7 @@ $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");
                     ->loader(false) ?>
             <?php endif; ?>
             <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))
-                ->link(Url::toExport($formModel))
+                ->link(Url::toExport($formModel, $exportParams))
                 ->sm()
                 ->icon('download')
                 ->loader(false) ?>
@@ -96,6 +112,36 @@ $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");
                 <?= Yii::t('ThiscoveryFormsModule.base', 'In progress') ?>
             </option>
         </select>
+        <select name="integrity" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Integrity')) ?>" onchange="this.form.submit()">
+            <option value=""><?= Yii::t('ThiscoveryFormsModule.base', 'All quality statuses') ?></option>
+            <?php
+            $integrityOpts = FormIntegrityMeta::statusLabels() + [
+                'quarantined' => Yii::t('ThiscoveryFormsModule.base', 'Quarantined'),
+                'flag_speed' => Yii::t('ThiscoveryFormsModule.base', 'Speeding'),
+                'flag_duplicate' => Yii::t('ThiscoveryFormsModule.base', 'Duplicate activity'),
+                'flag_straightline' => Yii::t('ThiscoveryFormsModule.base', 'Straight-lining'),
+                'flag_attention' => Yii::t('ThiscoveryFormsModule.base', 'Failed attention checks'),
+                'flag_consistency' => Yii::t('ThiscoveryFormsModule.base', 'Logical inconsistencies'),
+                'flag_freetext' => Yii::t('ThiscoveryFormsModule.base', 'Poor-quality free text'),
+                'flag_similarity' => Yii::t('ThiscoveryFormsModule.base', 'Response similarity'),
+            ];
+            if ($canManage) {
+                $integrityOpts['flag_bot'] = Yii::t('ThiscoveryFormsModule.base', 'Bot activity');
+            }
+            foreach ($integrityOpts as $val => $label): ?>
+                <option value="<?= Html::encode($val) ?>"<?= $filters['integrity'] === $val ? ' selected' : '' ?>>
+                    <?= Html::encode($label) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
+        <select name="min_score" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Minimum score')) ?>" onchange="this.form.submit()">
+            <option value=""><?= Yii::t('ThiscoveryFormsModule.base', 'Any quality score') ?></option>
+            <?php foreach ([80, 70, 55, 40] as $min): ?>
+                <option value="<?= (int)$min ?>"<?= (int)$filters['minScore'] === (int)$min ? ' selected' : '' ?>>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Score {n}+', ['n' => $min]) ?>
+                </option>
+            <?php endforeach; ?>
+        </select>
         <select name="per-page" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Per page')) ?>" onchange="this.form.submit()">
             <?php foreach (AnswerListService::PAGE_SIZES as $size): ?>
                 <option value="<?= (int)$size ?>"<?= (int)$filters['pageSize'] === (int)$size ? ' selected' : '' ?>>
@@ -107,6 +153,9 @@ $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");
         <?php if ($hasFilters): ?>
             <a class="btn btn-link btn-sm" href="<?= Html::encode($clearUrl) ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Clear') ?></a>
         <?php endif; ?>
+        <a class="btn btn-link btn-sm" href="<?= Html::encode(Url::toExport($formModel, $exportParams + ['include_excluded' => 1])) ?>">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Export including excluded') ?>
+        </a>
     </form>
 
     <?php if (!$dataProvider->getCount()): ?>
@@ -126,6 +175,9 @@ $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");
                 <tr>
                     <th><?= $sort->link('submitter', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Respondent')]) ?></th>
                     <th><?= $sort->link('status', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Status')]) ?></th>
+                    <th><?= $sort->link('overall_score', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Score')]) ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Integrity') ?></th>
+                    <th><?= $sort->link('analysis_status', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Analysis')]) ?></th>
                     <th><?= $sort->link('created_at', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Date created')]) ?></th>
                     <th><?= $sort->link('updated_at', ['label' => Yii::t('ThiscoveryFormsModule.base', 'Date modified')]) ?></th>
                     <th><?= Yii::t('ThiscoveryFormsModule.base', 'Details') ?></th>
@@ -167,6 +219,30 @@ $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");
                             </span>
                             <?php if ($formModel->isProject()): ?>
                                 <span class="cf-form-row__chip"><?= Html::encode($answer->getWorkflowLabel()) ?></span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($answer->integrityMeta): ?>
+                                <?php $band = $answer->integrityMeta->getScoreBand(); ?>
+                                <span class="cf-score-pill cf-score-pill--<?= Html::encode($band) ?>">
+                                    <?= Html::encode(number_format((float)$answer->integrityMeta->overall_score, 0)) ?>
+                                </span>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($answer->integrityMeta): ?>
+                                <span class="cf-form-row__chip"><?= Html::encode($answer->integrityMeta->getStatusLabel()) ?></span>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
+                            <?php endif; ?>
+                        </td>
+                        <td>
+                            <?php if ($answer->integrityMeta): ?>
+                                <span class="cf-form-row__chip cf-form-row__chip--analysis"><?= Html::encode($answer->integrityMeta->getAnalysisLabel()) ?></span>
+                            <?php else: ?>
+                                <span class="text-muted">—</span>
                             <?php endif; ?>
                         </td>
                         <td class="cf-form-table__date-col"><?= Html::encode($created) ?></td>

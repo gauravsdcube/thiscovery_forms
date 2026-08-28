@@ -127,6 +127,12 @@ trait FillResumeTrait
         if ($form->isDraft() && !$form->canManage()) {
             throw new ForbiddenHttpException(Yii::t('ThiscoveryFormsModule.base', 'This form is still a draft.'));
         }
+
+        $integrity = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
+        $accessError = $integrity->checkAccess($form, $ctx);
+        if ($accessError && !$form->canManage()) {
+            throw new ForbiddenHttpException($accessError);
+        }
     }
 
     protected function assertResumeEnabled(CustomForm $form): void
@@ -438,6 +444,9 @@ trait FillResumeTrait
             $answer->save(false, ['vars_json', 'updated_at']);
             $this->rememberProgressDraft($form, $answer);
             $this->pruneUserInProgressDrafts($form, $answer, true);
+            if (!$this->isPreviewMode($form)) {
+                (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onProgress($form, $answer, Yii::$app->request->post());
+            }
         }
 
         if (!$answer) {
@@ -581,6 +590,10 @@ trait FillResumeTrait
             'ownDraft' => $ownDraft,
             'startNew' => $this->isStartNewRequest(),
             'isPreview' => $this->isPreviewMode($form),
+            'accessToken' => trim((string)Yii::$app->request->get('access', Yii::$app->request->post('access_token', ''))),
+            'showCaptcha' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->shouldShowCaptchaWidget($form),
+            'integrityEnabled' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->isEnabled($form),
+            'integritySettings' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form),
         ];
     }
 
@@ -603,6 +616,12 @@ trait FillResumeTrait
             }
             (new \humhub\modules\thiscoveryForms\services\PanelService())->handleCompletion($form, $answer);
             if (!$isTest) {
+                (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onComplete(
+                    $form,
+                    $answer,
+                    Yii::$app->request->post(),
+                    $ctx
+                );
                 $this->runSubmitActions($form, $ctx, $answer);
             }
         }

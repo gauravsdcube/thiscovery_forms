@@ -30,6 +30,7 @@ $isItems = in_array($type, [FormField::TYPE_BEST_WORST, FormField::TYPE_MAXDIFF]
 $isMaxDiff = ($type === FormField::TYPE_MAXDIFF);
 $isDrilldown = ($type === FormField::TYPE_DRILLDOWN);
 $isImageArea = ($type === FormField::TYPE_IMAGE_AREA);
+$isMap = ($type === FormField::TYPE_MAP);
 $isCarry = FormField::isCarryForwardType($type);
 $isAnswerable = !in_array($type, [
         FormField::TYPE_PAGE_BREAK,
@@ -45,6 +46,7 @@ $emailTemplateOptions = $emailTemplateOptions ?? [0 => Yii::t('ThiscoveryFormsMo
 $gridCfg = $field->getGridConfig();
 $itemsCfg = $field->getItemsConfig();
 $imageCfg = $field->getImageAreaConfig();
+$mapCfg = $field->getMapConfig();
 $logic = $field->getLogic();
 $carry = $field->getCarryForward();
 $hasCondition = $field->hasCondition();
@@ -175,6 +177,23 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         ]) ?>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Hidden from respondents') ?>
                     </label>
+                </div>
+                <div class="cf-switch mt-2<?= $isAnswerable ? '' : ' d-none' ?>" data-cf-attention-wrap>
+                    <div class="cf-field">
+                        <label>
+                            <?= Html::checkbox($namePrefix . '[attention_check]', $field->isAttentionCheck(), [
+                                'value' => '1',
+                                'uncheck' => null,
+                                'data-cf-attention-check' => true,
+                            ]) ?>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Attention check') ?>
+                        </label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Instructed-response item, for example “Please select Agree”. Enter the expected answer below. Pass or fail is stored on the response. Failed checks add to the quality score; they do not auto-reject. Turn on Attention checks on the Response integrity tab.')]) ?>
+                    </div>
+                    <?= Html::textInput($namePrefix . '[attention_expected]', $field->getAttentionExpected(), [
+                        'class' => 'form-control mt-1',
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Expected answer, e.g. Agree'),
+                    ]) ?>
                 </div>
             </div>
         </div>
@@ -716,6 +735,51 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 </div>
                 <p class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Upload an image, then drag on it to add a rectangle. Edit each region’s label, correct flag, and score below.') ?></p>
                 <div data-cf-hotspot-list></div>
+            </div>
+        </div>
+
+        <div class="cf-map-panel<?= $isMap ? '' : ' d-none' ?>" data-cf-map-panel data-tm-place-wrap>
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Map') ?></label>
+            <p class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Respondents draw on a map. Geometry is stored with the answer; this is not a shared participatory map.') ?></p>
+            <?php if (Yii::$app->getModule('thiscovery-mapping')): ?>
+                <?= $this->renderFile('@thiscovery-mapping/views/map/_place_search.php') ?>
+                <?= $this->renderFile('@thiscovery-mapping/views/map/_preview_map.php', ['map' => null]) ?>
+            <?php endif; ?>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Centre latitude') ?></label>
+                    <?= Html::textInput($namePrefix . '[map_lat]', $mapCfg['lat'], ['class' => 'form-control', 'data-tm-lat' => '1']) ?>
+                </div>
+                <div class="col-md-4">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Centre longitude') ?></label>
+                    <?= Html::textInput($namePrefix . '[map_lng]', $mapCfg['lng'], ['class' => 'form-control', 'data-tm-lng' => '1']) ?>
+                </div>
+                <div class="col-md-4">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Zoom') ?></label>
+                    <?= Html::input('number', $namePrefix . '[map_zoom]', $mapCfg['zoom'], ['class' => 'form-control', 'min' => 1, 'max' => 20, 'data-tm-zoom' => '1']) ?>
+                </div>
+            </div>
+            <div class="row g-3 mt-1">
+                <div class="col-md-8">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Drawing types') ?></label>
+                    <?php foreach ([
+                        'Point' => Yii::t('ThiscoveryFormsModule.base', 'Point / pin'),
+                        'LineString' => Yii::t('ThiscoveryFormsModule.base', 'Line / route'),
+                        'Polygon' => Yii::t('ThiscoveryFormsModule.base', 'Area / polygon'),
+                    ] as $geom => $geomLabel): ?>
+                        <label class="checkbox-inline" style="margin-right:12px">
+                            <?= Html::checkbox($namePrefix . '[map_types][]', in_array($geom, $mapCfg['allowedTypes'], true), [
+                                'value' => $geom,
+                                'uncheck' => null,
+                            ]) ?>
+                            <?= Html::encode($geomLabel) ?>
+                        </label>
+                    <?php endforeach; ?>
+                </div>
+                <div class="col-md-4">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Maximum drawings') ?></label>
+                    <?= Html::input('number', $namePrefix . '[map_max]', $mapCfg['maxFeatures'], ['class' => 'form-control', 'min' => 1, 'max' => 50]) ?>
+                </div>
             </div>
         </div>
 

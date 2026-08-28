@@ -2,6 +2,14 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.0 (August 28, 2026)
+
+- Enh: Response integrity tab — bot protection, quality scoring, review, quarantine, and unique invitation links
+- Enh: On-screen Guidance (?) on each Response integrity setting, plus a Help page for the feature
+- Fix: Integrity ethics pass — one signal cannot mark Suspicious/Excluded; human overrides survive rescore; Hash IP Off stores no IP hashes; exact attention-check matching; technical flags hidden from CSV and non-managers
+- Enh: Each answer shows quality score and Include in analysis on the response itself; Answers list adds Analysis column and sortable scores
+- Change: Integrity checks are off until you tick Enable integrity checks (site admin and per survey). Scores are not recorded when it is off
+
 ## 1.20.8 (August 22, 2026)
 
 - Fix: Back is hidden on the first page. Next and Submit stay on the right

@@ -89,9 +89,16 @@ $isAuthor = $user && (int)$answer->created_by === (int)$user->id;
                                 <?php if ($isEmpty): ?>
                                     <span class="cf-answer-field__blank"><?= Yii::t('ThiscoveryFormsModule.base', 'No answer') ?></span>
                                 <?php else: ?>
-                                    <?= !empty($answerFieldMap[(int)$field->id])
-                                        ? $answerFieldMap[(int)$field->id]->getAnswerHtml()
-                                        : nl2br(Html::encode($afValue)) ?>
+                                    <?php if ($field->type === FormField::TYPE_MAP && !empty($answerFieldMap[(int)$field->id])): ?>
+                                        <?= $this->render('_answer_map', [
+                                            'field' => $field,
+                                            'answerField' => $answerFieldMap[(int)$field->id],
+                                        ]) ?>
+                                    <?php else: ?>
+                                        <?= !empty($answerFieldMap[(int)$field->id])
+                                            ? $answerFieldMap[(int)$field->id]->getAnswerHtml()
+                                            : nl2br(Html::encode($afValue)) ?>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             </div>
                         </div>

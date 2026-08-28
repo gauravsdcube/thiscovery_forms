@@ -489,6 +489,7 @@ class QuestionImportExportService
             'drill_down' => FormField::TYPE_DRILLDOWN,
             'image' => FormField::TYPE_IMAGE_AREA,
             'hotspot' => FormField::TYPE_IMAGE_AREA,
+            'map' => FormField::TYPE_MAP,
             'respondent_meta' => FormField::TYPE_RESPONDENT_META,
             'metadata' => FormField::TYPE_RESPONDENT_META,
             'ip' => FormField::TYPE_RESPONDENT_META,
