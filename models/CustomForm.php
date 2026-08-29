@@ -1558,6 +1558,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
             if ($allowed !== null && !in_array($type, $allowed, true)) {
                 continue;
             }
+            if ($type === FormField::TYPE_MAP && !\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
+                // Keep existing map questions if Mapping was turned off; reject new ones.
+                $idProbe = isset($row['id']) && $row['id'] !== '' ? (int)$row['id'] : null;
+                if (!$idProbe || !isset($existing[$idProbe])) {
+                    continue;
+                }
+            }
 
             $probeType = new FormField(['type' => $type]);
             if ($this->isPoll() && $probeType->collectsAnswer()) {

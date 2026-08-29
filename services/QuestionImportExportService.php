@@ -281,6 +281,10 @@ class QuestionImportExportService
             if (isset($payload['type'])) {
                 $payload['type'] = $this->normalizeType((string)$payload['type']);
             }
+            if (($payload['type'] ?? '') === FormField::TYPE_MAP
+                && !\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
+                continue;
+            }
             $row = FormField::exportToPostRow($payload);
             if ($row === null) {
                 continue;

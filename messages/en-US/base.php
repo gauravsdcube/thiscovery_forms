@@ -516,6 +516,8 @@ return [
     'Area / polygon' => 'Area / polygon',
     'Maximum drawings' => 'Maximum drawings',
     'The mapping module is not enabled.' => 'The mapping module is not enabled.',
+    'Thiscovery Mapping must be installed and enabled to configure or collect map answers.' => 'Thiscovery Mapping must be installed and enabled to configure or collect map answers.',
+    'Thiscovery Mapping must be installed and enabled to answer map questions.' => 'Thiscovery Mapping must be installed and enabled to answer map questions.',
     '{n,plural,=1{1 map drawing} other{# map drawings}}' => '{n,plural,=1{1 map drawing} other{# map drawings}}',
     'Respondent metadata' => 'Respondent metadata',
     'Hidden from respondents' => 'Hidden from respondents',

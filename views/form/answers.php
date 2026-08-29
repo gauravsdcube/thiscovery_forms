@@ -39,7 +39,8 @@ $this->registerJsConfig('thiscoveryForms', [
     'loadingAnswer' => Yii::t('ThiscoveryFormsModule.base', 'Loading…'),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initAnswers("#cf-answers");', View::POS_READY);
-if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class) && Yii::$app->getModule('thiscovery-mapping')) {
+if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
+    && \humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
     \humhub\modules\thiscoveryMapping\assets\MappingAsset::register($this);
 }
 ?>

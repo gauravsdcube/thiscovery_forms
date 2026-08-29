@@ -20,7 +20,8 @@ use yii\helpers\Html;
 /** @var $fields */
 
 ThiscoveryFormsAsset::register($this);
-if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingFormAsset::class) && Yii::$app->getModule('thiscovery-mapping')) {
+if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingFormAsset::class)
+    && \humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
     \humhub\modules\thiscoveryMapping\assets\MappingFormAsset::register($this);
 }
 
@@ -59,9 +60,16 @@ $palette = [
     ['type' => FormField::TYPE_MAXDIFF, 'icon' => 'fa-balance-scale', 'group' => 'research'],
     ['type' => FormField::TYPE_DRILLDOWN, 'icon' => 'fa-sitemap', 'group' => 'research'],
     ['type' => FormField::TYPE_IMAGE_AREA, 'icon' => 'fa-picture-o', 'group' => 'research'],
-    ['type' => FormField::TYPE_MAP, 'icon' => 'fa-map-marker', 'group' => 'research'],
     ['type' => FormField::TYPE_FILE, 'icon' => 'fa-cloud-upload', 'group' => 'input'],
 ];
+if (\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
+    // Insert Map before File in the research/input boundary.
+    array_splice($palette, -1, 0, [[
+        'type' => FormField::TYPE_MAP,
+        'icon' => 'fa-map-marker',
+        'group' => 'research',
+    ]]);
+}
 $metaIcons = [
     RespondentMetaService::KEY_IP => 'fa-globe',
     RespondentMetaService::KEY_BROWSER => 'fa-window-maximize',
@@ -103,6 +111,9 @@ if ($allowedTypes !== null) {
 }
 
 $typeLabels = FormField::getTypeLabels();
+if (!\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
+    unset($typeLabels[FormField::TYPE_MAP]);
+}
 if ($allowedTypes !== null) {
     $typeLabels = array_intersect_key($typeLabels, array_flip($allowedTypes));
 }

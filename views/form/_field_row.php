@@ -78,6 +78,9 @@ if ($isPageBreak && !empty($pageBreak['pageKey'])) {
 
 $typeLabels = FormField::getTypeLabels();
 unset($typeLabels[FormField::TYPE_GROUP_END]);
+if (!\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled() && $type !== FormField::TYPE_MAP) {
+    unset($typeLabels[FormField::TYPE_MAP]);
+}
 if (is_array($allowedTypes) && $allowedTypes) {
     $typeLabels = array_intersect_key($typeLabels, array_flip($allowedTypes));
 }
@@ -741,9 +744,11 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
         <div class="cf-map-panel<?= $isMap ? '' : ' d-none' ?>" data-cf-map-panel data-tm-place-wrap>
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Map') ?></label>
             <p class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Respondents draw on a map. Geometry is stored with the answer; this is not a shared participatory map.') ?></p>
-            <?php if (Yii::$app->getModule('thiscovery-mapping')): ?>
+            <?php if (\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()): ?>
                 <?= $this->renderFile('@thiscovery-mapping/views/map/_place_search.php') ?>
                 <?= $this->renderFile('@thiscovery-mapping/views/map/_preview_map.php', ['map' => null]) ?>
+            <?php else: ?>
+                <p class="cf-field-help text-warning"><?= Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Mapping must be installed and enabled to configure or collect map answers.') ?></p>
             <?php endif; ?>
             <div class="row g-3">
                 <div class="col-md-4">

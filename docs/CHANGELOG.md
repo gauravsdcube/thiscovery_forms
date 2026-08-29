@@ -2,6 +2,11 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.2 (August 29, 2026)
+
+- Change: Map question type appears in the builder only when Thiscovery Mapping is installed and enabled
+- Fix: New map questions and CSV/JSON imports are rejected when Mapping is off; existing map fields are kept
+
 ## 1.21.1 (August 29, 2026)
 
 - Fix: CAPTCHA “only when suspicious” now challenges on the next attempt and requires a pass before accept

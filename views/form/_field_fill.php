@@ -737,7 +737,8 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             ?>
             <div class="cf-map-field">
                 <?= Html::hiddenInput($inputName, $geo, ['data-cf-map-value' => true]) ?>
-                <?php if (class_exists(\humhub\modules\thiscoveryMapping\widgets\MapWidget::class) && Yii::$app->getModule('thiscovery-mapping')): ?>
+                <?php if (class_exists(\humhub\modules\thiscoveryMapping\widgets\MapWidget::class)
+                    && \humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()): ?>
                     <?= \humhub\modules\thiscoveryMapping\widgets\MapWidget::widget([
                         'mode' => 'form',
                         'inputName' => $inputName,
@@ -746,7 +747,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                         'formConfig' => $mapCfg,
                     ]) ?>
                 <?php else: ?>
-                    <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'The mapping module is not enabled.') ?></p>
+                    <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Mapping must be installed and enabled to answer map questions.') ?></p>
                 <?php endif; ?>
             </div>
         <?php else: ?>

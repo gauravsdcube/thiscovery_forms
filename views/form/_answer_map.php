@@ -15,7 +15,8 @@ if (is_array($decoded) && ($decoded['type'] ?? '') === 'FeatureCollection') {
     $n = is_array($decoded['features'] ?? null) ? count($decoded['features']) : 0;
 }
 ?>
-<?php if ($geo !== '' && class_exists(\humhub\modules\thiscoveryMapping\widgets\MapWidget::class) && Yii::$app->getModule('thiscovery-mapping')): ?>
+<?php if ($geo !== '' && class_exists(\humhub\modules\thiscoveryMapping\widgets\MapWidget::class)
+    && \humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()): ?>
     <div class="cf-answer-map">
         <?= \humhub\modules\thiscoveryMapping\widgets\MapWidget::widget([
             'mode' => 'form',
