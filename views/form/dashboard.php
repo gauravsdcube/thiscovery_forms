@@ -66,6 +66,13 @@ JS
         <div class="cf-stat-card">
             <div class="cf-stat-value"><?= (int)$stats['totalAnswers'] ?></div>
             <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Total submissions') ?></div>
+            <?php if (!empty($stats['excludedFromAnalysis'])): ?>
+                <div class="cf-stat-hint text-muted">
+                    <?= Yii::t('ThiscoveryFormsModule.base', '{n,plural,=1{1 excluded from analysis} other{# excluded from analysis}}', [
+                        'n' => (int)$stats['excludedFromAnalysis'],
+                    ]) ?>
+                </div>
+            <?php endif; ?>
         </div>
         <div class="cf-stat-card">
             <div class="cf-stat-value"><?= (int)($stats['inProgress'] ?? 0) ?></div>
@@ -141,6 +148,11 @@ JS
 
     <div class="cf-dash-panel">
         <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Submissions over time') ?></h3>
+        <?php if (!empty($stats['excludedFromAnalysis'])): ?>
+            <p class="text-muted small">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Charts and totals omit responses marked Excluded from analysis. Open Response integrity or Answers to review them.') ?>
+            </p>
+        <?php endif; ?>
         <div class="cf-chart-wrap cf-chart-wrap--timeline">
             <canvas data-cf-chart="timeline"></canvas>
         </div>

@@ -102,7 +102,14 @@ trait IntegrityTrait
             $count = (int)Yii::$app->request->post('count', 5);
             $oneTime = Yii::$app->request->post('one_time', '1') === '1';
             $label = trim((string)Yii::$app->request->post('label', ''));
-            $created = $service->generateAccessTokens($form, $count, $oneTime, $label !== '' ? $label : null);
+            $expiresDays = (int)Yii::$app->request->post('expires_days', 0);
+            $created = $service->generateAccessTokens(
+                $form,
+                $count,
+                $oneTime,
+                $label !== '' ? $label : null,
+                $expiresDays > 0 ? $expiresDays : null
+            );
             $lines = [];
             foreach ($created['plaintext'] as $raw) {
                 $lines[] = Url::toUniqueInvite($form, $raw);

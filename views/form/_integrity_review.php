@@ -90,8 +90,15 @@ $labels = FormIntegrityMeta::componentLabels();
     <?php if ($meta->getQuestionTimings()): ?>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Time on questions') ?></h4>
         <ul>
-            <?php foreach ($meta->getQuestionTimings() as $fid => $ms): ?>
-                <li><?= Yii::t('ThiscoveryFormsModule.base', 'Question {id}: {n}s', ['id' => $fid, 'n' => round(((int)$ms) / 1000, 1)]) ?></li>
+            <?php
+            $fieldLabels = [];
+            foreach ($formModel->fields as $f) {
+                $fieldLabels[(string)$f->id] = $f->label;
+            }
+            foreach ($meta->getQuestionTimings() as $fid => $ms):
+                $label = $fieldLabels[(string)$fid] ?? Yii::t('ThiscoveryFormsModule.base', 'Question {id}', ['id' => $fid]);
+                ?>
+                <li><?= Html::encode($label) ?>: <?= Yii::t('ThiscoveryFormsModule.base', '{n}s', ['n' => round(((int)$ms) / 1000, 1)]) ?></li>
             <?php endforeach; ?>
         </ul>
     <?php endif; ?>
@@ -105,7 +112,12 @@ $labels = FormIntegrityMeta::componentLabels();
             <button class="btn btn-sm btn-default mt-2" type="submit"><?= Yii::t('ThiscoveryFormsModule.base', 'Add note') ?></button>
         <?= Html::endForm() ?>
         <?php
-        $audits = FormIntegrityAudit::find()->where(['answer_id' => $answer->id])->orderBy(['id' => SORT_DESC])->limit(30)->all();
+        $audits = FormIntegrityAudit::find()
+            ->where(['answer_id' => $answer->id])
+            ->with('user')
+            ->orderBy(['id' => SORT_DESC])
+            ->limit(30)
+            ->all();
         ?>
         <?php if ($audits): ?>
             <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Audit history') ?></h4>
@@ -113,6 +125,11 @@ $labels = FormIntegrityMeta::componentLabels();
                 <?php foreach ($audits as $audit): ?>
                     <li>
                         <?= Html::encode(Yii::$app->formatter->asDatetime($audit->created_at, 'short')) ?>
+                        <?php
+                        $who = $audit->user->displayName ?? null;
+                        if ($who): ?>
+                            — <?= Html::encode($who) ?>
+                        <?php endif; ?>
                         — <?= Html::encode($audit->action) ?>
                         <?php if ($audit->from_value || $audit->to_value): ?>
                             (<?= Html::encode((string)$audit->from_value) ?> → <?= Html::encode((string)$audit->to_value) ?>)

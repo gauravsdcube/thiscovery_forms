@@ -70,4 +70,25 @@ $card = static function (string $label, $value, ?string $filter = null) use ($fo
     <p class="help-block">
         <?= Yii::t('ThiscoveryFormsModule.base', 'Click a figure to open the matching responses. Statuses are screening aids, not a finding of misconduct. Excluded responses are kept and can be reinstated from the answer review.') ?>
     </p>
+    <?php if (!empty($stats['clusters'])): ?>
+        <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Similar response groups') ?></h3>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Responses linked by high similarity. Groups are screening aids — shared wording alone is not proof of collusion.') ?>
+        </p>
+        <div class="cf-integrity-clusters">
+            <?php foreach ($stats['clusters'] as $i => $cluster): ?>
+                <div class="cf-integrity-cluster">
+                    <strong><?= Yii::t('ThiscoveryFormsModule.base', 'Group {n} ({count} responses)', [
+                        'n' => $i + 1,
+                        'count' => (int)($cluster['size'] ?? count($cluster['ids'] ?? [])),
+                    ]) ?></strong>
+                    <p class="mb-0">
+                        <?php foreach (($cluster['ids'] ?? []) as $sid): ?>
+                            <a href="<?= Html::encode(Url::toAnswers($formModel, ['answer' => $sid])) ?>">#<?= (int)$sid ?></a>
+                        <?php endforeach; ?>
+                    </p>
+                </div>
+            <?php endforeach; ?>
+        </div>
+    <?php endif; ?>
 </div>

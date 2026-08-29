@@ -20,6 +20,7 @@ class IntegrityService
     public const TIMING_NAME = 'cf_integrity_timing';
     public const SESSION_PREFIX = 'cf_integrity_session_';
     public const START_PREFIX = 'cf_integrity_start_';
+    public const CAPTCHA_REQUIRED_PREFIX = 'cf_integrity_captcha_';
 
     public function settings(?CustomForm $form): array
     {
@@ -90,12 +91,19 @@ class IntegrityService
         if (IntegritySettings::isOn($cfg, 'rate_limiting') && $this->isRateLimited($form, $cfg, true)) {
             return Yii::t('ThiscoveryFormsModule.base', 'Too many submissions from this connection. Please wait a few minutes and try again.');
         }
+        if (!IntegritySettings::isOn($cfg, 'captcha') || trim((string)($cfg['turnstile_site_key'] ?? '')) === '') {
+            $this->clearCaptchaRequired($form);
+        }
         $suspicious = $this->looksSuspiciousBeforeSave($form, $post, $cfg);
-        $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious);
-        if ($needCaptcha && !$this->verifyCaptcha($cfg, $post)) {
-            if (($cfg['captcha_mode'] ?? '') === IntegritySettings::CAPTCHA_ALWAYS) {
+        // Sticky session bit: honeypot / missing session are only known at submit,
+        // so the next render must still show Turnstile and require a pass.
+        $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious || $this->isCaptchaRequired($form));
+        if ($needCaptcha) {
+            if (!$this->verifyCaptcha($cfg, $post)) {
+                $this->markCaptchaRequired($form);
                 return Yii::t('ThiscoveryFormsModule.base', 'Please complete the verification check and try again.');
             }
+            $this->clearCaptchaRequired($form);
         }
         return null;
     }
@@ -211,8 +219,35 @@ class IntegrityService
             $meta->overall_score = $this->overallScore($scores, $cfg);
             $autoStatus = $this->statusFromScore((float)$meta->overall_score, $scores, $cfg);
             if (!$meta->status_override) {
+                $fromStatus = $meta->integrity_status;
+                $fromAnalysis = $meta->analysis_status;
                 $meta->integrity_status = $autoStatus;
                 $meta->analysis_status = $this->analysisFromStatus($autoStatus);
+                if ($autoStatus === FormIntegrityMeta::STATUS_EXCLUDED) {
+                    $meta->exclusion_reason = Yii::t(
+                        'ThiscoveryFormsModule.base',
+                        'Automatically excluded: quality score {score} with multiple integrity signals.',
+                        ['score' => number_format((float)$meta->overall_score, 0)]
+                    );
+                    FormIntegrityAudit::record(
+                        (int)$form->id,
+                        (int)$answer->id,
+                        'auto_exclude',
+                        $fromStatus,
+                        $autoStatus,
+                        $meta->exclusion_reason
+                    );
+                    if ($fromAnalysis !== $meta->analysis_status) {
+                        FormIntegrityAudit::record(
+                            (int)$form->id,
+                            (int)$answer->id,
+                            'analysis_status',
+                            $fromAnalysis,
+                            $meta->analysis_status,
+                            $meta->exclusion_reason
+                        );
+                    }
+                }
             }
         } else {
             $meta->overall_score = 100;
@@ -224,6 +259,7 @@ class IntegrityService
 
         $this->consumeAccessToken($form, $rawToken, $cfg);
         $meta->save(false);
+        $this->clearCaptchaRequired($form);
         Yii::$app->session->remove(self::START_PREFIX . (int)$form->id);
         return $meta;
     }
@@ -320,7 +356,69 @@ class IntegrityService
             'averageScore' => round($avg, 1),
             'byStatus' => $byStatus,
             'flags' => $flagCounts,
+            'clusters' => $this->similarityClusters($form, clone $q),
         ];
+    }
+
+    /**
+     * Groups of responses linked by similar_answer_ids (connected components).
+     *
+     * @param \yii\db\ActiveQuery $baseQuery already scoped to complete non-test answers for the form
+     * @return array<int, array{ids: int[], size: int}>
+     */
+    private function similarityClusters(CustomForm $form, $baseQuery): array
+    {
+        $parent = [];
+        $find = static function (int $x) use (&$parent, &$find): int {
+            if (!isset($parent[$x])) {
+                $parent[$x] = $x;
+            }
+            if ($parent[$x] !== $x) {
+                $parent[$x] = $find($parent[$x]);
+            }
+            return $parent[$x];
+        };
+        $union = static function (int $a, int $b) use (&$find, &$parent): void {
+            $ra = $find($a);
+            $rb = $find($b);
+            if ($ra !== $rb) {
+                $parent[$rb] = $ra;
+            }
+        };
+
+        /** @var FormIntegrityMeta $row */
+        foreach ($baseQuery->andWhere(['IS NOT', 'm.similar_answer_ids_json', null])->each(100) as $row) {
+            $aid = (int)$row->answer_id;
+            $ids = $row->getSimilarAnswerIds();
+            if ($ids === []) {
+                continue;
+            }
+            $find($aid);
+            foreach ($ids as $oid) {
+                $oid = (int)$oid;
+                if ($oid < 1 || $oid === $aid) {
+                    continue;
+                }
+                $union($aid, $oid);
+            }
+        }
+
+        $groups = [];
+        foreach ($parent as $id => $_) {
+            $root = $find((int)$id);
+            $groups[$root][] = (int)$id;
+        }
+        $clusters = [];
+        foreach ($groups as $ids) {
+            $ids = array_values(array_unique($ids));
+            sort($ids);
+            if (count($ids) < 2) {
+                continue;
+            }
+            $clusters[] = ['ids' => $ids, 'size' => count($ids)];
+        }
+        usort($clusters, static fn($a, $b) => $b['size'] <=> $a['size']);
+        return array_slice($clusters, 0, 25);
     }
 
     public function shouldShowCaptchaWidget(CustomForm $form): bool
@@ -336,7 +434,29 @@ class IntegrityService
         if ($mode === IntegritySettings::CAPTCHA_ALWAYS) {
             return true;
         }
-        return $this->looksSuspiciousBeforeSave($form, Yii::$app->request->post(), $cfg);
+        // Sticky after a blocked submit, or already suspicious on this request.
+        return $this->isCaptchaRequired($form)
+            || $this->looksSuspiciousBeforeSave($form, Yii::$app->request->post(), $cfg);
+    }
+
+    public function isCaptchaRequired(CustomForm $form): bool
+    {
+        return (bool)Yii::$app->session->get($this->captchaRequiredKey($form));
+    }
+
+    public function markCaptchaRequired(CustomForm $form): void
+    {
+        Yii::$app->session->set($this->captchaRequiredKey($form), 1);
+    }
+
+    public function clearCaptchaRequired(CustomForm $form): void
+    {
+        Yii::$app->session->remove($this->captchaRequiredKey($form));
+    }
+
+    private function captchaRequiredKey(CustomForm $form): string
+    {
+        return self::CAPTCHA_REQUIRED_PREFIX . (int)$form->id;
     }
 
     public function findAccessToken(CustomForm $form, string $raw): ?FormAccessToken
@@ -354,11 +474,20 @@ class IntegrityService
     /**
      * @return array{tokens: FormAccessToken[], plaintext: string[]}
      */
-    public function generateAccessTokens(CustomForm $form, int $count, bool $oneTime, ?string $label = null): array
-    {
+    public function generateAccessTokens(
+        CustomForm $form,
+        int $count,
+        bool $oneTime,
+        ?string $label = null,
+        ?int $expiresInDays = null
+    ): array {
         $count = max(1, min(200, $count));
         $created = [];
         $plain = [];
+        $expiresAt = null;
+        if ($expiresInDays !== null && $expiresInDays > 0) {
+            $expiresAt = date('Y-m-d H:i:s', time() + ($expiresInDays * 86400));
+        }
         for ($i = 0; $i < $count; $i++) {
             $raw = bin2hex(random_bytes(16));
             $row = new FormAccessToken();
@@ -369,6 +498,7 @@ class IntegrityService
             $row->one_time = $oneTime ? 1 : 0;
             $row->max_uses = $oneTime ? 1 : 99;
             $row->use_count = 0;
+            $row->expires_at = $expiresAt;
             $row->created_by = Yii::$app->user->id;
             $row->created_at = date('Y-m-d H:i:s');
             $row->save(false);
@@ -582,23 +712,37 @@ class IntegrityService
                 $flags[] = $this->flag('duplicate', 'same_token', Yii::t('ThiscoveryFormsModule.base', 'Invitation token reused on another response'));
             }
         }
-        if ($meta->ip_hash || $meta->session_hash) {
-            $or = ['or'];
+        if ($meta->ip_hash || $meta->session_hash || $meta->ip_network_hash) {
+            $orExact = ['or'];
             if ($meta->ip_hash) {
-                $or[] = ['m.ip_hash' => $meta->ip_hash];
+                $orExact[] = ['m.ip_hash' => $meta->ip_hash];
             }
             if ($meta->session_hash) {
-                $or[] = ['m.session_hash' => $meta->session_hash];
+                $orExact[] = ['m.session_hash' => $meta->session_hash];
             }
-            $srcDup = FormIntegrityMeta::find()->alias('m')
-                ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
-                ->andWhere(['m.form_id' => $form->id, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
-                ->andWhere(['<>', 'm.answer_id', $answer->id])
-                ->andWhere($or)
-                ->count();
+            $srcDup = 0;
+            if (count($orExact) > 1) {
+                $srcDup = (int)FormIntegrityMeta::find()->alias('m')
+                    ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
+                    ->andWhere(['m.form_id' => $form->id, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
+                    ->andWhere(['<>', 'm.answer_id', $answer->id])
+                    ->andWhere($orExact)
+                    ->count();
+            }
             if ($srcDup) {
                 $hits++;
                 $flags[] = $this->flag('duplicate', 'same_source', Yii::t('ThiscoveryFormsModule.base', 'Another response from the same IP or browser session'));
+            } elseif ($meta->ip_network_hash) {
+                // Soft signal: same /24 (or IPv6 prefix) without an exact IP match.
+                $netDup = (int)FormIntegrityMeta::find()->alias('m')
+                    ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
+                    ->andWhere(['m.form_id' => $form->id, 'm.ip_network_hash' => $meta->ip_network_hash, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
+                    ->andWhere(['<>', 'm.answer_id', $answer->id])
+                    ->count();
+                if ($netDup) {
+                    $hits++;
+                    $flags[] = $this->flag('duplicate', 'same_network', Yii::t('ThiscoveryFormsModule.base', 'Another response from a nearby network address (shared network pattern)'));
+                }
             }
         }
         $allowMultiple = $form->allow_multiple || !empty($cfg['allow_multiple']);
@@ -686,6 +830,79 @@ class IntegrityService
                 ]));
             }
         }
+
+        // Consecutive radio/dropdown questions that share the same option list (Likert sets).
+        $run = [];
+        $flush = function () use (&$run, &$score, &$flags, $weight, $minItems) {
+            if (count($run) < $minItems) {
+                $run = [];
+                return;
+            }
+            $answers = array_column($run, 'value');
+            $unique = array_unique($answers);
+            if (count($unique) === 1 && $answers[0] !== '') {
+                $score = max($score, $weight * 0.75);
+                $flags[] = $this->flag('straightline', 'flat_choices', Yii::t('ThiscoveryFormsModule.base', 'No variation across {n} consecutive choice questions', [
+                    'n' => count($run),
+                ]), ['field_ids' => array_column($run, 'id')]);
+            } else {
+                $opts = $run[0]['options'];
+                $indices = [];
+                $ok = true;
+                foreach ($answers as $ans) {
+                    $idx = array_search($ans, $opts, true);
+                    if ($idx === false) {
+                        $ok = false;
+                        break;
+                    }
+                    $indices[] = (int)$idx;
+                }
+                if ($ok && count($indices) >= $minItems) {
+                    $seq = implode(',', $indices);
+                    $asc = implode(',', range(min($indices), max($indices)));
+                    $desc = implode(',', range(max($indices), min($indices), -1));
+                    if (($seq === $asc || $seq === $desc) && min($indices) !== max($indices)) {
+                        $score = max($score, $weight * 0.7);
+                        $flags[] = $this->flag('straightline', 'sequential_choices', Yii::t('ThiscoveryFormsModule.base', 'Sequential pattern across consecutive choice questions'), [
+                            'field_ids' => array_column($run, 'id'),
+                        ]);
+                    }
+                }
+            }
+            $run = [];
+        };
+        foreach ($form->fields as $field) {
+            if (!$field->collectsAnswer() || $field->isHiddenFromRespondent() || $field->isAttentionCheck()) {
+                $flush();
+                continue;
+            }
+            if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN], true)) {
+                $flush();
+                continue;
+            }
+            $raw = $values[$field->id] ?? '';
+            if ($raw === '' || $raw === null || is_array($raw)) {
+                $flush();
+                continue;
+            }
+            $options = array_map('strval', $field->getOptions());
+            if (count($options) < 2) {
+                $flush();
+                continue;
+            }
+            $sig = implode("\0", $options);
+            if ($run !== [] && ($run[0]['sig'] ?? '') !== $sig) {
+                $flush();
+            }
+            $run[] = [
+                'id' => (int)$field->id,
+                'value' => (string)$raw,
+                'options' => $options,
+                'sig' => $sig,
+            ];
+        }
+        $flush();
+
         return [$score, $flags];
     }
 
@@ -825,6 +1042,31 @@ class IntegrityService
             }
             $seenNorm[] = ['id' => (int)$field->id, 'norm' => $ansNorm, 'label' => $field->label];
         }
+        // Same response: near-identical text pasted into two long free-text boxes.
+        $copyMin = max($minChars, 20);
+        for ($i = 0; $i < count($seenNorm); $i++) {
+            if (mb_strlen($seenNorm[$i]['norm']) < $copyMin) {
+                continue;
+            }
+            for ($j = $i + 1; $j < count($seenNorm); $j++) {
+                if (mb_strlen($seenNorm[$j]['norm']) < $copyMin) {
+                    continue;
+                }
+                if ($seenNorm[$i]['norm'] === $seenNorm[$j]['norm']) {
+                    $pct = 100.0;
+                } else {
+                    similar_text($seenNorm[$i]['norm'], $seenNorm[$j]['norm'], $pct);
+                }
+                if ($pct >= 92) {
+                    $hits++;
+                    $flags[] = $this->flag('freetext', 'copied_text', Yii::t('ThiscoveryFormsModule.base', 'Nearly identical text on “{a}” and “{b}”', [
+                        'a' => $seenNorm[$i]['label'],
+                        'b' => $seenNorm[$j]['label'],
+                    ]), ['field_ids' => [$seenNorm[$i]['id'], $seenNorm[$j]['id']], 'score' => round($pct, 1)]);
+                    break 2;
+                }
+            }
+        }
         $score = $hits ? min($weight, $weight * min(1, 0.35 + ($hits - 1) * 0.2)) : 0;
         return [$score, $flags];
     }
@@ -908,7 +1150,7 @@ class IntegrityService
         if ($score >= $trust) {
             return FormIntegrityMeta::STATUS_TRUSTED;
         }
-        if (!empty($cfg['auto_exclude']) && $score < ($review - 15) && $positive >= 2) {
+        if (IntegritySettings::isOn($cfg, 'auto_exclude') && $score < ($review - 15) && $positive >= 2) {
             return FormIntegrityMeta::STATUS_EXCLUDED;
         }
         if ($score >= $review) {

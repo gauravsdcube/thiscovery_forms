@@ -7,6 +7,7 @@ use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
 use humhub\modules\thiscoveryForms\models\FormAnswerField;
 use humhub\modules\thiscoveryForms\models\FormField;
+use humhub\modules\thiscoveryForms\models\FormIntegrityMeta;
 use humhub\modules\thiscoveryForms\models\FormPanelMember;
 use yii\db\Expression;
 use yii\db\Query;
@@ -49,24 +50,31 @@ class DashboardService
 
         if ($formIds) {
             $complete = ['status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0];
-            $totalAnswers = (int)FormAnswer::find()->where(['form_id' => $formIds] + $complete)->count();
-            $uniqueRespondents = (int)FormAnswer::find()
-                ->where(['form_id' => $formIds] + $complete)
-                ->select('created_by')
-                ->distinct()
-                ->count();
-            $answersLast7 = (int)FormAnswer::find()
-                ->where(['form_id' => $formIds] + $complete)
-                ->andWhere(['>=', 'created_at', date('Y-m-d H:i:s', strtotime('-7 days'))])
-                ->count();
+            $totalQ = FormAnswer::find()->alias('a')->where(['a.form_id' => $formIds] + self::prefixKeys($complete, 'a.'));
+            FormIntegrityMeta::scopeIncludedInAnalysis($totalQ);
+            $totalAnswers = (int)$totalQ->count();
 
-            $counts = (new Query())
-                ->from(FormAnswer::tableName())
-                ->select(['form_id', 'cnt' => 'COUNT(*)'])
-                ->where(['form_id' => $formIds, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
-                ->groupBy('form_id')
-                ->indexBy('form_id')
-                ->all();
+            $uniqueQ = FormAnswer::find()->alias('a')
+                ->where(['a.form_id' => $formIds] + self::prefixKeys($complete, 'a.'))
+                ->select('a.created_by')
+                ->distinct();
+            FormIntegrityMeta::scopeIncludedInAnalysis($uniqueQ);
+            $uniqueRespondents = (int)$uniqueQ->count();
+
+            $last7Q = FormAnswer::find()->alias('a')
+                ->where(['a.form_id' => $formIds] + self::prefixKeys($complete, 'a.'))
+                ->andWhere(['>=', 'a.created_at', date('Y-m-d H:i:s', strtotime('-7 days'))]);
+            FormIntegrityMeta::scopeIncludedInAnalysis($last7Q);
+            $answersLast7 = (int)$last7Q->count();
+
+            $countsQ = (new Query())
+                ->from(['a' => FormAnswer::tableName()])
+                ->select(['form_id' => 'a.form_id', 'cnt' => 'COUNT(*)'])
+                ->where(['a.form_id' => $formIds, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+                ->groupBy('a.form_id')
+                ->indexBy('form_id');
+            FormIntegrityMeta::scopeIncludedInAnalysis($countsQ);
+            $counts = $countsQ->all();
 
             foreach ($forms as $form) {
                 $perForm[] = [
@@ -96,17 +104,34 @@ class DashboardService
     public function getFormDashboard(CustomForm $form): array
     {
         $formId = (int)$form->id;
-        $totalAnswers = (int)$form->getAnswers()->count();
-        $uniqueRespondents = (int)FormAnswer::find()
-            ->where(['form_id' => $formId, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
-            ->select('created_by')
-            ->distinct()
-            ->count();
-        $answersLast7 = (int)FormAnswer::find()
-            ->where(['form_id' => $formId, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
-            ->andWhere(['>=', 'created_at', date('Y-m-d H:i:s', strtotime('-7 days'))])
-            ->count();
+        $completeQ = FormAnswer::find()->alias('a')
+            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0]);
+        FormIntegrityMeta::scopeIncludedInAnalysis($completeQ);
+        $totalAnswers = (int)(clone $completeQ)->count();
+
+        $uniqueQ = FormAnswer::find()->alias('a')
+            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->select('a.created_by')
+            ->distinct();
+        FormIntegrityMeta::scopeIncludedInAnalysis($uniqueQ);
+        $uniqueRespondents = (int)$uniqueQ->count();
+
+        $last7Q = FormAnswer::find()->alias('a')
+            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['>=', 'a.created_at', date('Y-m-d H:i:s', strtotime('-7 days'))]);
+        FormIntegrityMeta::scopeIncludedInAnalysis($last7Q);
+        $answersLast7 = (int)$last7Q->count();
+
         $inProgress = (int)$form->getInProgressAnswers()->count();
+        $excludedFromAnalysis = (int)FormIntegrityMeta::find()->alias('m')
+            ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = m.answer_id')
+            ->andWhere([
+                'm.form_id' => $formId,
+                'm.analysis_status' => FormIntegrityMeta::ANALYSIS_EXCLUDED,
+                'a.status' => FormAnswer::STATUS_COMPLETE,
+                'a.is_test' => 0,
+            ])
+            ->count();
 
         $fieldCount = 0;
         foreach ($form->fields as $field) {
@@ -114,7 +139,7 @@ class DashboardService
                 $fieldCount++;
             }
         }
-        $answeredFieldRows = (int)(new Query())
+        $answeredFieldQ = (new Query())
             ->from(['af' => FormAnswerField::tableName()])
             ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
             ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
@@ -122,8 +147,9 @@ class DashboardService
                 ['IS NOT', 'af.value', null],
                 ['<>', 'af.value', ''],
                 ['<>', 'af.value', '[]'],
-            ])
-            ->count();
+            ]);
+        FormIntegrityMeta::scopeIncludedInAnalysis($answeredFieldQ);
+        $answeredFieldRows = (int)$answeredFieldQ->count();
 
         $avgFieldsAnswered = ($totalAnswers > 0 && $fieldCount > 0)
             ? round($answeredFieldRows / $totalAnswers, 1)
@@ -134,6 +160,7 @@ class DashboardService
             'inProgress' => $inProgress,
             'uniqueRespondents' => $uniqueRespondents,
             'answersLast7' => $answersLast7,
+            'excludedFromAnalysis' => $excludedFromAnalysis,
             'fieldCount' => $fieldCount,
             'avgFieldsAnswered' => $avgFieldsAnswered,
             'completionRate' => ($fieldCount > 0 && $totalAnswers > 0)
@@ -156,9 +183,10 @@ class DashboardService
         $out = [];
         $prevCompleted = null;
         foreach ((new WaveService())->listWaves($form) as $wave) {
-            $completed = (int)FormAnswer::find()
-                ->where(['form_id' => $form->id, 'wave_id' => $wave->id, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
-                ->count();
+            $completedQ = FormAnswer::find()->alias('a')
+                ->where(['a.form_id' => $form->id, 'a.wave_id' => $wave->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0]);
+            FormIntegrityMeta::scopeIncludedInAnalysis($completedQ);
+            $completed = (int)$completedQ->count();
             $dropOff = ($prevCompleted !== null && $prevCompleted > 0)
                 ? round((1 - ($completed / $prevCompleted)) * 100)
                 : null;
@@ -179,9 +207,10 @@ class DashboardService
     {
         $out = [];
         foreach ($form->rounds as $round) {
-            $completed = (int)FormAnswer::find()
-                ->where(['form_id' => $form->id, 'round_id' => $round->id, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
-                ->count();
+            $completedQ = FormAnswer::find()->alias('a')
+                ->where(['a.form_id' => $form->id, 'a.round_id' => $round->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0]);
+            FormIntegrityMeta::scopeIncludedInAnalysis($completedQ);
+            $completed = (int)$completedQ->count();
             $out[] = [
                 'title' => $round->getDisplayTitle(),
                 'status' => $round->status,
@@ -210,16 +239,17 @@ class DashboardService
             return ['labels' => $labels, 'data' => array_values($map)];
         }
 
-        $rows = (new Query())
-            ->from(FormAnswer::tableName())
+        $rowsQ = (new Query())
+            ->from(['a' => FormAnswer::tableName()])
             ->select([
-                'day' => new Expression('DATE(created_at)'),
+                'day' => new Expression('DATE(a.created_at)'),
                 'cnt' => 'COUNT(*)',
             ])
-            ->where(['form_id' => $formIds, 'status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
-            ->andWhere(['>=', 'created_at', date('Y-m-d 00:00:00', strtotime('-' . ($days - 1) . ' days'))])
-            ->groupBy(new Expression('DATE(created_at)'))
-            ->all();
+            ->where(['a.form_id' => $formIds, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['>=', 'a.created_at', date('Y-m-d 00:00:00', strtotime('-' . ($days - 1) . ' days'))])
+            ->groupBy(new Expression('DATE(a.created_at)'));
+        FormIntegrityMeta::scopeIncludedInAnalysis($rowsQ);
+        $rows = $rowsQ->all();
 
         foreach ($rows as $row) {
             $day = $row['day'];
@@ -254,12 +284,7 @@ class DashboardService
                     $counts[(string)$value] = 0;
                 }
 
-                $values = (new Query())
-                    ->from(['af' => FormAnswerField::tableName()])
-                    ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
-                    ->select(['af.value'])
-                    ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
-                    ->column();
+                $values = $this->fieldRawValues($form, $field);
 
                 foreach ($values as $raw) {
                     $item = (string)$raw;
@@ -291,12 +316,7 @@ class DashboardService
                 $options = $field->getOptions();
                 $positionTotals = array_fill(0, count($options), array_fill_keys($options, 0));
 
-                $values = (new Query())
-                    ->from(['af' => FormAnswerField::tableName()])
-                    ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
-                    ->select(['af.value'])
-                    ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
-                    ->column();
+                $values = $this->fieldRawValues($form, $field);
 
                 foreach ($values as $raw) {
                     $decoded = json_decode((string)$raw, true);
@@ -386,12 +406,7 @@ class DashboardService
             $counts = array_fill_keys($options, 0);
             $other = 0;
 
-            $values = (new Query())
-                ->from(['af' => FormAnswerField::tableName()])
-                ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
-                ->select(['af.value'])
-                ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
-                ->column();
+            $values = $this->fieldRawValues($form, $field);
 
             foreach ($values as $raw) {
                 $decoded = json_decode((string)$raw, true);
@@ -485,12 +500,26 @@ class DashboardService
 
     private function fieldRawValues(CustomForm $form, FormField $field): array
     {
-        return (new Query())
+        $q = (new Query())
             ->from(['af' => FormAnswerField::tableName()])
             ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
             ->select(['af.value'])
-            ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
-            ->column();
+            ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id]);
+        FormIntegrityMeta::scopeIncludedInAnalysis($q);
+        return $q->column();
+    }
+
+    /**
+     * @param array<string, mixed> $conds
+     * @return array<string, mixed>
+     */
+    private static function prefixKeys(array $conds, string $prefix): array
+    {
+        $out = [];
+        foreach ($conds as $key => $value) {
+            $out[$prefix . $key] = $value;
+        }
+        return $out;
     }
 
     private function decodeJson($raw)
@@ -722,7 +751,7 @@ class DashboardService
             if (!$field->collectsAnswer()) {
                 continue;
             }
-            $answered = (int)(new Query())
+            $answeredQ = (new Query())
                 ->from(['af' => FormAnswerField::tableName()])
                 ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
                 ->where(['a.form_id' => $form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0, 'af.field_id' => $field->id])
@@ -730,8 +759,9 @@ class DashboardService
                     ['IS NOT', 'af.value', null],
                     ['<>', 'af.value', ''],
                     ['<>', 'af.value', '[]'],
-                ])
-                ->count();
+                ]);
+            FormIntegrityMeta::scopeIncludedInAnalysis($answeredQ);
+            $answered = (int)$answeredQ->count();
 
             $rates[] = [
                 'label' => $field->label,

@@ -170,7 +170,7 @@ class FormIntegrityMeta extends ActiveRecord
         if ($cat === 'bot') {
             return true;
         }
-        return $cat === 'duplicate' && $code === 'same_source';
+        return $cat === 'duplicate' && in_array($code, ['same_source', 'same_network'], true);
     }
 
     public function getFlagsForViewer(bool $canManage): array
@@ -203,6 +203,23 @@ class FormIntegrityMeta extends ActiveRecord
             return [];
         }
         return array_values(array_filter(array_map('intval', $decoded)));
+    }
+
+    /**
+     * Limit a query on answers to the primary analysis set.
+     * Responses with no integrity row stay in (integrity off / never scored).
+     * Analysis status "excluded" is omitted.
+     *
+     * @param Query|\yii\db\ActiveQuery $query
+     */
+    public static function scopeIncludedInAnalysis($query, string $answerIdColumn = 'a.id', string $alias = 'cfim'): void
+    {
+        $query->leftJoin([$alias => self::tableName()], $alias . '.answer_id = ' . $answerIdColumn)
+            ->andWhere([
+                'or',
+                [$alias . '.id' => null],
+                ['<>', $alias . '.analysis_status', self::ANALYSIS_EXCLUDED],
+            ]);
     }
 
     public function getPageTimings(): array

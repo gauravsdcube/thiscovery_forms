@@ -160,7 +160,7 @@ $siteDefaultOn = !empty($defaults['enabled']);
     <div class="col-md-6">
         <div class="cf-field">
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA when') ?></label>
-            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Off never shows Turnstile. Only when behaviour looks suspicious shows it after a honeypot, missing session, or rate-limit signal. Always shows it on every submit once keys are set. Keys are configured in Administration, not on each form.')]) ?>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Off never shows Turnstile. Only when behaviour looks suspicious shows it after a honeypot, missing session, or rate-limit signal — and keeps it on the form until the check is completed. Always shows it on every submit once keys are set. Keys are configured in Administration, not on each form.')]) ?>
             <?php
             $capOpts = $allowInherit ? ['' => $inherit] : [];
             $capOpts += IntegritySettings::captchaModeLabels();

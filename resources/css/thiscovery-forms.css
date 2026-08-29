@@ -3939,6 +3939,26 @@ body.cf-fill-standalone #topbar-second {
     margin: 0 0 1rem;
     padding-inline-start: 1.2rem;
 }
+.cf-integrity-audit li {
+    padding: 0.35rem 0;
+    border-bottom: 1px solid #e5e7eb;
+    font-size: 0.9rem;
+}
+.cf-integrity-clusters {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+}
+.cf-integrity-cluster {
+    padding: 0.75rem 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    background: #f8fafc;
+}
+.cf-integrity-cluster a {
+    margin-right: 0.5rem;
+}
 .cf-integrity-notes {
     background: #f8fafc;
     border: 1px solid #e5e7eb;

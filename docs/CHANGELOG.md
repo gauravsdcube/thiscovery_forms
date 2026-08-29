@@ -2,6 +2,17 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.1 (August 29, 2026)
+
+- Fix: CAPTCHA “only when suspicious” now challenges on the next attempt and requires a pass before accept
+- Fix: Automatic exclusion writes a system reason and an audit log entry
+- Fix: Form results charts and dashboard totals omit responses excluded from analysis
+- Enh: Straight-lining detects consecutive radio/dropdown Likert sets with the same options
+- Enh: Integrity dashboard lists similar-response groups (clusters)
+- Enh: Free-text quality flags near-identical answers pasted across two questions on the same response
+- Enh: Duplicate detection soft-matches nearby network hashes; invitation links support optional expiry
+- Enh: Audit history shows who made the change; question timings show field labels
+
 ## 1.21.0 (August 28, 2026)
 
 - Enh: Response integrity tab — bot protection, quality scoring, review, quarantine, and unique invitation links
