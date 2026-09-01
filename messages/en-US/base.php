@@ -939,6 +939,7 @@ return [
     'Lets the same person submit more than once. Turn this off when you need one response per person.' => 'Lets the same person submit more than once. Turn this off when you need one response per person.',
     'Creates a secret link on the Share tab so people can view charts without logging in. Anyone with the link can see the dashboard.' => 'Creates a secret link on the Share tab so people can view charts without logging in. Anyone with the link can see the dashboard.',
     'Adds this form to the space menu, or the network top menu for global forms, so members can open it without going to the forms list.' => 'Adds this form to the space menu, or the network top menu for global forms, so members can open it without going to the forms list.',
+    'Adds this form to the space menu. For the network top bar, add it in Site navigation.' => 'Adds this form to the space menu. For the network top bar, add it in Site navigation.',
     'After someone votes, show the poll totals on the fill page.' => 'After someone votes, show the poll totals on the fill page.',
     'Do not add leaves completers off a panel. Add to an existing panel uses one you already have. Create a new panel makes that panel when you save this form.' => 'Do not add leaves completers off a panel. Add to an existing panel uses one you already have. Create a new panel makes that panel when you save this form.',
     'Sent when you invite panel members to this form.' => 'Sent when you invite panel members to this form.',

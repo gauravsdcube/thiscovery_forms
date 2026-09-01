@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.4 (September 1, 2026)
+
+- Change: When Thiscovery Navigation is enabled, forms are added to the top bar there instead of from this module
+
 ## 1.21.3 (August 30, 2026)
 
 - Fix: Headerless fill pages keep top padding (including iOS safe area) so the title is not cut off

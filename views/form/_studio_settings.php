@@ -215,7 +215,14 @@ $fnRows = $formModel->custom_functions ?: [['name' => '', 'value' => '']];
                         <?= Html::activeCheckbox($formModel, 'show_in_menu', ['label' => false]) ?>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Show in side menu') ?>
                     </label>
-                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Adds this form to the space menu, or the network top menu for global forms, so members can open it without going to the forms list.')]) ?>
+                    <?= $this->render('_setting_guide', ['text' => (
+                        $contentContainer === null
+                        && class_exists(\humhub\modules\thiscoveryNavigation\helpers\Navigation::class)
+                        && \humhub\modules\thiscoveryNavigation\helpers\Navigation::isActive()
+                    )
+                        ? Yii::t('ThiscoveryFormsModule.base', 'Adds this form to the space menu. For the network top bar, add it in Site navigation.')
+                        : Yii::t('ThiscoveryFormsModule.base', 'Adds this form to the space menu, or the network top menu for global forms, so members can open it without going to the forms list.')
+                    ]) ?>
                 </div>
                 <div class="cf-check-setting">
                     <label>
