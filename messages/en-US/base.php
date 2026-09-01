@@ -501,6 +501,8 @@ return [
     'Global' => 'Global',
     'Grid (single)' => 'Grid (single)',
     'Grid (multi)' => 'Grid (multi)',
+    'Scroll sideways to see all options' => 'Scroll sideways to see all options',
+    'Answer grid. Scroll sideways to see all options.' => 'Answer grid. Scroll sideways to see all options.',
     'Best–worst' => 'Best–worst',
     'MaxDiff' => 'MaxDiff',
     'Drill-down' => 'Drill-down',

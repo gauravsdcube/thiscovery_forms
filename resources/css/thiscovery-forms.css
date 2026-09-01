@@ -988,9 +988,16 @@
     padding-top: .25rem;
 }
 
+html:has(body.cf-fill-standalone) {
+    scroll-padding-top: 0;
+}
+
 body.cf-fill-standalone {
     padding-top: 0 !important;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
     min-height: 100vh;
+    min-height: 100dvh;
     background: #f8fafc;
 }
 
@@ -1003,7 +1010,7 @@ body.cf-fill-standalone #topbar-second {
     width: 100%;
     max-width: 960px;
     margin: 0 auto;
-    padding: 1.5rem 1rem 2.5rem;
+    padding: calc(env(safe-area-inset-top, 0px) + 1.75rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 2.5rem);
 }
 
 /* —— Fill form —— */
@@ -1014,6 +1021,12 @@ body.cf-fill-standalone #topbar-second {
 }
 
 @media (max-width: 575px) {
+    .cf-fill-standalone__wrap {
+        padding-top: calc(env(safe-area-inset-top, 0px) + 2.25rem);
+        padding-left: .75rem;
+        padding-right: .75rem;
+    }
+
     .cf-fill-page {
         max-width: none;
         margin: 0 0 1.25rem;
@@ -3300,11 +3313,119 @@ body.cf-fill-standalone #topbar-second {
 }
 
 .cf-grid-wrap {
+    position: relative;
+}
+
+.cf-grid-hint {
+    display: none;
+    align-items: center;
+    gap: .4rem;
+    margin: 0 0 .45rem;
+    font-size: .8rem;
+    font-weight: 600;
+    color: #334155;
+    line-height: 1.3;
+}
+
+.cf-grid-wrap.is-overflowing .cf-grid-hint:not([hidden]) {
+    display: flex;
+}
+
+.cf-grid-hint__icon {
+    flex-shrink: 0;
+    width: 1.35rem;
+    height: .7rem;
+    position: relative;
+}
+
+.cf-grid-hint__icon::before,
+.cf-grid-hint__icon::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    width: .42rem;
+    height: .42rem;
+    border-block-end: 2px solid currentColor;
+    transform: translateY(-60%) rotate(45deg);
+}
+
+.cf-grid-hint__icon::before {
+    inset-inline-start: 0;
+    border-inline-start: 2px solid currentColor;
+}
+
+.cf-grid-hint__icon::after {
+    inset-inline-end: 0;
+    border-inline-end: 2px solid currentColor;
+}
+
+.cf-grid-fade {
+    position: relative;
+}
+
+.cf-grid-scroll {
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-x: contain;
+}
+
+.cf-grid-wrap.has-more-end .cf-grid-fade::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 2.75rem;
+    pointer-events: none;
+    z-index: 3;
+    inset-inline-end: 0;
+    background: linear-gradient(to right, rgba(255, 255, 255, 0), #fff 72%);
+}
+
+.cf-fill-page[dir="rtl"] .cf-grid-wrap.has-more-end .cf-grid-fade::after {
+    background: linear-gradient(to left, rgba(255, 255, 255, 0), #fff 72%);
+}
+
+.cf-grid-more {
+    display: none;
+    position: absolute;
+    top: 50%;
+    inset-inline-end: .45rem;
+    transform: translateY(-50%);
+    width: 1.85rem;
+    height: 1.85rem;
+    border-radius: 999px;
+    background: #0f172a;
+    color: #fff;
+    pointer-events: none;
+    z-index: 4;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .22);
+    align-items: center;
+    justify-content: center;
+}
+
+.cf-grid-wrap.has-more-end .cf-grid-more {
+    display: flex;
+}
+
+.cf-grid-more::after {
+    content: '';
+    width: .42rem;
+    height: .42rem;
+    border-inline-end: 2px solid #fff;
+    border-block-end: 2px solid #fff;
+    transform: rotate(-45deg);
+    margin-inline-start: -.15rem;
+}
+
+.cf-fill-page[dir="rtl"] .cf-grid-more::after {
+    transform: rotate(135deg);
+    margin-inline-start: 0;
+    margin-inline-end: -.15rem;
 }
 
 .cf-grid {
-    width: 100%;
+    width: max-content;
+    min-width: 100%;
     border-collapse: collapse;
     font-size: .9rem;
 }
@@ -3315,12 +3436,19 @@ body.cf-fill-standalone #topbar-second {
     padding: .45rem .55rem;
     text-align: center;
     vertical-align: middle;
+    hyphens: none;
+    -webkit-hyphens: none;
+    -ms-hyphens: none;
+    word-break: normal;
+    overflow-wrap: break-word;
 }
 
 .cf-grid thead th {
     background: #f8fafc;
     font-weight: 600;
     font-size: .8rem;
+    line-height: 1.25;
+    vertical-align: bottom;
 }
 
 .cf-grid tbody th {
@@ -3328,6 +3456,42 @@ body.cf-fill-standalone #topbar-second {
     font-weight: 600;
     background: #fff;
     min-width: 8rem;
+}
+
+.cf-grid-wrap[data-cf-grid] .cf-grid {
+    table-layout: fixed;
+    width: auto;
+}
+
+.cf-grid-wrap[data-cf-grid] .cf-grid thead th:first-child,
+.cf-grid-wrap[data-cf-grid] .cf-grid tbody th {
+    position: sticky;
+    inset-inline-start: 0;
+    z-index: 2;
+    width: 9rem;
+    min-width: 8rem;
+    max-width: 11rem;
+    box-shadow: 1px 0 0 #e5e7eb;
+}
+
+.cf-grid-wrap[data-cf-grid] .cf-grid thead th:first-child {
+    background: #f8fafc;
+}
+
+.cf-grid-wrap[data-cf-grid] .cf-grid tbody th {
+    background: #fff;
+}
+
+.cf-grid-wrap.has-more-start[data-cf-grid] .cf-grid thead th:first-child,
+.cf-grid-wrap.has-more-start[data-cf-grid] .cf-grid tbody th {
+    box-shadow: 6px 0 10px rgba(15, 23, 42, .08);
+}
+
+.cf-grid-wrap[data-cf-grid] .cf-grid thead th:not(:first-child),
+.cf-grid-wrap[data-cf-grid] .cf-grid tbody td {
+    width: 8.75rem;
+    min-width: 8.75rem;
+    max-width: 8.75rem;
 }
 
 .cf-grid tbody td input[type="radio"],
@@ -3363,7 +3527,6 @@ body.cf-fill-standalone #topbar-second {
 .cf-grid tbody td input[type="checkbox"]:checked {
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2.2' d='M3.5 8.5l2.8 2.8 6.2-6.6'/%3E%3C/svg%3E");
     background-size: 100% 100%;
-}
 }
 
 .cf-maxdiff-set {

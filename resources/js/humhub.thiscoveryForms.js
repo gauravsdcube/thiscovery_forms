@@ -3452,6 +3452,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     window.scrollTo({ top: Math.max(0, top), behavior: 'smooth' });
                 } catch (e) {}
             }
+            window.requestAnimationFrame(syncGridOverflow);
         };
 
         var writeActionVars = function (vars) {
@@ -3598,6 +3599,42 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         };
 
+        var syncGridOverflow = function () {
+            $root.find('[data-cf-grid]').each(function () {
+                var $wrap = $(this);
+                var $scroll = $wrap.find('[data-cf-grid-scroll]');
+                var el = $scroll[0];
+                if (!el) {
+                    return;
+                }
+                if ($wrap.closest('.cf-hidden').length) {
+                    $wrap.removeClass('is-overflowing has-more-end has-more-start');
+                    $wrap.find('[data-cf-grid-hint]').prop('hidden', true);
+                    return;
+                }
+                var $page = $wrap.closest('[data-cf-page]');
+                if ($page.length && !$page.hasClass('is-active')) {
+                    return;
+                }
+                var overflowing = el.scrollWidth > el.clientWidth + 1;
+                var sl = el.scrollLeft;
+                var maxPos = el.scrollWidth - el.clientWidth;
+                var atStart;
+                var atEnd;
+                if (sl < 0) {
+                    atStart = sl >= -1;
+                    atEnd = sl <= -maxPos + 1;
+                } else {
+                    atStart = sl <= 1;
+                    atEnd = sl >= maxPos - 1;
+                }
+                $wrap.toggleClass('is-overflowing', overflowing);
+                $wrap.toggleClass('has-more-end', overflowing && !atEnd);
+                $wrap.toggleClass('has-more-start', overflowing && !atStart);
+                $wrap.find('[data-cf-grid-hint]').prop('hidden', !overflowing);
+            });
+        };
+
         var evaluate = function () {
             captureRespondentMeta();
             syncHtmlValues();
@@ -3647,6 +3684,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (multiPage) {
                 showPage(currentPage);
             }
+            syncGridOverflow();
         };
 
         initRanking();
@@ -3897,8 +3935,14 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
         });
 
+        $root.find('[data-cf-grid-scroll]').on('scroll.cfGridOverflow', syncGridOverflow);
+        $(window).off('resize.cfGridOverflow').on('resize.cfGridOverflow', function () {
+            window.requestAnimationFrame(syncGridOverflow);
+        });
+
         evaluate();
         clearUnsavedChoicePrefill();
+        window.requestAnimationFrame(syncGridOverflow);
     };
 
     var initPollEmbed = function (root) {

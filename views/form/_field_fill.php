@@ -590,36 +590,46 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $gridValue = is_array($value) ? $value : [];
             ?>
             <div class="cf-grid-wrap" data-cf-grid="<?= $multi ? 'multi' : 'single' ?>">
-                <table class="cf-grid">
-                    <thead>
-                    <tr>
-                        <th></th>
-                        <?php foreach ($grid['columns'] as $col): ?>
-                            <th><?= Html::encode($col) ?></th>
-                        <?php endforeach; ?>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($grid['rows'] as $rowLabel): ?>
-                        <?php
-                        $cell = $gridValue[$rowLabel] ?? null;
-                        $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
-                        ?>
-                        <tr>
-                            <th><?= Html::encode($rowLabel) ?></th>
-                            <?php foreach ($grid['columns'] as $col): ?>
-                                <td>
-                                    <?php if ($multi): ?>
-                                        <?= Html::checkbox($inputName . '[' . $rowLabel . '][]', $choiceIsPicked($picked, (string)$col), $choiceInputOpts(['value' => $col])) ?>
-                                    <?php else: ?>
-                                        <?= Html::radio($inputName . '[' . $rowLabel . ']', $choiceIsPicked($picked, (string)$col), $choiceInputOpts(['value' => $col])) ?>
-                                    <?php endif; ?>
-                                </td>
+                <p class="cf-grid-hint" data-cf-grid-hint hidden>
+                    <span class="cf-grid-hint__icon" aria-hidden="true"></span>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Scroll sideways to see all options') ?>
+                </p>
+                <div class="cf-grid-fade">
+                    <div class="cf-grid-scroll" data-cf-grid-scroll tabindex="0" role="region"
+                         aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Answer grid. Scroll sideways to see all options.')) ?>">
+                        <table class="cf-grid">
+                            <thead>
+                            <tr>
+                                <th></th>
+                                <?php foreach ($grid['columns'] as $col): ?>
+                                    <th><?= Html::encode($col) ?></th>
+                                <?php endforeach; ?>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($grid['rows'] as $rowLabel): ?>
+                                <?php
+                                $cell = $gridValue[$rowLabel] ?? null;
+                                $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
+                                ?>
+                                <tr>
+                                    <th><?= Html::encode($rowLabel) ?></th>
+                                    <?php foreach ($grid['columns'] as $col): ?>
+                                        <td>
+                                            <?php if ($multi): ?>
+                                                <?= Html::checkbox($inputName . '[' . $rowLabel . '][]', $choiceIsPicked($picked, (string)$col), $choiceInputOpts(['value' => $col])) ?>
+                                            <?php else: ?>
+                                                <?= Html::radio($inputName . '[' . $rowLabel . ']', $choiceIsPicked($picked, (string)$col), $choiceInputOpts(['value' => $col])) ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endforeach; ?>
+                                </tr>
                             <?php endforeach; ?>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+                            </tbody>
+                        </table>
+                    </div>
+                    <span class="cf-grid-more" aria-hidden="true"></span>
+                </div>
             </div>
         <?php elseif ($field->type === FormField::TYPE_BEST_WORST): ?>
             <?php
