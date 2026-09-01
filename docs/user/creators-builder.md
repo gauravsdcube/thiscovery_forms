@@ -31,6 +31,7 @@ Use **Add question** (or the equivalent control on the builder) and choose a typ
 | MaxDiff | MaxDiff tasks |
 | Drill-down | Nested choices (for example country then region) |
 | Image area | Click regions on an image |
+| Map | Draw a pin, line, or area as the answer (needs Thiscovery Mapping). Set starting view, drawing types, and basemap style on the question |
 
 **Respondent metadata** (Add fields): drop each item you need — IP address, browser, operating system, device, screen size, browser language, time zone, or user agent. Each is a hidden field and becomes its own column in answers and CSV export. Drop only the ones you will analyse.
 

@@ -764,6 +764,20 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     <?= Html::input('number', $namePrefix . '[map_zoom]', $mapCfg['zoom'], ['class' => 'form-control', 'min' => 1, 'max' => 20, 'data-tm-zoom' => '1']) ?>
                 </div>
             </div>
+            <?php if (class_exists(\humhub\modules\thiscoveryMapping\models\ModuleSettings::class)): ?>
+            <div class="row g-3 mt-1">
+                <div class="col-md-8">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Basemap style') ?></label>
+                    <?= Html::dropDownList(
+                        $namePrefix . '[map_style]',
+                        $mapCfg['style'] ?? '',
+                        \humhub\modules\thiscoveryMapping\models\ModuleSettings::styleLabels(),
+                        ['class' => 'form-control', 'data-tm-style' => '1']
+                    ) ?>
+                    <p class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'The background map for this question. Smooth is a pale street map; satellite shows aerial photography.') ?></p>
+                </div>
+            </div>
+            <?php endif; ?>
             <div class="row g-3 mt-1">
                 <div class="col-md-8">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Drawing types') ?></label>

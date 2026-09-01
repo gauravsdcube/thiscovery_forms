@@ -517,6 +517,8 @@ return [
     'Line / route' => 'Line / route',
     'Area / polygon' => 'Area / polygon',
     'Maximum drawings' => 'Maximum drawings',
+    'Basemap style' => 'Basemap style',
+    'The background map for this question. Smooth is a pale street map; satellite shows aerial photography.' => 'The background map for this question. Smooth is a pale street map; satellite shows aerial photography.',
     'The mapping module is not enabled.' => 'The mapping module is not enabled.',
     'Thiscovery Mapping must be installed and enabled to configure or collect map answers.' => 'Thiscovery Mapping must be installed and enabled to configure or collect map answers.',
     'Thiscovery Mapping must be installed and enabled to answer map questions.' => 'Thiscovery Mapping must be installed and enabled to answer map questions.',

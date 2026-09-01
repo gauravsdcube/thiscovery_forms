@@ -1682,6 +1682,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'zoom' => $row['map_zoom'] ?? 7,
                     'allowedTypes' => $types,
                     'maxFeatures' => $row['map_max'] ?? 1,
+                    'style' => $row['map_style'] ?? '',
                 ]);
             } elseif ($type === FormField::TYPE_RESPONDENT_META) {
                 $field->required = false;

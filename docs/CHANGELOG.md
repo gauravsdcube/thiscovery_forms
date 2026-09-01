@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.5 (September 1, 2026)
+
+- Enh: Map questions can set a basemap style (street, satellite, and other Stadia styles) instead of always using the site default
+
 ## 1.21.4 (September 1, 2026)
 
 - Change: When Thiscovery Navigation is enabled, forms are added to the top bar there instead of from this module

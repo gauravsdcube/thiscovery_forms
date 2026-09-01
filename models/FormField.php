@@ -1514,6 +1514,7 @@ class FormField extends ActiveRecord
             'zoom' => max(1, min(20, $zoom)),
             'allowedTypes' => $types ?: ['Point'],
             'maxFeatures' => $max,
+            'style' => $this->normalizeMapStyle((string)($config['style'] ?? '')),
         ], JSON_UNESCAPED_UNICODE);
     }
 
@@ -1544,7 +1545,22 @@ class FormField extends ActiveRecord
             'zoom' => max(1, min(20, $zoom)),
             'allowedTypes' => $types ?: ['Point'],
             'maxFeatures' => $max,
+            'style' => $this->normalizeMapStyle((string)($decoded['style'] ?? '')),
         ];
+    }
+
+    private function normalizeMapStyle(string $style): string
+    {
+        $style = trim($style);
+        if ($style !== '' && class_exists(\humhub\modules\thiscoveryMapping\models\ModuleSettings::class)
+            && isset(\humhub\modules\thiscoveryMapping\models\ModuleSettings::styleLabels()[$style])) {
+            return $style;
+        }
+        $module = Yii::$app->getModule('thiscovery-mapping');
+        if ($module && method_exists($module, 'getBasemapStyle')) {
+            return (string)$module->getBasemapStyle();
+        }
+        return 'alidade_smooth';
     }
 
     public function sanitizeMapAnswer($value): array
@@ -1721,6 +1737,7 @@ class FormField extends ActiveRecord
             $row['map_zoom'] = $map['zoom'];
             $row['map_types'] = implode(',', $map['allowedTypes']);
             $row['map_max'] = $map['maxFeatures'];
+            $row['map_style'] = $map['style'] ?? '';
         }
 
         return $row;
@@ -1807,6 +1824,7 @@ class FormField extends ActiveRecord
                 ? implode(',', $payload['map_types'])
                 : (string)($payload['map_types'] ?? ''),
             'map_max' => $payload['map_max'] ?? '',
+            'map_style' => $payload['map_style'] ?? '',
             'logic_action' => $payload['logic_action'] ?? ($payload['logic']['action'] ?? 'show'),
             'logic_combinator' => $payload['logic_combinator'] ?? ($payload['logic']['combinator'] ?? 'and'),
             'logic_goto' => $payload['logic_goto'] ?? ($payload['logic']['gotoPageKey'] ?? ''),
@@ -1892,6 +1910,7 @@ class FormField extends ActiveRecord
                 'zoom' => $row['map_zoom'] ?? 7,
                 'allowedTypes' => $types,
                 'maxFeatures' => $row['map_max'] ?? 1,
+                'style' => $row['map_style'] ?? '',
             ]);
         } elseif (self::isChoiceType($field->type)) {
             $maxSelect = null;
