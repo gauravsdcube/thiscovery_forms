@@ -98,6 +98,19 @@ class FormController extends ContentContainerController
                         \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveForm($form, $integrityPost);
                     }
                     Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
+                    if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
+                        \humhub\modules\thiscoveryTranslate\services\FormsHook::queueFormTranslation((int)$form->id);
+                        $pub = \humhub\modules\thiscoveryTranslate\services\FormsHook::checkPublishReady($form);
+                        if (!empty($pub['message'])) {
+                            if (!$pub['ok']) {
+                                $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
+                                $form->save(false, ['status']);
+                                Yii::$app->session->setFlash('error', $pub['message'] . ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form kept as draft until translations are ready.'));
+                            } else {
+                                Yii::$app->session->setFlash('warning', $pub['message']);
+                            }
+                        }
+                    }
                     return $this->redirectAfterStudioSave($form);
                 }
             }

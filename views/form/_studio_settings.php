@@ -343,27 +343,37 @@ $fnRows = $formModel->custom_functions ?: [['name' => '', 'value' => '']];
         </summary>
         <div class="cf-set-acc__body">
             <div class="row g-3">
-                <div class="col-md-4 form-group cf-field">
+                <div class="col-12 form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Source language') ?></label>
                     <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The source language is what you write in the builder. Extra languages are edited on the Translations tab.')]) ?>
                     <?= Html::activeDropDownList(
                         $formModel,
                         'source_language',
-                        \humhub\modules\thiscoveryForms\services\TranslationService::languageLabels(),
-                        ['class' => 'form-control']
+                        \humhub\modules\thiscoveryForms\services\TranslationService::selectableLanguageLabels($formModel),
+                        ['class' => 'form-control', 'style' => 'max-width: 20rem']
                     ) ?>
                 </div>
-                <div class="col-md-8 form-group cf-field">
+                <div class="col-12 form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Enabled languages') ?></label>
-                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Languages people can switch to on the fill page. Translate labels and help on the Translations tab after you save.')]) ?>
-                    <div class="cf-checks">
-                        <?php foreach (\humhub\modules\thiscoveryForms\services\TranslationService::languageLabels() as $code => $label): ?>
-                            <label>
-                                <?= Html::checkbox('CustomForm[enabled_languages][]', in_array($code, $formModel->getEnabledLanguages(), true), [
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Languages people can switch to on the fill page. When Thiscovery Translate is on, this list matches the languages enabled there. Translate labels on the Translations tab after you save.')]) ?>
+                    <?php
+                    $langChoices = \humhub\modules\thiscoveryForms\services\TranslationService::selectableLanguageLabels($formModel);
+                    $enabledLangs = $formModel->getEnabledLanguages();
+                    ?>
+                    <p class="cf-hint text-muted">
+                        <?= Yii::t('ThiscoveryFormsModule.base', '{n} languages available. Use browser search (Ctrl/Cmd+F) to find one quickly.', [
+                            'n' => count($langChoices),
+                        ]) ?>
+                    </p>
+                    <div class="cf-lang-grid">
+                        <?php foreach ($langChoices as $code => $label): ?>
+                            <label class="cf-lang-check">
+                                <?= Html::checkbox('CustomForm[enabled_languages][]', in_array($code, $enabledLangs, true), [
                                     'value' => $code,
                                     'uncheck' => null,
                                 ]) ?>
-                                <?= Html::encode($label) ?>
+                                <span class="cf-lang-check__label"><?= Html::encode($label) ?></span>
+                                <code class="cf-lang-check__code"><?= Html::encode($code) ?></code>
                             </label>
                         <?php endforeach; ?>
                     </div>

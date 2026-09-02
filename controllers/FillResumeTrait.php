@@ -614,6 +614,14 @@ trait FillResumeTrait
                 $this->forgetProgressDraft($form);
                 $this->pruneUserInProgressDrafts($form, $answer);
             }
+            // Persist participant language for research audit (never overwrite free-text).
+            try {
+                $vars = $answer->getVars();
+                $vars['response_language'] = (string)$ctx->language;
+                $answer->setVars($vars);
+                $answer->save(false, ['vars_json', 'updated_at']);
+            } catch (\Throwable $e) {
+            }
             (new \humhub\modules\thiscoveryForms\services\PanelService())->handleCompletion($form, $answer);
             if (!$isTest) {
                 (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onComplete(

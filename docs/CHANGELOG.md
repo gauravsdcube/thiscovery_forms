@@ -2,6 +2,12 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.6 (September 2, 2026)
+
+- Enh: Align form language catalogue and Settings language grid with Thiscovery Translate when that module is enabled
+- Enh: Studio Translations and fill/answer views integrate with Thiscovery Translate for machine translation and response language display
+- Fix: Soft-call Translate from fill, resume, and programme flows without requiring the module
+
 ## 1.21.5 (September 1, 2026)
 
 - Enh: Map questions can set a basemap style (street, satellite, and other Stadia styles) instead of always using the site default

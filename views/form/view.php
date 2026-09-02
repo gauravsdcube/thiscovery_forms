@@ -193,9 +193,16 @@ $fillRtl = TranslationService::isRtl($fillLang);
         <header class="cf-fill-hero">
             <h1 class="cf-fill-hero__title"><?= Html::encode($formModel->title) ?></h1>
             <?php
+            // Form's enabled languages control the participant switcher.
+            // Do not intersect with Translate's instance list — that hid the
+            // picker when a form language (e.g. Arabic) was not also enabled
+            // under Thiscovery Translate.
             $enabledLangs = $formModel->getEnabledLanguages();
             if (count($enabledLangs) > 1):
                 $langLabels = TranslationService::languageLabels();
+                if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
+                    $langLabels = array_merge($langLabels, \humhub\modules\thiscoveryTranslate\services\LocaleMap::labels());
+                }
                 $currentLang = $fillContext->language ?? $formModel->getSourceLanguage();
             ?>
                 <div class="cf-lang-switch" role="navigation" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>">

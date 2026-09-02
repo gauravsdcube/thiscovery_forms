@@ -79,6 +79,15 @@ foreach ($formModel->fields as $field) {
                 <span class="cf-form-row__chip"><?= Yii::t('ThiscoveryFormsModule.base', 'Score {n}', ['n' => number_format((float)$answer->integrityMeta->overall_score, 0)]) ?></span>
                 <span class="cf-form-row__chip cf-form-row__chip--analysis"><?= Html::encode($answer->integrityMeta->getAnalysisLabel()) ?></span>
             <?php endif; ?>
+            <?php
+            $responseLang = '';
+            if (method_exists($answer, 'getVars')) {
+                $vars = $answer->getVars();
+                $responseLang = (string)($vars['response_language'] ?? '');
+            }
+            if ($responseLang !== ''): ?>
+                <span class="cf-form-row__chip"><?= Yii::t('ThiscoveryFormsModule.base', 'Response language: {lang}', ['lang' => $responseLang]) ?></span>
+            <?php endif; ?>
         </div>
         <?php if ($formModel->isProject()): ?>
             <a class="btn btn-sm btn-default" href="<?= Html::encode(Url::toProject($formModel, $answer)) ?>">
@@ -134,9 +143,44 @@ foreach ($formModel->fields as $field) {
                                     'answerField' => $answerFieldMap[(int)$field->id],
                                 ]) ?>
                             <?php else: ?>
-                                <?= !empty($answerFieldMap[(int)$field->id])
-                                    ? $answerFieldMap[(int)$field->id]->getAnswerHtml()
-                                    : nl2br(Html::encode($afValue)) ?>
+                                <div class="tt-response-original">
+                                    <?= !empty($answerFieldMap[(int)$field->id])
+                                        ? $answerFieldMap[(int)$field->id]->getAnswerHtml()
+                                        : nl2br(Html::encode($afValue)) ?>
+                                </div>
+                                <?php
+                                $isFreeText = in_array($field->type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_RICH_TEXT], true);
+                                $af = $answerFieldMap[(int)$field->id] ?? null;
+                                $canTranslate = $canManage
+                                    && $isFreeText
+                                    && $af
+                                    && Yii::$app->hasModule('thiscovery-translate')
+                                    && Yii::$app->getModule('thiscovery-translate')->getIsEnabled()
+                                    && \humhub\modules\thiscoveryTranslate\models\ModuleSettings::isFormsTranslateEnabled();
+                                if ($canTranslate):
+                                    $cached = null;
+                                    if (class_exists(\humhub\modules\thiscoveryTranslate\services\ResponseTranslateService::class)) {
+                                        $cached = (new \humhub\modules\thiscoveryTranslate\services\ResponseTranslateService())
+                                            ->getCached((int)$af->id, Yii::$app->language);
+                                    }
+                                    ?>
+                                    <?php if ($cached): ?>
+                                        <div class="tt-response-translated text-muted">
+                                            <small><?= Yii::t('ThiscoveryFormsModule.base', 'Translated') ?></small><br>
+                                            <?= nl2br(Html::encode($cached)) ?>
+                                        </div>
+                                    <?php endif; ?>
+                                    <button type="button"
+                                            class="btn btn-xs btn-default mt-1 tt-translate-response"
+                                            data-answer-field-id="<?= (int)$af->id ?>"
+                                            data-original="<?= Html::encode($afValue) ?>"
+                                            data-response-language="<?= Html::encode($responseLang !== '' ? $responseLang : (string)$formModel->source_language) ?>"
+                                            data-target-language="<?= Html::encode(Yii::$app->language) ?>"
+                                            data-url="<?= Html::encode(\yii\helpers\Url::to(['/thiscovery-translate/response/translate'])) ?>">
+                                        <?= Yii::t('ThiscoveryFormsModule.base', 'Translate response') ?>
+                                    </button>
+                                    <div class="tt-response-translated" data-for="<?= (int)$af->id ?>" style="<?= $cached ? 'display:none' : '' ?>"></div>
+                                <?php endif; ?>
                             <?php endif; ?>
                             <?php if (!empty($justMap[(int)$field->id])): ?>
                                 <div class="cf-answer-just">
