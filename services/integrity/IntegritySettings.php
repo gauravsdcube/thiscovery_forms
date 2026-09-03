@@ -25,6 +25,9 @@ class IntegritySettings
     public const CAPTCHA_SUSPICIOUS = 'suspicious';
     public const CAPTCHA_ALWAYS = 'always';
 
+    public const CAPTCHA_PROVIDER_ALTCHA = 'altcha';
+    public const CAPTCHA_PROVIDER_TURNSTILE = 'turnstile';
+
     public static function defaults(): array
     {
         return [
@@ -32,6 +35,7 @@ class IntegritySettings
             'bot_protection' => 1,
             'rate_limiting' => 1,
             'captcha' => 1,
+            'open_captcha' => 0,
             'duplicate_detection' => 1,
             'speed_detection' => 1,
             'straightline_detection' => 1,
@@ -46,10 +50,13 @@ class IntegritySettings
             'allow_multiple' => null,
             'access_mode' => self::ACCESS_PUBLIC,
             'captcha_mode' => self::CAPTCHA_SUSPICIOUS,
+            'captcha_provider' => self::CAPTCHA_PROVIDER_ALTCHA,
             'turnstile_site_key' => '',
             'turnstile_secret' => '',
             'rate_limit_count' => 8,
             'rate_limit_window' => 10,
+            'open_rate_count' => 30,
+            'open_rate_window' => 10,
             'speed_percent' => 40,
             'speed_min_seconds' => 15,
             'straightline_min_items' => 5,
@@ -72,7 +79,7 @@ class IntegritySettings
     public static function featureKeys(): array
     {
         return [
-            'enabled', 'bot_protection', 'rate_limiting', 'captcha', 'duplicate_detection',
+            'enabled', 'bot_protection', 'rate_limiting', 'captcha', 'open_captcha', 'duplicate_detection',
             'speed_detection', 'straightline_detection', 'attention_checks', 'consistency_checks',
             'freetext_checks', 'similarity_detection', 'integrity_scoring', 'question_timing',
             'hash_ip', 'auto_exclude',
@@ -95,8 +102,37 @@ class IntegritySettings
         return [
             self::CAPTCHA_OFF => Yii::t('ThiscoveryFormsModule.base', 'Off'),
             self::CAPTCHA_SUSPICIOUS => Yii::t('ThiscoveryFormsModule.base', 'Only when behaviour looks suspicious'),
-            self::CAPTCHA_ALWAYS => Yii::t('ThiscoveryFormsModule.base', 'Always (when a Turnstile key is set)'),
+            self::CAPTCHA_ALWAYS => Yii::t('ThiscoveryFormsModule.base', 'Always (when CAPTCHA provider is available)'),
         ];
+    }
+
+    public static function captchaProviderLabels(): array
+    {
+        return [
+            self::CAPTCHA_PROVIDER_ALTCHA => Yii::t('ThiscoveryFormsModule.base', 'HumHub Altcha (default)'),
+            self::CAPTCHA_PROVIDER_TURNSTILE => Yii::t('ThiscoveryFormsModule.base', 'Cloudflare Turnstile'),
+        ];
+    }
+
+    /**
+     * Whether the configured CAPTCHA provider can run with this settings array.
+     */
+    public static function captchaAvailable(array $cfg): bool
+    {
+        $provider = (string)($cfg['captcha_provider'] ?? self::CAPTCHA_PROVIDER_ALTCHA);
+        if ($provider === self::CAPTCHA_PROVIDER_TURNSTILE) {
+            return trim((string)($cfg['turnstile_site_key'] ?? '')) !== ''
+                && trim((string)($cfg['turnstile_secret'] ?? '')) !== '';
+        }
+        if (!Yii::$app->has('captcha')) {
+            return false;
+        }
+        try {
+            $class = Yii::$app->captcha->getValidatorClass();
+            return is_string($class) && $class !== '' && class_exists($class);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 
     public static function module(): ?Module
@@ -177,7 +213,8 @@ class IntegritySettings
 
     public static function isOn(array $cfg, string $key): bool
     {
-        if (empty($cfg['enabled']) && $key !== 'enabled') {
+        // CAPTCHA gates can run without integrity scoring metadata.
+        if (empty($cfg['enabled']) && !in_array($key, ['enabled', 'captcha', 'open_captcha'], true)) {
             return false;
         }
         $v = $cfg[$key] ?? 0;
@@ -243,21 +280,29 @@ class IntegritySettings
             $out[$key] = !empty($post[$key]) ? 1 : 0;
         }
         $scalars = [
-            'access_mode', 'captcha_mode', 'turnstile_site_key', 'turnstile_secret',
-            'rate_limit_count', 'rate_limit_window', 'speed_percent', 'speed_min_seconds',
+            'access_mode', 'captcha_mode', 'captcha_provider', 'turnstile_site_key', 'turnstile_secret',
+            'rate_limit_count', 'rate_limit_window', 'open_rate_count', 'open_rate_window',
+            'speed_percent', 'speed_min_seconds',
             'straightline_min_items', 'freetext_min_chars', 'similarity_threshold',
             'trust_threshold', 'review_threshold',
             'weight_bot', 'weight_duplicate', 'weight_speed', 'weight_attention',
             'weight_straightline', 'weight_consistency', 'weight_freetext', 'weight_similarity',
         ];
+        $stringScalars = [
+            'turnstile_site_key', 'turnstile_secret', 'access_mode', 'captcha_mode', 'captcha_provider',
+        ];
         foreach ($scalars as $key) {
             if (!array_key_exists($key, $post)) {
+                continue;
+            }
+            // Turnstile keys are administration-only (never stored per form).
+            if ($allowInherit && in_array($key, ['turnstile_site_key', 'turnstile_secret'], true)) {
                 continue;
             }
             if ($allowInherit && self::isInherit($post[$key])) {
                 continue;
             }
-            $out[$key] = is_numeric($defaults[$key] ?? null) && $key !== 'turnstile_site_key' && $key !== 'turnstile_secret' && $key !== 'access_mode' && $key !== 'captcha_mode'
+            $out[$key] = is_numeric($defaults[$key] ?? null) && !in_array($key, $stringScalars, true)
                 ? (0 + $post[$key])
                 : trim((string)$post[$key]);
         }
@@ -272,6 +317,9 @@ class IntegritySettings
         }
         if (!empty($out['captcha_mode']) && !isset(self::captchaModeLabels()[$out['captcha_mode']])) {
             $out['captcha_mode'] = self::CAPTCHA_SUSPICIOUS;
+        }
+        if (!empty($out['captcha_provider']) && !isset(self::captchaProviderLabels()[$out['captcha_provider']])) {
+            $out['captcha_provider'] = self::CAPTCHA_PROVIDER_ALTCHA;
         }
         return $out;
     }

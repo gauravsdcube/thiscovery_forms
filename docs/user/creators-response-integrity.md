@@ -14,7 +14,7 @@ In the product that is enforced: **one signal type can at most produce “Review
 
 | Place | What it controls |
 | --- | --- |
-| **Administration → Modules → Thiscovery Forms** | Site-wide defaults. Cloudflare Turnstile keys are only set here. |
+| **Administration → Modules → Thiscovery Forms** | Site-wide defaults. Cloudflare Turnstile keys (optional) are only set here. |
 | Studio **Response integrity** tab | Overrides for this survey. **Use site default** inherits the administration value. |
 | Builder field card | **Attention check** and the expected answer on an instructed-response question |
 
@@ -45,7 +45,8 @@ Leave a survey control on **Use site default** unless this study needs different
 | Enable integrity checks | **Checkbox.** Scores and integrity metadata are stored only when this is on. Off by default. Per-survey can inherit the site default or override it. |
 | Bot protection | Records honeypot, missing browser session, and related signs as flags |
 | Rate limiting | Refuses further submits from the same hashed IP/session in the window (a **gate**, not a quality flag). Shared NAT can lock several people out |
-| CAPTCHA / Turnstile | Optional Cloudflare widget. Needs keys in Administration |
+| CAPTCHA | HumHub Altcha by default (no keys). Optional Cloudflare Turnstile when that provider is selected and keys are set in Administration |
+| CAPTCHA gate on open (rate-limited) | Off by default. When On, many opens from the same connection must pass CAPTCHA before the fill page loads |
 | Duplicate detection | Same user, invitation token, or hashed IP/session. Hash IP Off skips IP matching only |
 | Speed detection | Faster than your floor seconds or faster than typical time. Browser timings are supporting signals and can be spoofed |
 | Straight-lining detection | Identical grids, flat ratings, sequences such as 1,2,3,4,5 |
@@ -58,7 +59,11 @@ Leave a survey control on **Use site default** unless this study needs different
 | Hash IP addresses | **On:** HMAC of IP plus a network hash, never the raw address. **Off:** store no IP hashes |
 | Automatic exclusion when several signals agree | **Off** by default. When On, exclusion still requires a very low score **and** at least two different signal types |
 
-**CAPTCHA when:** Off, only when behaviour looks suspicious (honeypot, no session, or rate limit), or Always (every submit, if keys are set). Failed Always-mode CAPTCHA blocks submit. Other CAPTCHA failures are recorded as flags.
+**CAPTCHA provider:** HumHub Altcha (default) or Cloudflare Turnstile. Turnstile needs site and secret keys in Administration.
+
+**CAPTCHA when:** Off, only when behaviour looks suspicious (honeypot, no session, or rate limit), or Always (every submit, when the provider is available). Failed Always-mode CAPTCHA blocks submit. Other CAPTCHA failures are recorded as flags.
+
+**Open CAPTCHA gate:** optional. Uses open-rate count and window (default 30 opens per 10 minutes). Separate from submit rate limiting.
 
 **Rate window:** for example 8 submits per 10 minutes from the same connection.
 

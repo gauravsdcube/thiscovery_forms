@@ -588,6 +588,9 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $grid = $field->getGridConfig();
             $multi = $field->type === FormField::TYPE_GRID_MULTI;
             $gridValue = is_array($value) ? $value : [];
+            $stripGridCode = function (string $s): string {
+                return preg_replace('/^\[[^\]]*\]\s*/', '', $s);
+            };
             ?>
             <div class="cf-grid-wrap" data-cf-grid="<?= $multi ? 'multi' : 'single' ?>">
                 <p class="cf-grid-hint" data-cf-grid-hint hidden>
@@ -602,7 +605,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                             <tr>
                                 <th></th>
                                 <?php foreach ($grid['columns'] as $col): ?>
-                                    <th><?= Html::encode($col) ?></th>
+                                    <th><?= Html::encode($stripGridCode($col)) ?></th>
                                 <?php endforeach; ?>
                             </tr>
                             </thead>
@@ -613,7 +616,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                                 $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
                                 ?>
                                 <tr>
-                                    <th><?= Html::encode($rowLabel) ?></th>
+                                    <th><?= Html::encode($stripGridCode($rowLabel)) ?></th>
                                     <?php foreach ($grid['columns'] as $col): ?>
                                         <td>
                                             <?php if ($multi): ?>

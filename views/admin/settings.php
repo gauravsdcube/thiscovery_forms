@@ -47,7 +47,7 @@ $this->title = Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Forms');
 
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity') ?></h4>
         <p class="help-block">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Tick Enable integrity checks to record quality scores. These are site-wide defaults. Each survey can inherit or override them on its Response integrity tab. Cloudflare Turnstile keys are only set here.') ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Site-wide defaults for access, CAPTCHA, and quality scoring. CAPTCHA can be turned on without enabling integrity scoring. Each survey can inherit or override these on its Response integrity tab. Cloudflare Turnstile keys are only set here.') ?>
             <a href="<?= Html::encode(Url::toHelp(null, 'creators-response-integrity')) ?>">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity help') ?>
             </a>

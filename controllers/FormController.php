@@ -132,7 +132,7 @@ class FormController extends ContentContainerController
         $submit = new SubmitForm(['form' => $form]);
         $existing = $this->resolveFillExisting($form, $submit);
 
-        if (Yii::$app->request->isPost) {
+        if (Yii::$app->request->isPost && !Yii::$app->request->post('integrity_open_challenge')) {
             return $this->handleSubmit($form, $submit, $existing);
         }
 
@@ -177,8 +177,23 @@ class FormController extends ContentContainerController
         array $extra = []
     ) {
         $this->applyFillLayout($form);
-        if (!$this->isPreviewMode($form)) {
-            (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onFillOpen($form, $existing);
+        $preview = $this->isPreviewMode($form);
+        $openCaptchaError = null;
+        if (!$preview) {
+            $svc = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
+            if (Yii::$app->request->isPost && Yii::$app->request->post('integrity_open_challenge')) {
+                if (!$svc->verifyOpenCaptcha($form, Yii::$app->request->post())) {
+                    $openCaptchaError = Yii::t('ThiscoveryFormsModule.base', 'Please complete the verification check and try again.');
+                }
+            }
+            if ($svc->prepareFillOpen($form, $existing) === 'challenge') {
+                return $this->render('@thiscovery-forms/views/form/_integrity_open_captcha', [
+                    'formModel' => $form,
+                    'integritySettings' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form),
+                    'error' => $openCaptchaError,
+                    'contentContainer' => $this->contentContainer,
+                ]);
+            }
         }
         return $this->render('view', array_merge([
             'formModel' => $form,

@@ -11,7 +11,10 @@ use humhub\modules\thiscoveryForms\services\FormPager;
 use humhub\modules\thiscoveryForms\services\HtmlSanitizer;
 use humhub\modules\thiscoveryForms\services\TranslationService;
 use humhub\modules\thiscoveryForms\services\VariableSubstitutor;
+use humhub\modules\thiscoveryForms\services\integrity\IntegritySettings;
 use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\CaptchaField;
+use yii\base\DynamicModel;
 use yii\helpers\Html;
 use yii\helpers\Json;
 
@@ -32,6 +35,8 @@ $editingAnswer = !empty($editingAnswer);
 $isPreview = !empty($isPreview);
 $showCaptcha = !empty($showCaptcha);
 $integritySettings = $integritySettings ?? [];
+$captchaProvider = $captchaProvider
+    ?? (string)($integritySettings['captcha_provider'] ?? IntegritySettings::CAPTCHA_PROVIDER_ALTCHA);
 $integrityEnabled = !empty($integrityEnabled)
     || \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::isOn($integritySettings, 'enabled');
 $accessToken = $accessToken ?? '';
@@ -492,11 +497,20 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         </button>
                     <?php endif; ?>
                     <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
-                        <?php if (!empty($showCaptcha) && !empty($integritySettings['turnstile_site_key'])): ?>
-                            <div class="cf-turnstile-wrap mb-3">
-                                <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-                                <div class="cf-turnstile" data-sitekey="<?= Html::encode($integritySettings['turnstile_site_key']) ?>"></div>
-                            </div>
+                        <?php if (!empty($showCaptcha)): ?>
+                            <?php if ($captchaProvider === IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE && !empty($integritySettings['turnstile_site_key'])): ?>
+                                <div class="cf-turnstile-wrap mb-3">
+                                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                                    <div class="cf-turnstile" data-sitekey="<?= Html::encode($integritySettings['turnstile_site_key']) ?>"></div>
+                                </div>
+                            <?php elseif ($captchaProvider !== IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE): ?>
+                                <div class="cf-captcha-wrap mb-3">
+                                    <?php
+                                    $captchaModel = new DynamicModel(['captcha' => null]);
+                                    echo CaptchaField::widget(['model' => $captchaModel, 'attribute' => 'captcha']);
+                                    ?>
+                                </div>
+                            <?php endif; ?>
                         <?php endif; ?>
                         <?= Button::save($existing && !$isDraft
                             ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')

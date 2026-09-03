@@ -4269,6 +4269,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     }
                 }
                 $root.find('[data-cf-integrity-when-on]').toggleClass('is-disabled', !on);
+                $root.find('[data-cf-integrity-quality-hint]').toggle(!on);
             };
             $root.off('change.cfIntegrity').on('change.cfIntegrity', '[data-cf-integrity-inherit], [data-cf-integrity-enabled]', sync);
             sync();

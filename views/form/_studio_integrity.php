@@ -24,7 +24,7 @@ foreach ($fieldList as $cfField) {
 <div class="cf-studio__settings" data-cf-integrity-settings>
     <div class="cf-field mb-3">
         <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity') ?></h5>
-        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Tick Enable integrity checks to record scores on complete responses. Leave a setting on “Use site default” to inherit Administration → Modules → Thiscovery Forms. Open Help from this tab for the full guide.')]) ?>
+        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Access and CAPTCHA can be set without ticking Enable integrity checks. Tick that to record quality scores on complete responses. Leave a setting on “Use site default” to inherit Administration → Modules → Thiscovery Forms. Open Help from this tab for the full guide.')]) ?>
     </div>
     <?= $this->render('_integrity_settings_fields', [
         'namePrefix' => 'integrity',

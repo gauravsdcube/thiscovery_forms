@@ -43,10 +43,6 @@ $features = [
         'label' => Yii::t('ThiscoveryFormsModule.base', 'Rate limiting'),
         'guide' => Yii::t('ThiscoveryFormsModule.base', 'Stops the same hashed IP or browser session submitting faster than the count and window below. This is a gate (the submit is refused), not a quality flag. Shared NAT (hospital, campus, VPN) can lock several genuine people out — set the window generously for those studies.'),
     ],
-    'captcha' => [
-        'label' => Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA / Turnstile'),
-        'guide' => Yii::t('ThiscoveryFormsModule.base', 'Uses Cloudflare Turnstile when site and secret keys are set in Administration. Combined with “CAPTCHA when” below. Failed checks are recorded; they only block submit if CAPTCHA is set to Always.'),
-    ],
     'duplicate_detection' => [
         'label' => Yii::t('ThiscoveryFormsModule.base', 'Duplicate detection'),
         'guide' => Yii::t('ThiscoveryFormsModule.base', 'Flags another complete response from the same signed-in user, the same invitation token, or the same hashed IP or session. If Hash IP is Off, IP matching is skipped; session and user/token matches still apply. Shared NAT can look like one connection. Duplicates are kept for review.'),
@@ -122,7 +118,7 @@ $siteDefaultOn = !empty($defaults['enabled']);
         ]) ?>
         <?= Yii::t('ThiscoveryFormsModule.base', 'Enable integrity checks') ?>
     </label>
-    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Tick this to record quality scores and integrity metadata on complete responses. When it is off, no scores, timings, or integrity hashes are stored. Access mode below still applies.')]) ?>
+    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Tick this to record quality scores and integrity metadata on complete responses. When it is off, no scores, timings, or integrity hashes are stored. Access mode and CAPTCHA below still apply on their own.')]) ?>
 </div>
 <p class="help-block">
     <?= Yii::t('ThiscoveryFormsModule.base', 'Quality uses several signals together. A single issue such as a fast completion, a shared IP, or one failed attention check does not on its own mark a response as fraudulent. Use the ? next to each setting for a short explanation.') ?>
@@ -143,7 +139,91 @@ $siteDefaultOn = !empty($defaults['enabled']);
     </div>
 </div>
 
+<h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA') ?></h5>
+<p class="help-block">
+    <?= Yii::t('ThiscoveryFormsModule.base', 'Turn CAPTCHA on or off here for this site or survey. Works even when integrity scoring is off. HumHub Altcha needs no external keys. Cloudflare Turnstile is optional and uses keys from Administration only.') ?>
+</p>
+<div class="row g-3 mt-1">
+    <div class="col-md-6">
+        <div class="cf-field">
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA on submit') ?></label>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'On: show a verification check on submit according to “CAPTCHA when” below. Off: never show CAPTCHA on submit (open-rate CAPTCHA below can still run if you turn that on separately).')]) ?>
+            <?php $tri('captcha'); ?>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="cf-field">
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA when') ?></label>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Only used when “CAPTCHA on submit” is On. Always shows on every submit. Only when behaviour looks suspicious shows it after a honeypot, missing session, or rate-limit signal (those signals need integrity checks on) and keeps it until the check is completed. Off never shows CAPTCHA on submit.')]) ?>
+            <?php
+            $capOpts = $allowInherit ? ['' => $inherit] : [];
+            $capOpts += IntegritySettings::captchaModeLabels();
+            echo Html::dropDownList($namePrefix . '[captcha_mode]', $values['captcha_mode'] ?? ($allowInherit ? '' : IntegritySettings::CAPTCHA_SUSPICIOUS), $capOpts, ['class' => 'form-control']);
+            ?>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="cf-field">
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA provider') ?></label>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'HumHub Altcha works out of the box. Choose Cloudflare Turnstile only when site and secret keys are set in Administration.')]) ?>
+            <?php
+            $provOpts = $allowInherit ? ['' => $inherit] : [];
+            $provOpts += IntegritySettings::captchaProviderLabels();
+            echo Html::dropDownList(
+                $namePrefix . '[captcha_provider]',
+                $values['captcha_provider'] ?? ($allowInherit ? '' : IntegritySettings::CAPTCHA_PROVIDER_ALTCHA),
+                $provOpts,
+                ['class' => 'form-control']
+            );
+            ?>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="cf-field">
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA before form opens') ?></label>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Off by default. When On, respondents who open the survey faster than the open-rate limits must pass CAPTCHA before the fill page loads. Uses the same CAPTCHA provider.')]) ?>
+            <?php $tri('open_captcha'); ?>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="cf-field">
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Max opens per window') ?></label>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'How many times the same IP or session may open the fill page in the window before the open CAPTCHA gate triggers. Only used when “CAPTCHA before form opens” is On.')]) ?>
+            <?php $num('open_rate_count'); ?>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="cf-field">
+            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Open-rate window (minutes)') ?></label>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Length of the open-rate window in minutes. Example: 30 opens per 10 minutes.')]) ?>
+            <?php $num('open_rate_window'); ?>
+        </div>
+    </div>
+</div>
+<?php if (!$allowInherit): ?>
+    <div class="row g-3 mt-1">
+        <div class="col-md-6">
+            <div class="cf-field">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Cloudflare Turnstile site key') ?></label>
+                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Public site key from your Cloudflare Turnstile widget. Only used when the CAPTCHA provider is Cloudflare Turnstile. Leave blank if you use HumHub Altcha. Survey-level settings cannot supply a different key.')]) ?>
+                <?= Html::textInput($namePrefix . '[turnstile_site_key]', $values['turnstile_site_key'] ?? '', ['class' => 'form-control', 'autocomplete' => 'off']) ?>
+            </div>
+        </div>
+        <div class="col-md-6">
+            <div class="cf-field">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Turnstile secret key') ?></label>
+                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Secret key used only on the server to verify the widget when the provider is Cloudflare Turnstile. Do not share it. Stored in module settings, not in survey answers.')]) ?>
+                <?= Html::passwordInput($namePrefix . '[turnstile_secret]', $values['turnstile_secret'] ?? '', ['class' => 'form-control', 'autocomplete' => 'off']) ?>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>
+
 <div data-cf-integrity-when-on>
+<p class="help-block text-muted" data-cf-integrity-quality-hint style="display:none">
+    <?= Yii::t('ThiscoveryFormsModule.base', 'Turn on “Enable integrity checks” above to configure quality scoring options.') ?>
+</p>
+<h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Quality checks') ?></h5>
 <div class="row g-3 mt-1">
     <?php foreach ($features as $key => $meta): ?>
         <div class="col-md-6">
@@ -155,38 +235,6 @@ $siteDefaultOn = !empty($defaults['enabled']);
         </div>
     <?php endforeach; ?>
 </div>
-
-<div class="row g-3 mt-1">
-    <div class="col-md-6">
-        <div class="cf-field">
-            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA when') ?></label>
-            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Off never shows Turnstile. Only when behaviour looks suspicious shows it after a honeypot, missing session, or rate-limit signal — and keeps it on the form until the check is completed. Always shows it on every submit once keys are set. Keys are configured in Administration, not on each form.')]) ?>
-            <?php
-            $capOpts = $allowInherit ? ['' => $inherit] : [];
-            $capOpts += IntegritySettings::captchaModeLabels();
-            echo Html::dropDownList($namePrefix . '[captcha_mode]', $values['captcha_mode'] ?? ($allowInherit ? '' : IntegritySettings::CAPTCHA_SUSPICIOUS), $capOpts, ['class' => 'form-control']);
-            ?>
-        </div>
-    </div>
-</div>
-<?php if (!$allowInherit): ?>
-    <div class="row g-3 mt-1">
-        <div class="col-md-6">
-            <div class="cf-field">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Cloudflare Turnstile site key') ?></label>
-                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Public site key from your Cloudflare Turnstile widget. Leave blank to disable CAPTCHA site-wide. Survey-level settings cannot supply a different key.')]) ?>
-                <?= Html::textInput($namePrefix . '[turnstile_site_key]', $values['turnstile_site_key'] ?? '', ['class' => 'form-control', 'autocomplete' => 'off']) ?>
-            </div>
-        </div>
-        <div class="col-md-6">
-            <div class="cf-field">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Turnstile secret key') ?></label>
-                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Secret key used only on the server to verify the widget. Do not share it. Stored in module settings, not in survey answers.')]) ?>
-                <?= Html::passwordInput($namePrefix . '[turnstile_secret]', $values['turnstile_secret'] ?? '', ['class' => 'form-control', 'autocomplete' => 'off']) ?>
-            </div>
-        </div>
-    </div>
-<?php endif; ?>
 
 <h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Thresholds and weights') ?></h5>
 <p class="help-block">

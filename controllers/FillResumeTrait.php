@@ -592,6 +592,7 @@ trait FillResumeTrait
             'isPreview' => $this->isPreviewMode($form),
             'accessToken' => trim((string)Yii::$app->request->get('access', Yii::$app->request->post('access_token', ''))),
             'showCaptcha' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->shouldShowCaptchaWidget($form),
+            'captchaProvider' => (string)((\humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form)['captcha_provider'] ?? 'altcha')),
             'integrityEnabled' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->isEnabled($form),
             'integritySettings' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form),
         ];

@@ -53,9 +53,9 @@ Changing wave scope affects how creators schedule fieldwork. Agree this before a
 
 ### Response integrity defaults
 
-**Response integrity** is **off until you tick Enable integrity checks**. That checkbox is on this page (site default) and on each survey’s **Response integrity** tab. Scores and integrity metadata are stored only when it is on. The rest of the section is site-wide defaults (CAPTCHA keys, weights, and so on) that surveys can inherit or override.
+**Response integrity** is **off until you tick Enable integrity checks**. That checkbox is on this page (site default) and on each survey’s **Response integrity** tab. Scores and integrity metadata are stored only when it is on. The rest of the section is site-wide defaults (CAPTCHA provider, optional Turnstile keys, weights, and so on) that surveys can inherit or override.
 
-Cloudflare Turnstile **site** and **secret** keys are only stored here. Surveys cannot supply a different key.
+**CAPTCHA:** HumHub Altcha is the default and needs no keys. Cloudflare Turnstile **site** and **secret** keys are only stored here and are used only when the CAPTCHA provider is set to Turnstile. Surveys cannot supply a different Turnstile key. An optional open-rate CAPTCHA gate can challenge before the fill page when opens exceed the configured count and window.
 
 The product combines several signals. It does not treat a single fast completion, shared IP, or failed attention check as proof of fraud. Automatic exclusion stays **off** unless you switch it on, and even then it needs more than one signal type.
 

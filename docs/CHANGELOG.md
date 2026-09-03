@@ -2,6 +2,20 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.8 (September 3, 2026)
+
+- Enh: CAPTCHA settings (submit and open-rate) work independently of integrity scoring toggle
+- Enh: SPARCS2 survey definition with console import command (import-sparcs2)
+- Enh: Internal codes on all choice options (radio, dropdown, checkbox) using `code | Label` format
+- Enh: Internal codes on grid rows/columns using `[code] Label` format, hidden from respondents
+- Enh: Grid fill view strips bracketed code prefixes so respondents see clean labels
+
+## 1.21.7 (September 3, 2026)
+
+- Enh: HumHub Altcha is the default Forms integrity CAPTCHA; Cloudflare Turnstile remains optional via CAPTCHA provider
+- Enh: Optional open-rate CAPTCHA gate before the fill page (global and per-form), with open_rate_count / open_rate_window
+- Enh: CAPTCHA provider selectable globally and per form (inherit/override); Turnstile keys stay administration-only
+
 ## 1.21.6 (September 2, 2026)
 
 - Enh: Align form language catalogue and Settings language grid with Thiscovery Translate when that module is enabled

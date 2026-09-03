@@ -2794,6 +2794,7 @@ body.cf-fill-standalone #topbar-second {
 }
 [data-cf-integrity-when-on].is-disabled {
     opacity: .45;
+    pointer-events: none;
 }
 
 .cf-integrity-banner {

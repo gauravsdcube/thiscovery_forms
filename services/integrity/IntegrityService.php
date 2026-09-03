@@ -21,6 +21,8 @@ class IntegrityService
     public const SESSION_PREFIX = 'cf_integrity_session_';
     public const START_PREFIX = 'cf_integrity_start_';
     public const CAPTCHA_REQUIRED_PREFIX = 'cf_integrity_captcha_';
+    public const OPEN_OK_PREFIX = 'cf_integrity_open_ok_';
+    public const OPEN_CAPTCHA_REQUIRED_PREFIX = 'cf_integrity_open_captcha_';
 
     public function settings(?CustomForm $form): array
     {
@@ -30,6 +32,11 @@ class IntegrityService
     public function isEnabled(?CustomForm $form): bool
     {
         return IntegritySettings::isOn($this->settings($form), 'enabled');
+    }
+
+    public function captchaAvailable(array $cfg): bool
+    {
+        return IntegritySettings::captchaAvailable($cfg);
     }
 
     public function sessionKey(CustomForm $form): string
@@ -57,6 +64,103 @@ class IntegrityService
         }
     }
 
+    /**
+     * Starts the fill session when allowed, or signals that an open-rate CAPTCHA is required.
+     *
+     * @return string 'ok'|'challenge'
+     */
+    public function prepareFillOpen(CustomForm $form, ?FormAnswer $existing = null): string
+    {
+        if ($this->isOpenCaptchaCleared($form)) {
+            $this->onFillOpen($form, $existing);
+            return 'ok';
+        }
+        $cfg = $this->settings($form);
+        if (IntegritySettings::isOn($cfg, 'open_captcha') && $this->captchaAvailable($cfg)) {
+            // Sticky challenge: do not re-increment the open-rate counter on refresh.
+            if ($this->isOpenCaptchaRequired($form)) {
+                return 'challenge';
+            }
+            if ($this->isOpenRateLimited($form, $cfg, true)) {
+                $this->markOpenCaptchaRequired($form);
+                return 'challenge';
+            }
+        }
+        $this->onFillOpen($form, $existing);
+        return 'ok';
+    }
+
+    public function needsOpenCaptchaChallenge(CustomForm $form): bool
+    {
+        if ($this->isOpenCaptchaCleared($form)) {
+            return false;
+        }
+        $cfg = $this->settings($form);
+        if (!IntegritySettings::isOn($cfg, 'open_captcha') || !$this->captchaAvailable($cfg)) {
+            return false;
+        }
+        return $this->isOpenCaptchaRequired($form)
+            || $this->isOpenRateLimited($form, $cfg, false);
+    }
+
+    public function isOpenCaptchaCleared(CustomForm $form): bool
+    {
+        return (bool)Yii::$app->session->get(self::OPEN_OK_PREFIX . (int)$form->id);
+    }
+
+    public function markOpenCaptchaCleared(CustomForm $form): void
+    {
+        Yii::$app->session->set(self::OPEN_OK_PREFIX . (int)$form->id, 1);
+        $this->clearOpenCaptchaRequired($form);
+    }
+
+    public function clearOpenCaptchaCleared(CustomForm $form): void
+    {
+        Yii::$app->session->remove(self::OPEN_OK_PREFIX . (int)$form->id);
+    }
+
+    public function isOpenCaptchaRequired(CustomForm $form): bool
+    {
+        return (bool)Yii::$app->session->get(self::OPEN_CAPTCHA_REQUIRED_PREFIX . (int)$form->id);
+    }
+
+    public function markOpenCaptchaRequired(CustomForm $form): void
+    {
+        Yii::$app->session->set(self::OPEN_CAPTCHA_REQUIRED_PREFIX . (int)$form->id, 1);
+    }
+
+    public function clearOpenCaptchaRequired(CustomForm $form): void
+    {
+        Yii::$app->session->remove(self::OPEN_CAPTCHA_REQUIRED_PREFIX . (int)$form->id);
+    }
+
+    public function isOpenRateLimited(CustomForm $form, array $cfg, bool $increment): bool
+    {
+        $ip = (string)Yii::$app->request->userIP;
+        $session = Yii::$app->session->id ?: 'none';
+        $key = 'cf-int-open-rate-' . $form->id . '-' . IntegritySettings::hashValue($ip . '|' . $session);
+        $limit = max(1, (int)($cfg['open_rate_count'] ?? 30));
+        $window = max(1, (int)($cfg['open_rate_window'] ?? 10)) * 60;
+        $cache = Yii::$app->cache;
+        $count = (int)$cache->get($key);
+        if ($increment) {
+            $count++;
+            $cache->set($key, $count, $window);
+        }
+        return $count > $limit;
+    }
+
+    public function verifyOpenCaptcha(CustomForm $form, array $post): bool
+    {
+        $cfg = $this->settings($form);
+        if (!$this->verifyCaptcha($cfg, $post)) {
+            $this->markOpenCaptchaRequired($form);
+            return false;
+        }
+        $this->markOpenCaptchaCleared($form);
+        return true;
+    }
+
     public function onProgress(CustomForm $form, FormAnswer $answer, array $post): void
     {
         if (!$this->isEnabled($form)) {
@@ -81,22 +185,21 @@ class IntegrityService
     public function gateSubmit(CustomForm $form, array $post, FillContext $ctx): ?string
     {
         $cfg = $this->settings($form);
-        if (!IntegritySettings::isOn($cfg, 'enabled')) {
-            return $this->gateAccess($form, $cfg, $ctx);
-        }
         $accessError = $this->gateAccess($form, $cfg, $ctx);
         if ($accessError) {
             return $accessError;
         }
-        if (IntegritySettings::isOn($cfg, 'rate_limiting') && $this->isRateLimited($form, $cfg, true)) {
+        $integrityOn = IntegritySettings::isOn($cfg, 'enabled');
+        if ($integrityOn && IntegritySettings::isOn($cfg, 'rate_limiting') && $this->isRateLimited($form, $cfg, true)) {
             return Yii::t('ThiscoveryFormsModule.base', 'Too many submissions from this connection. Please wait a few minutes and try again.');
         }
-        if (!IntegritySettings::isOn($cfg, 'captcha') || trim((string)($cfg['turnstile_site_key'] ?? '')) === '') {
+        if (!IntegritySettings::isOn($cfg, 'captcha') || !$this->captchaAvailable($cfg)) {
             $this->clearCaptchaRequired($form);
         }
-        $suspicious = $this->looksSuspiciousBeforeSave($form, $post, $cfg);
+        // Suspicious signals (honeypot / session) only exist when integrity scoring is on.
+        $suspicious = $integrityOn && $this->looksSuspiciousBeforeSave($form, $post, $cfg);
         // Sticky session bit: honeypot / missing session are only known at submit,
-        // so the next render must still show Turnstile and require a pass.
+        // so the next render must still show CAPTCHA and require a pass.
         $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious || $this->isCaptchaRequired($form));
         if ($needCaptcha) {
             if (!$this->verifyCaptcha($cfg, $post)) {
@@ -260,6 +363,7 @@ class IntegrityService
         $this->consumeAccessToken($form, $rawToken, $cfg);
         $meta->save(false);
         $this->clearCaptchaRequired($form);
+        $this->clearOpenCaptchaRequired($form);
         Yii::$app->session->remove(self::START_PREFIX . (int)$form->id);
         return $meta;
     }
@@ -424,7 +528,7 @@ class IntegrityService
     public function shouldShowCaptchaWidget(CustomForm $form): bool
     {
         $cfg = $this->settings($form);
-        if (!IntegritySettings::isOn($cfg, 'captcha') || ($cfg['turnstile_site_key'] ?? '') === '') {
+        if (!IntegritySettings::isOn($cfg, 'captcha') || !$this->captchaAvailable($cfg)) {
             return false;
         }
         $mode = $cfg['captcha_mode'] ?? IntegritySettings::CAPTCHA_SUSPICIOUS;
@@ -569,7 +673,7 @@ class IntegrityService
 
     private function shouldShowCaptcha(array $cfg, bool $suspicious): bool
     {
-        if (!IntegritySettings::isOn($cfg, 'captcha') || ($cfg['turnstile_site_key'] ?? '') === '') {
+        if (!IntegritySettings::isOn($cfg, 'captcha') || !$this->captchaAvailable($cfg)) {
             return false;
         }
         $mode = $cfg['captcha_mode'] ?? IntegritySettings::CAPTCHA_SUSPICIOUS;
@@ -582,7 +686,19 @@ class IntegrityService
         return $suspicious;
     }
 
-    private function verifyCaptcha(array $cfg, array $post): bool
+    public function verifyCaptcha(array $cfg, array $post): bool
+    {
+        if (!$this->captchaAvailable($cfg)) {
+            return false;
+        }
+        $provider = (string)($cfg['captcha_provider'] ?? IntegritySettings::CAPTCHA_PROVIDER_ALTCHA);
+        if ($provider === IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE) {
+            return $this->verifyTurnstile($cfg, $post);
+        }
+        return $this->verifyAltcha($post);
+    }
+
+    private function verifyTurnstile(array $cfg, array $post): bool
     {
         $secret = trim((string)($cfg['turnstile_secret'] ?? ''));
         $token = trim((string)($post['cf-turnstile-response'] ?? ''));
@@ -607,6 +723,31 @@ class IntegrityService
             return !empty($data['success']);
         } catch (\Throwable $e) {
             Yii::warning('Turnstile verify failed: ' . $e->getMessage(), 'thiscovery-forms');
+            return false;
+        }
+    }
+
+    private function verifyAltcha(array $post): bool
+    {
+        $token = '';
+        if (isset($post['DynamicModel']) && is_array($post['DynamicModel'])) {
+            $token = trim((string)($post['DynamicModel']['captcha'] ?? ''));
+        }
+        if ($token === '' && isset($post['IntegrityCaptcha']) && is_array($post['IntegrityCaptcha'])) {
+            $token = trim((string)($post['IntegrityCaptcha']['captcha'] ?? ''));
+        }
+        if ($token === '') {
+            $token = trim((string)($post['captcha'] ?? ''));
+        }
+        if ($token === '') {
+            return false;
+        }
+        try {
+            $model = new \yii\base\DynamicModel(['captcha' => $token]);
+            $model->addRule(['captcha'], Yii::$app->captcha->getValidatorClass());
+            return $model->validate();
+        } catch (\Throwable $e) {
+            Yii::warning('Altcha verify failed: ' . $e->getMessage(), 'thiscovery-forms');
             return false;
         }
     }
