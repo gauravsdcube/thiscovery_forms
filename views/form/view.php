@@ -49,6 +49,20 @@ $pageKeyIndex = $pager['pageKeyIndex'];
 
 $pagePayload = [];
 $pipe = new VariableSubstitutor();
+
+// Rewrite core file-download URLs to the forms public endpoint so images
+// load for anonymous respondents without hitting Content::canView().
+$formFileBase = Url::toFormFile($formModel);
+$rewriteFileUrls = static function (string $html) use ($formFileBase): string {
+    if ($formFileBase === '') {
+        return $html;
+    }
+    return preg_replace(
+        '#/file/file/download\?guid=([a-f0-9\-]+)(?:&amp;[^"\']*)?#i',
+        $formFileBase . '&amp;guid=$1',
+        $html
+    );
+};
 $user = Yii::$app->user->identity;
 foreach ($pages as $page) {
     $branches = [];
@@ -468,6 +482,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 'frozen' => !empty($frozen),
                                 'fillRtl' => $fillRtl,
                                 'panelMember' => $fillContext->member ?? null,
+                                'rewriteFileUrls' => $rewriteFileUrls,
                             ]) ?>
                         </div>
                     <?php endforeach; ?>

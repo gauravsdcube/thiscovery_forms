@@ -2,6 +2,11 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.9 (September 3, 2026)
+
+- Fix: Rich text and image area images now load on anonymous form fills via a public form-file endpoint
+- Enh: Fill view rewrites core file download URLs to the forms module endpoint for guest respondents
+
 ## 1.21.8 (September 3, 2026)
 
 - Enh: CAPTCHA settings (submit and open-rate) work independently of integrity scoring toggle

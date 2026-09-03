@@ -800,4 +800,48 @@ trait FillResumeTrait
         }
         return false;
     }
+
+    /**
+     * Serve a file attached to a form without requiring login.
+     * Only files owned by the form (via its content) are served.
+     * The form must be fillable (open / anonymous).
+     *
+     * URL: /thiscovery-forms/global/form-file?id=<formId>&guid=<fileGuid>
+     */
+    public function actionFormFile($id, $guid)
+    {
+        $form = CustomForm::findOne((int)$id);
+        if (!$form) {
+            throw new \yii\web\NotFoundHttpException('Form not found.');
+        }
+
+        // Only serve files when the form is open for filling.
+        if ($form->status !== CustomForm::STATUS_OPEN) {
+            throw new \yii\web\NotFoundHttpException('Form is not open.');
+        }
+
+        $file = File::findOne(['guid' => $guid]);
+        if (!$file) {
+            throw new \yii\web\NotFoundHttpException('File not found.');
+        }
+
+        // Verify the file belongs to this form's content.
+        $formClass = get_class($form);
+        if ($file->object_model !== $formClass || (int)$file->object_id !== (int)$form->getPrimaryKey()) {
+            throw new \yii\web\ForbiddenHttpException('File does not belong to this form.');
+        }
+
+        $filePath = $file->store->get();
+        if (!$filePath || !is_file($filePath)) {
+            throw new \yii\web\NotFoundHttpException('File not available.');
+        }
+
+        $response = Yii::$app->response;
+        $response->format = Response::FORMAT_RAW;
+        $response->headers->set('Content-Type', $file->mime_type ?: 'application/octet-stream');
+        $response->headers->set('Content-Disposition', 'inline; filename="' . rawurlencode($file->file_name) . '"');
+        $response->headers->set('Cache-Control', 'public, max-age=86400');
+        $response->stream = fopen($filePath, 'rb');
+        return $response;
+    }
 }

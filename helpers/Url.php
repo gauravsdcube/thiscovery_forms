@@ -677,6 +677,18 @@ class Url
         return $container->createUrl('/thiscovery-forms/form/help', $params);
     }
 
+    /**
+     * Base URL for the public form-file endpoint (without guid).
+     * Returns e.g. "/thiscovery-forms/global/form-file?id=42"
+     */
+    public static function toFormFile(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/form-file', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/form-file', ['id' => $form->id]);
+    }
+
     protected static function panelAction($panel, string $action, $container = null): string
     {
         $id = is_object($panel) ? (int)$panel->id : (int)$panel;

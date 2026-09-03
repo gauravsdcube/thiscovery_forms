@@ -33,7 +33,7 @@ class FormController extends ContentContainerController
     protected function getAccessRules()
     {
         return [
-            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file']],
+            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file', 'form-file']],
         ];
     }
 

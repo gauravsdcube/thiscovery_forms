@@ -28,6 +28,7 @@ if (($value === '' || $value === null || $value === []) && $field->getDefaultVal
     $value = $field->getDefaultValue();
 }
 $panelMember = $panelMember ?? null;
+$rewriteFileUrls = $rewriteFileUrls ?? static function (string $html): string { return $html; };
 if (($value === '' || $value === null || $value === []) && $field->type === FormField::TYPE_PANEL_ATTR && $panelMember) {
     $value = \humhub\modules\thiscoveryForms\services\PanelFieldService::memberValue($panelMember, $field->getPanelAttrKey());
 }
@@ -79,6 +80,7 @@ $choiceInputOpts = static function (array $extra = []): array {
 if ($field->type === FormField::TYPE_RICH_TEXT):
     $richHtml = RichHtml::toHtml($field->getRichTextContent());
     $richHtml = $pipe->substitute($richHtml, $user, $formModel, $allValues, $allFields);
+    $richHtml = $rewriteFileUrls($richHtml);
     ?>
     <div class="cf-rich-block richtext-output" data-cf-pipe-html="<?= Html::encode($field->getRichTextContent()) ?>">
         <?= $richHtml ?>
@@ -96,6 +98,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
         $panelMember
     );
     $html = (new HtmlSanitizer())->sanitize($html);
+    $html = $rewriteFileUrls($html);
     ?>
     <?php if ($htmlCfg['collect']): ?>
         <?php if ($htmlCfg['required']): ?>
@@ -716,7 +719,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             <div class="cf-hotspot" data-cf-hotspot data-cf-multi="<?= !empty($img['multi']) ? '1' : '0' ?>">
                 <div class="cf-hotspot-stage">
                     <?php if ($img['src'] !== ''): ?>
-                        <img src="<?= Html::encode($img['src']) ?>" alt="">
+                        <img src="<?= Html::encode($rewriteFileUrls($img['src'])) ?>" alt="">
                     <?php endif; ?>
                     <div class="cf-hotspot-overlay">
                         <?php foreach ($img['regions'] as $region): ?>
