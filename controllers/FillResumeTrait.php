@@ -18,6 +18,7 @@ use humhub\modules\thiscoveryForms\services\ResumeService;
 use humhub\modules\thiscoveryForms\services\TranslationService;
 use Yii;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 use yii\web\UploadedFile;
 
@@ -802,9 +803,9 @@ trait FillResumeTrait
     }
 
     /**
-     * Serve a file attached to a form without requiring login.
-     * Only files owned by the form (via its content) are served.
-     * The form must be fillable (open / anonymous).
+     * Serve a file used by a form without requiring login.
+     * Rich-text editor uploads are often unattached (empty object_model);
+     * those are still served when the GUID appears in the form definition.
      *
      * URL: /thiscovery-forms/global/form-file?id=<formId>&guid=<fileGuid>
      */
@@ -812,28 +813,31 @@ trait FillResumeTrait
     {
         $form = CustomForm::findOne((int)$id);
         if (!$form) {
-            throw new \yii\web\NotFoundHttpException('Form not found.');
+            throw new NotFoundHttpException('Form not found.');
         }
 
-        // Only serve files when the form is open for filling.
-        if ($form->status !== CustomForm::STATUS_OPEN) {
-            throw new \yii\web\NotFoundHttpException('Form is not open.');
-        }
+        $this->assertFillAccess($form);
 
         $file = File::findOne(['guid' => $guid]);
         if (!$file) {
-            throw new \yii\web\NotFoundHttpException('File not found.');
+            throw new NotFoundHttpException('File not found.');
         }
 
-        // Verify the file belongs to this form's content.
-        $formClass = get_class($form);
-        if ($file->object_model !== $formClass || (int)$file->object_id !== (int)$form->getPrimaryKey()) {
-            throw new \yii\web\ForbiddenHttpException('File does not belong to this form.');
+        if (!$this->formMayServeFile($form, $file)) {
+            throw new ForbiddenHttpException('File does not belong to this form.');
+        }
+
+        if (empty($file->object_model) || empty($file->object_id)) {
+            try {
+                $form->fileManager->attach($file->guid);
+            } catch (\Throwable $e) {
+                Yii::warning('Thiscovery Forms form-file attach failed: ' . $e->getMessage(), 'thiscovery-forms');
+            }
         }
 
         $filePath = $file->store->get();
         if (!$filePath || !is_file($filePath)) {
-            throw new \yii\web\NotFoundHttpException('File not available.');
+            throw new NotFoundHttpException('File not available.');
         }
 
         $response = Yii::$app->response;
@@ -843,5 +847,34 @@ trait FillResumeTrait
         $response->headers->set('Cache-Control', 'public, max-age=86400');
         $response->stream = fopen($filePath, 'rb');
         return $response;
+    }
+
+    protected function formMayServeFile(CustomForm $form, File $file): bool
+    {
+        $formClass = get_class($form);
+        if ($file->object_model === $formClass && (int)$file->object_id === (int)$form->getPrimaryKey()) {
+            return true;
+        }
+
+        $guid = trim((string)$file->guid);
+        if ($guid === '') {
+            return false;
+        }
+
+        $haystacks = [
+            (string)$form->description,
+            (string)$form->thank_you_content,
+        ];
+        foreach ($form->fields as $field) {
+            $haystacks[] = (string)$field->options_json;
+            $haystacks[] = (string)$field->label;
+        }
+        foreach ($haystacks as $hay) {
+            if ($hay !== '' && str_contains($hay, $guid)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

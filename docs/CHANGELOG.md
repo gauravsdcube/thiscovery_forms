@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.11 (September 3, 2026)
+
+- Fix: Serve unattached rich-text editor images on anonymous fills (GUID referenced on the form, not only fileManager attachments)
+
 ## 1.21.10 (September 3, 2026)
 
 - Fix: Anonymous rich-text/image images on SPARCS2 by rewriting both `&` and `&amp;` in core file-download URLs

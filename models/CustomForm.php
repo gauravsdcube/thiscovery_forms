@@ -1841,12 +1841,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         $imageGuids = [];
-        foreach (FormField::find()->where(['form_id' => $this->id, 'type' => FormField::TYPE_IMAGE_AREA])->all() as $imgField) {
-            $guid = trim((string)($imgField->getImageAreaConfig()['imageGuid'] ?? ''));
-            if ($guid !== '') {
-                $imageGuids[] = $guid;
+        foreach (FormField::find()->where(['form_id' => $this->id])->all() as $imgField) {
+            if ($imgField->type === FormField::TYPE_IMAGE_AREA) {
+                $guid = trim((string)($imgField->getImageAreaConfig()['imageGuid'] ?? ''));
+                if ($guid !== '') {
+                    $imageGuids[] = $guid;
+                }
+            }
+            $blob = (string)$imgField->options_json;
+            if ($blob !== '' && preg_match_all('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i', $blob, $m)) {
+                foreach ($m[0] as $guid) {
+                    $imageGuids[] = $guid;
+                }
             }
         }
+        $imageGuids = array_values(array_unique($imageGuids));
         if ($imageGuids) {
             try {
                 $this->fileManager->attach($imageGuids);
