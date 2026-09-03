@@ -57,9 +57,19 @@ $rewriteFileUrls = static function (string $html) use ($formFileBase): string {
     if ($formFileBase === '') {
         return $html;
     }
-    return preg_replace(
-        '#/file/file/download\?guid=([a-f0-9\-]+)(?:&amp;[^"\']*)?#i',
-        $formFileBase . '&amp;guid=$1',
+    return preg_replace_callback(
+        // Rewrite HumHub core file-download URLs to this module's public endpoint.
+        // Handles both '&download=...' and '&amp;download=...' query encodings.
+        '#(?:https?://[^"\']+)?/file/file/download\?guid=([a-f0-9\-]+)([^"\']*)#i',
+        static function (array $m) use ($formFileBase): string {
+            $guid = $m[1];
+            $rest = $m[2] ?? '';
+            // Normalize raw '&' into '&amp;' so the result remains valid HTML attribute text.
+            if ($rest !== '' && str_starts_with($rest, '&') && !str_starts_with($rest, '&amp;')) {
+                $rest = '&amp;' . substr($rest, 1);
+            }
+            return $formFileBase . '&amp;guid=' . $guid . $rest;
+        },
         $html
     );
 };
