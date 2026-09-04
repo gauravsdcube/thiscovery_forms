@@ -63,7 +63,7 @@ class HelpService
             'creators-builder' => [
                 'file' => 'creators-builder.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Builder and questions'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Question types, pages, logic, piping, and field actions.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Question types, pages, logic, piping, variables, and field actions.'),
                 'icon' => 'th-list',
             ],
             'creators-csv-import' => [
@@ -99,7 +99,7 @@ class HelpService
             'creators-form-types' => [
                 'file' => 'creators-form-types.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Form types'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'When to use a survey, poll, EQ-5D, longitudinal, consensus, or project form.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'When to use a survey, poll, longitudinal, consensus, or project form.'),
                 'icon' => 'files-o',
             ],
         ];

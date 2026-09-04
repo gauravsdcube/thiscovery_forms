@@ -81,6 +81,39 @@ Actions on a question or page often include:
 
 **Answer piping** (carry-forward) inserts a previous answer into later labels or text using placeholders such as `{{answer:Question label}}`. Match the question label carefully. Preview after you rename a question — piping uses the label you configured.
 
+### Placeholders you can use
+
+| Placeholder | Meaning |
+| --- | --- |
+| `{{user.displayname}}` | Signed-in display name |
+| `{{user.firstname}}` / `{{user.lastname}}` | Profile first / last name |
+| `{{user.email}}` | Account email |
+| `{{form.title}}` | Form title |
+| `{{answer:Question label}}` | Answer to that question (use the label exactly, or the field id) |
+| `{{answer:Question label:label}}` | Same answer shown as the option label when you used `code \| Label` |
+| `{{field:Question label}}` | Same idea as answer-as-label |
+| `{{var:name}}` | A variable stored on this response (see Actions below) |
+
+Guests have empty `{{user.*}}` values. Unanswered questions and unset variables insert nothing.
+
+### Worked examples — piping
+
+Rich text on page 1:
+
+```text
+Hello {{user.firstname}}, thank you for starting {{form.title}}.
+```
+
+Signed in as Alex → `Hello Alex, thank you for starting Feedback survey.`
+
+Later question label after “Child's first name”:
+
+```text
+You told us your child is called {{answer:Child's first name}}.
+```
+
+If they typed `Maya` → `You told us your child is called Maya.`
+
 Keep logic simple. Deep trees of skips are hard to test. Prefer a few clear branches over many overlapping rules.
 
 ## Actions (field, page, and submit)
@@ -100,6 +133,42 @@ You can add several actions on one field, page, or on submit. They run in the or
 **Set variable** and **custom function** values can use `{{answer:…}}` and later emails can use `{{var:name}}`. Define reusable formulas on Settings (see [Form settings](creators-settings.md)).
 
 Use **Send email** for “email me a copy” or “notify the team when this page is completed” instead of putting a mail button on the form.
+
+### Worked examples — variables and functions
+
+**Set a fixed study code on submit**
+
+| Function | Name | Value |
+| --- | --- | --- |
+| Set variable | `siteCode` | `DEMO-01` |
+
+Email or thank-you text: `Study code: {{var:siteCode}}` → `Study code: DEMO-01`
+
+**Copy an answer into a variable**
+
+| Function | Name | Value |
+| --- | --- | --- |
+| Set variable | `childName` | `{{answer:Child's first name}}` |
+
+Then `{{var:childName}}` is `Maya` after that action has run.
+
+**Reusable custom function (define once on Settings)**
+
+| Name | Formula |
+| --- | --- |
+| `summaryLine` | `Thanks {{user.firstname}} — response for {{var:siteCode}}` |
+
+On submit, run **Custom function** named `summaryLine`, then **Send email** with body `{{var:summaryLine}}`.
+
+**Page complete flow**
+
+When page `eligibility` finishes:
+
+1. Set variable `eligStatus` = `{{answer:Are you eligible?}}`
+2. Send email “Eligibility notify” (template can use `{{var:eligStatus}}`)
+3. Go to page `main_survey` (use field **Logic** separately if “No” should go to end)
+
+Variables belong to **this response**. Custom functions are named formulas you reuse; running one writes into `{{var:thatName}}`.
 
 ## Question library and templates
 

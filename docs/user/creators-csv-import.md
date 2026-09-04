@@ -149,7 +149,7 @@ Horizontal 1–5:
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `rating` | Overall, how would you rate this service? | 1 | 1 | 5 | 1 | Poor | Excellent | `pills` |
 
-Vertical 0–100 thermometer: `rating_min` 0, `rating_max` 100, `rating_step` 1, `rating_display` `thermometer`. Do not paste official EQ-5D wording unless you are licensed to use it.
+Vertical 0–100 thermometer: `rating_min` 0, `rating_max` 100, `rating_step` 1, `rating_display` `thermometer`.
 
 ## Drill-down
 

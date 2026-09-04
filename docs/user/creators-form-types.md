@@ -18,19 +18,6 @@ Do not use a poll when you need paging, waves, or a long questionnaire — use a
 
 Starts as a short rating plus comments. Edit it like a survey. Good for event or service feedback.
 
-## EQ-5D survey
-
-A **layout** for a health-status style instrument:
-
-- Five pages with **one question each**
-- A vertical **0–100 thermometer** (rating display)
-
-Thiscovery Forms does **not** include official EQ-5D / EuroQol wording or copyright. Paste the text you are licensed to use on each page and on the thermometer instructions. Until you do, placeholder help text is only a reminder to replace it.
-
-EQ-5D **always uses waves**. Attach a panel for follow-up. Wave 1 may be filled anonymously without a token; later waves need invites.
-
-CSV can include a five-digit health profile and VAS (blank as 999). Only use those outputs in line with your licence and analysis protocol.
-
 ## Longitudinal survey
 
 The same **panel** answers **repeating waves** of this questionnaire. Attrition appears on the dashboard.
@@ -64,7 +51,6 @@ Submissions are not a public catalogue item until they pass the stages on the **
 | Long questionnaire, one window | Survey |
 | Single question on a page or stream | Quick poll |
 | Quick rating and comment | Feedback form |
-| Licensed five-dimension + thermometer layout, waves | EQ-5D survey |
 | Same people, several time points | Longitudinal survey (or survey + waves if allowed) |
 | Experts, rounds, feedback of the group | Consensus / Delphi |
 | Record plus approvals and a published list | Project |

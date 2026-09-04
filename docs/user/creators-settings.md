@@ -35,7 +35,7 @@ Thank-you and already-submitted messages support rich text. Use them to say what
 | Keep incomplete responses | In-progress answers are stored, counted on the dashboard, and included in CSV |
 | Use waves | Ordinary surveys only, and only if an administrator has allowed waves on surveys |
 
-**Anonymous:** Wave 1 of a wave-based form (including EQ-5D) can be filled without a panel token when anonymous is on. Later waves still need an invitation. Do not assume a public link works for wave 2.
+**Anonymous:** Wave 1 of a wave-based form can be filled without a panel token when anonymous is on. Later waves still need an invitation. Do not assume a public link works for wave 2.
 
 **Resume:** When this is on, opening the form asks whether to continue a saved response or start a new one. That applies to signed-in people, guests, and **Preview**. Progress is not saved, and no resume code is shown, unless this is on and the person chooses to continue or uses **Save & continue later**. If multiple submissions are off and the person has already submitted, they see the **Already submitted** message instead.
 
@@ -76,11 +76,47 @@ Leave a language incomplete and people will see the default language for missing
 
 ## Actions and functions
 
-**Custom functions** are named formulas you reuse across this form. Give each a **name** (for example `riskBand`) and a **formula**. Actions can run a custom function by name. Emails and later text can insert `{{var:name}}`.
+**Custom functions** are named formulas you reuse across this form. Give each a **name** (letters, numbers, underscore — for example `riskBand`) and a **formula**. Actions can run a custom function by name. Emails and later text can insert `{{var:name}}`.
 
 **On submit** — a list of actions (send email, set variable, go to page, go to end, custom function) that run when the form is submitted. Use this for a confirmation email or to store a derived value at the end.
 
 Define functions here; attach **when** they run on the Builder (field/page) or in this **On submit** list.
+
+### Worked examples
+
+**Custom function table on Settings**
+
+| Name | Formula |
+| --- | --- |
+| `studyArm` | `control` |
+| `riskBand` | `Review needed — score {{answer:Overall score}}` |
+
+Running **Custom function** `studyArm` stores `{{var:studyArm}}` = `control`.  
+Running **Custom function** `riskBand` when Overall score is `8` stores `{{var:riskBand}}` = `Review needed — score 8`.
+
+**On submit list**
+
+1. Set variable `siteCode` = `DEMO-01`
+2. Custom function `riskBand`
+3. Send email “Thank you” with body:
+
+```text
+Hello {{user.firstname}},
+
+Your study code is {{var:siteCode}}.
+{{var:riskBand}}
+```
+
+Result for Alex with score 8:
+
+```text
+Hello Alex,
+
+Your study code is DEMO-01.
+Review needed — score 8
+```
+
+Placeholders also work in invite and wave templates where the product inserts them. See [Builder and questions](creators-builder.md) for the full placeholder list and field/page action examples.
 
 ## Consensus
 

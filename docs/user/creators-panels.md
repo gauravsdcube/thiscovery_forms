@@ -35,7 +35,7 @@ Attaching a panel on **Panel & waves** adds each completer who can be identified
 
 ## Waves
 
-**EQ-5D** and **longitudinal** forms always use waves: one complete response per panel member per wave.
+**Longitudinal** forms always use waves: one complete response per panel member per wave.
 
 **Ordinary surveys** use waves only if:
 

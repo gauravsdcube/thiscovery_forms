@@ -2,13 +2,20 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.21.12 (September 4, 2026)
+
+- Change: Remove study-specific SPARCS2 survey definition and import-sparcs2 console command from the module
+- Fix: Fill view scrolls newly shown conditional content into view (helps mobile)
+- Fix: Choice label taps re-run show/hide logic more reliably on mobile
+- Enh: Help docs — variables/functions examples; EQ-5D references removed from Help
+
 ## 1.21.11 (September 3, 2026)
 
 - Fix: Serve unattached rich-text editor images on anonymous fills (GUID referenced on the form, not only fileManager attachments)
 
 ## 1.21.10 (September 3, 2026)
 
-- Fix: Anonymous rich-text/image images on SPARCS2 by rewriting both `&` and `&amp;` in core file-download URLs
+- Fix: Anonymous rich-text/image images by rewriting both `&` and `&amp;` in core file-download URLs
 
 ## 1.21.9 (September 3, 2026)
 

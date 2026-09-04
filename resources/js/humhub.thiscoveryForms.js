@@ -3639,6 +3639,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             captureRespondentMeta();
             syncHtmlValues();
             var values = readAnswers();
+            var newlyShown = [];
             var applyVisibility = function ($field) {
                 var logic = parseFieldLogic($field);
                 var visible = isLogicVisible(logic, values);
@@ -3655,7 +3656,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                         });
                     } catch (e) {}
                 }
+                var wasHidden = $field.hasClass('cf-hidden');
                 $field.toggleClass('cf-hidden', !visible);
+                if (visible && wasHidden && $field.closest('[data-cf-page].is-active, .cf-form-page.is-active').length) {
+                    newlyShown.push($field.get(0));
+                }
                 if ($field.is('[data-cf-respondent-hidden]')) {
                     $field.find('input, select, textarea').prop('disabled', false);
                     return;
@@ -3685,6 +3690,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 showPage(currentPage);
             }
             syncGridOverflow();
+            if (newlyShown.length) {
+                window.requestAnimationFrame(function () {
+                    try {
+                        newlyShown[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    } catch (e) {}
+                });
+            }
         };
 
         initRanking();
@@ -3830,6 +3842,18 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('change keyup input', 'input, select, textarea', function () {
             evaluate();
             scheduleAutosave();
+        });
+
+        // Mobile browsers sometimes miss change events on custom-styled radios
+        // when the tap lands on the label text; force selection + re-evaluate.
+        $root.on('click', 'label.cf-choice', function () {
+            var $input = $(this).find('input[type="radio"], input[type="checkbox"]').first();
+            if (!$input.length || $input.prop('disabled')) {
+                return;
+            }
+            window.setTimeout(function () {
+                evaluate();
+            }, 0);
         });
 
         $root.on('click', '[data-cf-save-progress]', function (e) {

@@ -2,7 +2,7 @@
 
 This page is for people who enable the module, choose which form types are available, and decide who can create, fill, and see answers. Form creators have their own pages.
 
-Thiscovery Forms lets teams build surveys, polls, feedback forms, projects, consensus rounds, and repeating-wave studies at **space** level or **network (global)** level. Rich text, thank-you pages, and email templates use **Thiscovery Editor**. Official EQ-5D instrument text is not included; the EQ-5D type is a layout only.
+Thiscovery Forms lets teams build surveys, polls, feedback forms, projects, consensus rounds, and repeating-wave studies at **space** level or **network (global)** level. Rich text, thank-you pages, and email templates use **Thiscovery Editor**.
 
 ## Enable the module
 
@@ -30,7 +30,6 @@ Available types:
 | Survey | Multi-page form with any question type |
 | Quick poll | One question, often embedded on a page or stream |
 | Feedback form | Short rating plus comments, ready to edit |
-| EQ-5D survey | Five one-question pages plus a 0–100 thermometer; repeating waves |
 | Longitudinal survey | The same panel answers repeating waves |
 | Consensus / Delphi | Multi-round consensus with summaries between rounds |
 | Project | Structured record with approval stages and a published catalogue |
@@ -39,7 +38,7 @@ If a type is missing on the Create screen, it is almost always switched off here
 
 ### Waves
 
-EQ-5D surveys and longitudinal surveys **always** use waves. Ordinary surveys only get a **Panel & waves** tab when both of the following are true:
+Longitudinal surveys **always** use waves. Ordinary surveys only get a **Panel & waves** tab when both of the following are true:
 
 1. **Allow waves on ordinary surveys** is on in this configuration, and
 2. The survey itself has **Use waves** ticked on its Settings tab.
@@ -126,10 +125,6 @@ Deleting a form from the list or from the studio **permanently removes** the for
 ## Headerless fill pages
 
 Creators can tick **Hide HumHub header** so respondents see only the form (no top bar or space menu). Opening those forms from inside HumHub does a full page load so the header actually hides. That is expected, not a broken theme.
-
-## EQ-5D and licensing
-
-The **EQ-5D survey** type supplies a five-page layout and a vertical 0–100 scale. It does **not** ship official EuroQol wording. Your organisation must hold the right licence and paste licensed text and copyright onto each page. CSV export can include a five-digit health profile and a VAS score (blank stored as 999) for teams that analyse licensed data themselves.
 
 ## Checklist before the first live study
 
