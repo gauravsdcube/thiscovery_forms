@@ -9,6 +9,7 @@ use yii\helpers\Html;
 /** @var $contentContainer */
 /** @var array $sections */
 /** @var array $pages */
+/** @var array $downloads */
 
 ThiscoveryFormsAsset::register($this);
 $current = $article['slug'];

@@ -17,6 +17,8 @@ use yii\db\ActiveQuery;
  * @property int $form_id
  * @property string $type
  * @property string $label
+ * @property string|null $variable
+ * @property string|null $internal_label
  * @property string|null $help_text
  * @property int $required
  * @property int $sort_order
@@ -84,7 +86,10 @@ class FormField extends ActiveRecord
             [['form_id', 'type', 'label'], 'required'],
             [['form_id', 'sort_order', 'condition_field_id'], 'integer'],
             [['required'], 'boolean'],
-            [['label'], 'string', 'max' => 255],
+            [['label', 'internal_label'], 'string', 'max' => 255],
+            [['variable'], 'string', 'max' => 120],
+            [['variable'], 'match', 'pattern' => '/^[A-Za-z][A-Za-z0-9_]*$/', 'skipOnEmpty' => true,
+                'message' => Yii::t('ThiscoveryFormsModule.base', 'Variable must start with a letter and use only letters, numbers, and underscores.')],
             [['help_text', 'condition_value'], 'string', 'max' => 500],
             [['options_json', 'logic_json', 'actions_json'], 'string'],
             [['type'], 'in', 'range' => array_keys(self::getTypeLabels())],
@@ -97,10 +102,50 @@ class FormField extends ActiveRecord
         return [
             'type' => Yii::t('ThiscoveryFormsModule.base', 'Type'),
             'label' => Yii::t('ThiscoveryFormsModule.base', 'Label'),
+            'variable' => Yii::t('ThiscoveryFormsModule.base', 'Variable name'),
+            'internal_label' => Yii::t('ThiscoveryFormsModule.base', 'Internal label'),
             'help_text' => Yii::t('ThiscoveryFormsModule.base', 'Help text'),
             'required' => Yii::t('ThiscoveryFormsModule.base', 'Required'),
             'options_json' => Yii::t('ThiscoveryFormsModule.base', 'Options'),
         ];
+    }
+
+    public static function slugVariable(string $label, string $type = 'field'): string
+    {
+        $s = strtolower(trim($label));
+        $s = preg_replace('/[^a-z0-9]+/i', '_', $s) ?: '';
+        $s = trim((string)$s, '_');
+        if ($s === '') {
+            $s = $type !== '' ? preg_replace('/[^a-z0-9]+/i', '_', $type) : 'field';
+        }
+        if (!preg_match('/^[a-z]/i', $s)) {
+            $s = 'f_' . $s;
+        }
+        if (strlen($s) > 100) {
+            $s = rtrim(substr($s, 0, 100), '_');
+        }
+        return $s;
+    }
+
+    public function ensureVariable(?array $used = null): string
+    {
+        $var = trim((string)$this->variable);
+        if ($var === '') {
+            $var = self::slugVariable((string)$this->label, (string)$this->type);
+        }
+        if ($used !== null) {
+            $base = $var;
+            $n = 2;
+            while (isset($used[strtolower($var)])) {
+                $var = $base . '_' . $n;
+                $n++;
+            }
+        }
+        $this->variable = $var;
+        if (trim((string)$this->internal_label) === '') {
+            $this->internal_label = (string)$this->label;
+        }
+        return $var;
     }
 
     public static function getTypeLabels(): array
@@ -838,16 +883,39 @@ class FormField extends ActiveRecord
 
     public function setOptionsFromText($text, bool $randomize = false, ?int $maxSelect = null, ?string $exclusiveOption = null, ?int $minSelect = null, ?bool $minSelectAll = null): void
     {
-        $lines = preg_split('/\r\n|\r|\n/', (string)$text) ?: [];
-        $pairs = [];
-        foreach ($lines as $line) {
-            $line = trim((string)$line);
-            if ($line === '') {
-                continue;
+        if (is_array($text)) {
+            $items = ChoiceOptions::itemsFromDecoded(array_values($text));
+            // Also accept already-normalized [{code,label}]
+            if (!$items) {
+                $items = [];
+                foreach ($text as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $code = trim((string)($item['code'] ?? ''));
+                    $label = trim((string)($item['label'] ?? ''));
+                    if ($label === '' && $code === '') {
+                        continue;
+                    }
+                    if ($label === '') {
+                        $label = $code;
+                    }
+                    $items[] = ['code' => $code, 'label' => $label];
+                }
             }
-            $pairs[] = $line;
+        } else {
+            $lines = preg_split('/\r\n|\r|\n/', (string)$text) ?: [];
+            $pairs = [];
+            foreach ($lines as $line) {
+                $line = trim((string)$line);
+                if ($line === '') {
+                    continue;
+                }
+                $pairs[] = $line;
+            }
+            $items = ChoiceOptions::parseText(implode("\n", $pairs));
         }
-        $items = ChoiceOptions::parseText(implode("\n", $pairs));
+        ChoiceOptions::assertCodeConsistency($items);
         $options = ChoiceOptions::toStorage($items);
 
         $prev = json_decode((string)$this->options_json, true);
@@ -1338,12 +1406,37 @@ class FormField extends ActiveRecord
 
     public function setGridConfig(array $config): void
     {
-        $rows = $this->linesToList($config['rows'] ?? []);
-        $columns = $this->linesToList($config['columns'] ?? []);
+        $rows = $this->normalizeGridPairs($config['rows'] ?? []);
+        $columns = $this->normalizeGridPairs($config['columns'] ?? []);
+        ChoiceOptions::assertCodeConsistency(array_map(static fn($p) => [
+            'code' => (string)($p['code'] ?? ''),
+            'label' => (string)($p['label'] ?? ''),
+        ], $rows));
+        ChoiceOptions::assertCodeConsistency(array_map(static fn($p) => [
+            'code' => (string)($p['code'] ?? ''),
+            'label' => (string)($p['label'] ?? ''),
+        ], $columns));
+        $layout = (string)($config['mobile_layout'] ?? $config['mobileLayout'] ?? 'scroll');
+        if ($layout !== 'stack') {
+            $layout = 'scroll';
+        }
+        $storeRows = array_map(static function (array $p): array {
+            if (($p['code'] ?? '') === '') {
+                return (string)$p['label'];
+            }
+            return ['code' => (string)$p['code'], 'label' => (string)$p['label']];
+        }, $rows);
+        $storeCols = array_map(static function (array $p): array {
+            if (($p['code'] ?? '') === '') {
+                return (string)$p['label'];
+            }
+            return ['code' => (string)$p['code'], 'label' => (string)$p['label']];
+        }, $columns);
         $this->options_json = json_encode([
             '__type' => $this->type === self::TYPE_GRID_MULTI ? self::TYPE_GRID_MULTI : self::TYPE_GRID_SINGLE,
-            'rows' => $rows,
-            'columns' => $columns,
+            'rows' => $storeRows,
+            'columns' => $storeCols,
+            'mobile_layout' => $layout,
         ], JSON_UNESCAPED_UNICODE);
     }
 
@@ -1351,9 +1444,65 @@ class FormField extends ActiveRecord
     {
         $decoded = $this->decodedOptions();
         return [
-            'rows' => $this->linesToList($decoded['rows'] ?? []),
-            'columns' => $this->linesToList($decoded['columns'] ?? []),
+            'rows' => $this->normalizeGridPairs($decoded['rows'] ?? []),
+            'columns' => $this->normalizeGridPairs($decoded['columns'] ?? []),
+            'mobile_layout' => (($decoded['mobile_layout'] ?? 'scroll') === 'stack') ? 'stack' : 'scroll',
         ];
+    }
+
+    /**
+     * @return array<int, array{code:string,label:string,value:string}>
+     */
+    private function normalizeGridPairs($source): array
+    {
+        if (is_string($source)) {
+            $source = preg_split('/\r\n|\r|\n/', $source) ?: [];
+        }
+        if (!is_array($source)) {
+            return [];
+        }
+        $out = [];
+        $anyCode = false;
+        $pairs = [];
+        foreach ($source as $item) {
+            if (is_array($item)) {
+                $code = trim((string)($item['code'] ?? ''));
+                $label = trim((string)($item['label'] ?? ''));
+            } else {
+                $line = trim((string)$item);
+                if ($line === '') {
+                    continue;
+                }
+                if (preg_match('/^\[([^\]]*)\]\s*(.+)$/u', $line, $m)) {
+                    $code = trim($m[1]);
+                    $label = trim($m[2]);
+                } elseif (preg_match('/^(.+?)\s+\|\s+(.+)$/u', $line, $m)) {
+                    $code = trim($m[1]);
+                    $label = trim($m[2]);
+                } else {
+                    $code = '';
+                    $label = $line;
+                }
+            }
+            if ($label === '' && $code === '') {
+                continue;
+            }
+            if ($label === '') {
+                $label = $code;
+            }
+            if ($code !== '') {
+                $anyCode = true;
+            }
+            $pairs[] = ['code' => $code, 'label' => $label];
+        }
+        foreach ($pairs as $pair) {
+            if ($anyCode && $pair['code'] === '') {
+                // leave empty for studio validation
+            }
+            $value = $pair['code'] !== '' ? $pair['code'] : $pair['label'];
+            $out[] = ['code' => $pair['code'], 'label' => $pair['label'], 'value' => $value];
+        }
+        return $out;
     }
 
     public function setItemsConfig(array $config): void
@@ -1650,13 +1799,13 @@ class FormField extends ActiveRecord
      * @param array $values fieldId => value
      * @param array $keyToId tempKey/id map for fieldKey resolution
      */
-    public static function evaluateBranch(array $branch, array $values, array $keyToId = []): bool
+    public static function evaluateBranch(array $branch, array $values, array $keyToId = [], array $fields = []): bool
     {
         $fieldKey = (string)($branch['fieldKey'] ?? '');
         if (isset($keyToId[$fieldKey])) {
             $branch['fieldKey'] = (string)$keyToId[$fieldKey];
         }
-        return (new LogicEngine())->evaluateRule($branch, $values);
+        return (new LogicEngine())->evaluateRule($branch, $values, $fields);
     }
 
     public function toPostRow(): array
@@ -1664,9 +1813,12 @@ class FormField extends ActiveRecord
         $row = [
             'type' => $this->type,
             'label' => $this->label,
+            'variable' => $this->variable,
+            'internal_label' => $this->internal_label,
             'help_text' => $this->help_text,
             'required' => $this->required ? '1' : '',
             'options' => $this->getOptionsAsText(),
+            'option_items' => self::isChoiceType($this->type) ? $this->getChoicePairs() : [],
             'hidden' => $this->isHiddenFromRespondent() ? '1' : '',
             'default_value' => $this->getDefaultValue(),
             'meta_key' => $this->getRespondentMetaKey(),
@@ -1714,8 +1866,15 @@ class FormField extends ActiveRecord
             $row['html_required'] = !empty($html['required']) ? '1' : '';
         } elseif ($this->type === self::TYPE_GRID_SINGLE || $this->type === self::TYPE_GRID_MULTI) {
             $grid = $this->getGridConfig();
-            $row['grid_rows'] = implode("\n", $grid['rows']);
-            $row['grid_columns'] = implode("\n", $grid['columns']);
+            $row['grid_rows'] = implode("\n", array_map(static function ($p) {
+                return $p['code'] !== '' ? ($p['code'] . ' | ' . $p['label']) : $p['label'];
+            }, $grid['rows']));
+            $row['grid_columns'] = implode("\n", array_map(static function ($p) {
+                return $p['code'] !== '' ? ($p['code'] . ' | ' . $p['label']) : $p['label'];
+            }, $grid['columns']));
+            $row['grid_row_items'] = $grid['rows'];
+            $row['grid_column_items'] = $grid['columns'];
+            $row['grid_mobile_layout'] = $grid['mobile_layout'];
         } elseif ($this->type === self::TYPE_BEST_WORST || $this->type === self::TYPE_MAXDIFF) {
             $items = $this->getItemsConfig();
             $row['items'] = implode("\n", $items['items']);
@@ -1774,9 +1933,12 @@ class FormField extends ActiveRecord
         $row = [
             'type' => $type,
             'label' => $label,
+            'variable' => trim((string)($payload['variable'] ?? '')),
+            'internal_label' => trim((string)($payload['internal_label'] ?? '')),
             'help_text' => (string)($payload['help_text'] ?? ''),
             'required' => !empty($payload['required']) ? '1' : '',
             'options' => (string)$options,
+            'option_items' => is_array($payload['option_items'] ?? null) ? $payload['option_items'] : [],
             'randomize' => !empty($payload['randomize']) ? '1' : '',
             'max_select' => $payload['max_select'] ?? ($payload['maxSelect'] ?? ''),
             'min_select' => $payload['min_select'] ?? ($payload['minSelect'] ?? ''),
@@ -1804,6 +1966,9 @@ class FormField extends ActiveRecord
             'actions' => is_array($payload['actions'] ?? null) ? $payload['actions'] : [],
             'grid_rows' => is_array($payload['grid_rows'] ?? null) ? implode("\n", $payload['grid_rows']) : (string)($payload['grid_rows'] ?? ''),
             'grid_columns' => is_array($payload['grid_columns'] ?? null) ? implode("\n", $payload['grid_columns']) : (string)($payload['grid_columns'] ?? ''),
+            'grid_row_items' => is_array($payload['grid_row_items'] ?? null) ? $payload['grid_row_items'] : [],
+            'grid_column_items' => is_array($payload['grid_column_items'] ?? null) ? $payload['grid_column_items'] : [],
+            'grid_mobile_layout' => (($payload['grid_mobile_layout'] ?? '') === 'stack') ? 'stack' : 'scroll',
             'items' => is_array($payload['items'] ?? null) ? implode("\n", $payload['items']) : (string)($payload['items'] ?? $options),
             'maxdiff_set_size' => $payload['maxdiff_set_size'] ?? ($payload['setSize'] ?? 4),
             'maxdiff_set_count' => $payload['maxdiff_set_count'] ?? ($payload['setCount'] ?? ''),
@@ -1846,6 +2011,8 @@ class FormField extends ActiveRecord
         $field = new self();
         $field->type = (string)($row['type'] ?? self::TYPE_TEXT);
         $field->label = (string)($row['label'] ?? '');
+        $field->variable = trim((string)($row['variable'] ?? ''));
+        $field->internal_label = trim((string)($row['internal_label'] ?? ''));
         $field->help_text = $row['help_text'] ?? null;
         $field->required = !empty($row['required']);
         if ($field->type === self::TYPE_RATING) {
@@ -1875,8 +2042,9 @@ class FormField extends ActiveRecord
             ]);
         } elseif ($field->type === self::TYPE_GRID_SINGLE || $field->type === self::TYPE_GRID_MULTI) {
             $field->setGridConfig([
-                'rows' => $row['grid_rows'] ?? '',
-                'columns' => $row['grid_columns'] ?? '',
+                'rows' => $row['grid_row_items'] ?? ($row['grid_rows'] ?? ''),
+                'columns' => $row['grid_column_items'] ?? ($row['grid_columns'] ?? ''),
+                'mobile_layout' => $row['grid_mobile_layout'] ?? 'scroll',
             ]);
         } elseif ($field->type === self::TYPE_BEST_WORST || $field->type === self::TYPE_MAXDIFF) {
             $field->setItemsConfig([
@@ -1927,7 +2095,9 @@ class FormField extends ActiveRecord
                 $minSelectAll = !empty($row['min_select_all']) || !empty($row['minSelectAll']);
             }
             $field->setOptionsFromText(
-                $row['options'] ?? '',
+                !empty($row['option_items']) && is_array($row['option_items'])
+                    ? $row['option_items']
+                    : ($row['options'] ?? ''),
                 !empty($row['randomize']),
                 $maxSelect,
                 (string)($row['exclusive_option'] ?? ''),

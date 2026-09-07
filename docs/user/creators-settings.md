@@ -1,6 +1,8 @@
 # Form settings
 
-The **Settings** tab is grouped into collapsible sections. **Basics** is open first; the others start closed. Use **Expand all** / **Collapse all** at the top. Each field has a **?** control for a short in-product explanation.
+The studio has two top tabs: **Form builder** and **Settings**.
+
+Under **Settings**, a left-hand list (same style as the field palette) opens each area in the main pane: form settings, programme tools, quality & style, and publish. Save still applies to the whole form.
 
 Type is shown here but chosen at create time.
 
@@ -10,11 +12,9 @@ Type is shown here but chosen at create time.
 | --- | --- |
 | Title | Name on the form, in lists, and in emails |
 | Description | Shown to respondents (rich text) |
-| Status | Draft, Open, or Closed |
+| Status | Draft, Open, or Closed. **Open requires a published edition** (Versions or Share → Publish). Participants use the published edition, not the unsaved working draft. |
 | Folder | Filing; **Unfiled** is fine |
 | Who can view answers | Who may open the answers / dashboard for this form |
-| Thank you | Content after a successful submit |
-| Already submitted | Message when the person is not allowed another response |
 
 **Who can view answers**
 
@@ -22,7 +22,18 @@ Type is shown here but chosen at create time.
 - **Managers and respondents** — managers, plus someone who has submitted this form.
 - **Anyone with View Answers permission** — uses the space or global **View form answers** permission.
 
-Thank-you and already-submitted messages support rich text. Use them to say what happens next, not to collect more answers.
+## End of survey
+
+| Setting | What it does |
+| --- | --- |
+| After a successful submission | **Show a message** (thank you, optional button) or **Redirect to a URL** |
+| Thank you message | Rich text after submit when using message mode; empty uses the default thank-you |
+| Thank-you button | Optional label and URL (blank URL returns to this form) |
+| Redirect URL | Used instead of the thank-you page when redirect mode is selected |
+| Already submitted message | Shown when another submission is blocked; supports `{formName}`; empty uses the default |
+| Already-submitted button | Optional label and URL (blank URL goes to the forms list) |
+
+Use the end-of-survey messages to say what happens next, not to collect more answers.
 
 ## Who can take part
 

@@ -215,17 +215,19 @@ class LogicEngine
     /**
      * First matching navigation action on fields of the current page.
      * @param FormField[] $fieldsOnPage
+     * @param FormField[] $allFields Full form fields so coded options resolve against labels
      * @return array{action:string,gotoPageKey:string}|null
      */
-    public function pageNavigation(array $fieldsOnPage, array $values): ?array
+    public function pageNavigation(array $fieldsOnPage, array $values, array $allFields = []): ?array
     {
+        $lookup = $allFields ?: $fieldsOnPage;
         foreach ($fieldsOnPage as $field) {
             $logic = $field->getLogic();
             $action = $logic['action'] ?? '';
             if (!in_array($action, [self::ACTION_GOTO_PAGE, self::ACTION_GOTO_END], true)) {
                 continue;
             }
-            if (empty($logic['rules']) || !$this->rulesMet($logic, $values)) {
+            if (empty($logic['rules']) || !$this->rulesMet($logic, $values, $lookup)) {
                 continue;
             }
             return [
@@ -238,29 +240,33 @@ class LogicEngine
 
     /**
      * @param FormField[] $fieldsOnPage
+     * @param FormField[] $allFields Full form fields so coded options resolve against labels
      */
-    public function shouldSkipPage(array $fieldsOnPage, array $values): bool
+    public function shouldSkipPage(array $fieldsOnPage, array $values, array $allFields = []): bool
     {
         if (!$fieldsOnPage) {
             return true;
         }
+        $lookup = $allFields ?: $fieldsOnPage;
         foreach ($fieldsOnPage as $field) {
             $logic = $field->getLogic();
             if (($logic['action'] ?? '') !== self::ACTION_SKIP_PAGE) {
                 continue;
             }
-            if (!empty($logic['rules']) && $this->rulesMet($logic, $values)) {
+            if (!empty($logic['rules']) && $this->rulesMet($logic, $values, $lookup)) {
                 return true;
             }
         }
-        return !$this->pageHasVisibleContent($fieldsOnPage, $values);
+        return !$this->pageHasVisibleContent($fieldsOnPage, $values, $lookup);
     }
 
     /**
      * @param FormField[] $fieldsOnPage
+     * @param FormField[] $allFields Ordered fields for group + choice matching
      */
-    public function pageHasVisibleContent(array $fieldsOnPage, array $values): bool
+    public function pageHasVisibleContent(array $fieldsOnPage, array $values, array $allFields = []): bool
     {
+        $ordered = $allFields ?: $fieldsOnPage;
         foreach ($fieldsOnPage as $field) {
             if ($field->type === FormField::TYPE_GROUP_END) {
                 continue;
@@ -268,7 +274,7 @@ class LogicEngine
             if ($field->isHiddenFromRespondent()) {
                 continue;
             }
-            if ($this->isFieldVisible($field, $fieldsOnPage, $values)) {
+            if ($this->isFieldVisible($field, $ordered, $values)) {
                 return true;
             }
         }
@@ -297,6 +303,9 @@ class LogicEngine
                 return $field;
             }
             if (FormField::studioKey((int)$field->id) === $fieldKey) {
+                return $field;
+            }
+            if (strcasecmp(trim((string)$field->variable), $fieldKey) === 0) {
                 return $field;
             }
         }

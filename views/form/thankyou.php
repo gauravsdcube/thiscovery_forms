@@ -20,6 +20,9 @@ $isPreview = !empty($isPreview);
 $fillLang = (new TranslationService())->resolve($formModel);
 (new TranslationService())->overlay($formModel, $fillLang);
 $fillRtl = TranslationService::isRtl($fillLang);
+$showButton = $formModel->showsCompletionButton();
+$externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUrl(), '/')
+    && preg_match('#^https?://#i', $formModel->getCompletionButtonUrl());
 ?>
 
 <div class="cf-fill-page cf-thankyou" id="cf-fill"
@@ -43,6 +46,13 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <div class="alert alert-warning">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'This was a test submission. It is not counted in participant results.') ?>
             </div>
+            <?php if ($formModel->usesCompletionRedirect()): ?>
+                <div class="alert alert-info">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Live submissions redirect to {url}. Preview stays on this page.', [
+                        'url' => Html::encode($formModel->getCompletionRedirectUrl()),
+                    ]) ?>
+                </div>
+            <?php endif; ?>
         <?php endif; ?>
         <div class="cf-thankyou__body">
             <?php if ($formModel->hasThankYouContent()): ?>
@@ -66,11 +76,18 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Catalogue'))
                         ->link(Url::toCatalogue($formModel)) ?>
                 </div>
-            <?php elseif ($formModel->allow_multiple || $formModel->canManage()): ?>
+            <?php elseif ($showButton): ?>
                 <div class="cf-thankyou__actions">
-                    <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Back to form'))
-                        ->link(Url::toView($formModel))
-                        ->pjax(!$formModel->hidesHumhubHeader()) ?>
+                    <?php
+                    $btn = Button::primary($formModel->getCompletionButtonLabel())
+                        ->link($formModel->getCompletionButtonUrl());
+                    if (!$externalBtn) {
+                        $btn->pjax(!$formModel->hidesHumhubHeader());
+                    } else {
+                        $btn->options(['target' => '_blank', 'rel' => 'noopener']);
+                    }
+                    echo $btn;
+                    ?>
                 </div>
             <?php endif; ?>
         </div>

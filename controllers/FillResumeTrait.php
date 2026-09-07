@@ -78,6 +78,19 @@ trait FillResumeTrait
         return $form->isValidTestToken($token);
     }
 
+    /**
+     * Hydrate published/historical edition onto the in-memory form for fill & submit.
+     */
+    protected function applyEditionForFill(CustomForm $form, ?FormAnswer $existing = null): void
+    {
+        try {
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())
+                ->applyFillDefinition($form, $existing, $this->isPreviewMode($form));
+        } catch (\Throwable $e) {
+            Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
+    }
+
     protected function previewAnswerSessionKey(CustomForm $form): string
     {
         return 'cf_preview_answer_' . (int)$form->id;
@@ -409,6 +422,9 @@ trait FillResumeTrait
         if (!$existing || !$existing->isInProgress()) {
             $existing = $this->resolveProgressDraft($form) ?: $existing;
         }
+
+        $this->applyEditionForFill($form, $existing);
+        $submit->form = $form;
 
         if (!$this->canContinueDraft($form, $existing)) {
             throw new ForbiddenHttpException();

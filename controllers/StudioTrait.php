@@ -71,6 +71,10 @@ trait StudioTrait
         $url = Url::toEdit($form);
         if ($tab !== '' && $tab !== 'builder') {
             $url .= (str_contains($url, '?') ? '&' : '?') . 'tab=' . rawurlencode($tab);
+            $section = trim((string)Yii::$app->request->post('studio_section', ''));
+            if ($tab === 'settings' && $section !== '' && $section !== 'basics') {
+                $url .= '&section=' . rawurlencode($section);
+            }
         }
         return $this->redirect($url);
     }

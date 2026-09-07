@@ -31,7 +31,13 @@ $hasFilters = $filters['q'] !== '' || $filters['status'] !== '' || $filters['int
 $exportParams = array_filter([
     'integrity' => $filters['integrity'] !== '' ? $filters['integrity'] : null,
     'min_score' => $filters['minScore'] !== null ? $filters['minScore'] : null,
+    'header_mode' => Yii::$app->request->get('header_mode') ?: null,
 ], static fn($v) => $v !== null && $v !== '');
+$headerMode = (string)($exportParams['header_mode'] ?? \humhub\modules\thiscoveryForms\services\ExportService::HEADER_LABEL);
+if (!isset(\humhub\modules\thiscoveryForms\services\ExportService::headerModeLabels()[$headerMode])) {
+    $headerMode = \humhub\modules\thiscoveryForms\services\ExportService::HEADER_LABEL;
+}
+$exportParams['header_mode'] = $headerMode;
 $sort = $dataProvider->sort;
 $total = (int)$dataProvider->getTotalCount();
 $clearUrl = Url::toAnswers($formModel);
@@ -91,6 +97,21 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
                 ->sm()
                 ->icon('download')
                 ->loader(false) ?>
+            <div class="dropdown d-inline-block">
+                <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Export headers') ?>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <?php foreach (\humhub\modules\thiscoveryForms\services\ExportService::headerModeLabels() as $mode => $label): ?>
+                        <li>
+                            <a class="dropdown-item<?= $headerMode === $mode ? ' active' : '' ?>"
+                               href="<?= Html::encode(Url::toExport($formModel, array_merge($exportParams, ['header_mode' => $mode]))) ?>">
+                                <?= Html::encode($label) ?>
+                            </a>
+                        </li>
+                    <?php endforeach; ?>
+                </ul>
+            </div>
         </div>
     </div>
 

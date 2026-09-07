@@ -33,5 +33,6 @@ return [
         'thiscovery-forms/global/catalogue/<id:\d+>' => 'thiscovery-forms/global/catalogue',
         'thiscovery-forms/admin/help' => 'thiscovery-forms/admin/help',
         'thiscovery-forms/admin/help/<page:[\\w\\-]+>' => 'thiscovery-forms/admin/help',
+        'thiscovery-forms/admin/help-download' => 'thiscovery-forms/admin/help-download',
     ],
 ];

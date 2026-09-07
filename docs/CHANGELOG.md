@@ -2,6 +2,86 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.24.0 (September 7, 2026)
+
+- Enh: Studio **Settings** tab with palette-style left nav (form, programme, quality, publish); Form builder stays a separate top tab
+- Enh: **End of survey** settings — thank-you message/button or redirect; already-submitted message/button
+- Enh: Form versioning UI (revisions/editions) when Thiscovery Versioning is enabled
+- Enh: Appearance themes and style colour controls
+- Fix: Studio save no longer wipes questions on empty field payload (Settings-only saves)
+- Fix: Languages settings layout; Settings **?** guides; Participant display help
+
+## 1.23.5 (September 5, 2026)
+
+- Fix: Languages settings — “Enabled languages” no longer overlaps the availability hint
+
+## 1.23.4 (September 5, 2026)
+
+- Fix: Studio save no longer wipes all questions when an empty field payload is posted (Settings-only saves). Clear-all still works when confirmed
+- Note: SPARCS2 form #17 restored to 69 fields from the original import definition
+
+## 1.23.3 (September 5, 2026)
+
+- Change: Studio keeps **two top tabs** — Form builder and Settings. Form builder is unchanged (field palette + canvas)
+- Enh: Settings tab owns the palette-style left nav for form settings plus integrity, translations, CSS, share, versions, and programme tools
+
+## 1.23.2 (September 5, 2026)
+
+- Enh: Studio left rail (palette-style groups/icons) replaces the top tabs — Form builder, settings sections, programme, quality, and publish are all in one place
+- Change: Settings no longer use a nested second left nav; sections live in the shared studio rail
+
+## 1.23.1 (September 5, 2026)
+
+- Fix: Settings **?** guidance toggles work again (were opening and immediately closing)
+- Enh: Settings left nav matches the studio field palette (grouped labels, icons, short descriptions)
+
+## 1.23.0 (September 5, 2026)
+
+- Enh: Settings tab uses a studio-style left navigation with one section at a time in the main pane
+- Enh: New **End of survey** settings — thank-you message with configurable button, or redirect to a URL; already-submitted message (rich text) with optional configurable button
+- Change: Thank-you and already-submitted controls moved out of Basics into End of survey
+
+## 1.22.1 (September 5, 2026)
+
+- Fix: Versions tab layout — full-width panel (was capped at 860px), real table styling matching Forms lists, Actions column nowrap so Preview/Publish/Restore/Delete stay on one row
+- Fix: Versions tab table layout (aligned columns, Actions header, horizontal action buttons); panel moved outside the studio form to avoid nested-form breakage
+- Note: Versioning product toggles live under Administration → Modules → Thiscovery Versioning
+
+## 1.22.0 (September 5, 2026)
+
+- Enh: Form versioning via shared **Thiscovery Versioning** module — every studio save creates a **revision**; **Publish** freezes an **edition** that participants use
+- Enh: Versions studio tab (preview, restore, publish, delete); Publish current draft on Share; cannot Open until an edition is published
+- Enh: Answers stamp `edition_id`; fill uses published/historical edition snapshot (in-progress keep start edition)
+- Enh: Open-period history; Help page **Versions and publishing**
+- Note: Enable **thiscovery-versioning** before or with this update; Page Builder adapter comes later
+
+## 1.21.16 (September 4, 2026)
+
+- Fix: Appearance colour controls use a compact swatch + value field; opacity and Transparent live inside the colour picker panel (no more overlapping α / Transparent / Clear buttons in the grid)
+
+## 1.21.15 (September 4, 2026)
+
+- Fix: Scroll-mode grids stay as horizontal tables on mobile (form custom CSS can no longer force a broken card stack that hid column labels after internal codes changed)
+- Fix: Stacked mobile grid options show participant labels again; harden stack fieldset/legend styles against theme CSS
+
+## 1.21.14 (September 4, 2026)
+
+- Enh: Named appearance themes (create, edit, delete, import, export, set default) with per-form theme selection or Custom (detached) overrides
+- Enh: Per-field variable name and internal label; unique variables; piping/logic resolve by variable; CSV export header mode (label / variable / both)
+- Enh: Choice and grid options use separate internal code and participant label fields; if any code is set, all options in that list require codes
+- Enh: Grid mobile stacked layout option (single- and multi-select grids)
+- Enh: Fill page max width default 1800px (theme/CSS can override)
+- Enh: Show/hide title, description, progress, and page numbers — global defaults plus per-form inherit/show/hide
+- Enh: Colour pickers support alpha and transparent
+- Change: Wave settings are per form (use waves + wave scope); remove global wave toggles; waves optional for longitudinal and EQ-5D
+- Fix: Admin module configuration “?” guidance toggles now work outside the form studio
+
+## 1.21.13 (September 4, 2026)
+
+- Fix: Server page skip / go-to-end / go-to-page logic now matches coded choice options (labels vs internal codes), so early exits reach the thank-you page instead of failing validation and restarting the survey
+- Fix: Off-path and newly hidden answers are cleared in the fill UI when branching changes; save already dropped unreachable fields once path matching worked
+- Fix: Settings “Form type” value no longer overlaps the label / guidance control
+
 ## 1.21.12 (September 4, 2026)
 
 - Change: Remove study-specific SPARCS2 survey definition and import-sparcs2 console command from the module

@@ -168,9 +168,28 @@ $this->registerJs('humhub.require("thiscoveryForms").initBuilder("#cf-builder");
 
 $fieldList = is_array($fields) ? $fields : [];
 $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
+$openTab = (string)Yii::$app->request->get('tab', 'builder');
+$openSection = (string)Yii::$app->request->get('section', 'basics');
+$formSettingSections = ['basics', 'end', 'access', 'display', 'sharing', 'enrol', 'email', 'languages', 'actions', 'consensus'];
+$settingsNavSections = array_merge($formSettingSections, [
+    'integrity', 'css', 'share', 'translations', 'versions', 'panel', 'rounds', 'approval',
+]);
+if ($openTab !== 'builder' && $openTab !== 'settings') {
+    if (in_array($openTab, $settingsNavSections, true)) {
+        $openSection = $openTab;
+    }
+    $openTab = 'settings';
+}
+if ($openTab === 'settings' && !in_array($openSection, $settingsNavSections, true)) {
+    $openSection = 'basics';
+}
+if ($openTab === '') {
+    $openTab = 'builder';
+}
+$isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', 'rounds', 'approval', 'translations', 'versions'], true);
 ?>
 
-<div class="cf-studio panel panel-default" id="cf-builder" data-cf-kind="<?= Html::encode($formModel->kind) ?>">
+<div class="cf-studio panel panel-default<?= $isSettingsExtra ? ' is-settings-extra' : '' ?>" id="cf-builder" data-cf-kind="<?= Html::encode($formModel->kind) ?>">
     <div class="cf-studio__nav">
         <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
             ->link(Url::toManageIndex($contentContainer))
@@ -208,53 +227,16 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
             <?php endif; ?>
         </div>
     </div>
-    <?= Html::beginForm($isNew ? Url::toCreate($contentContainer, ['kind' => $formModel->kind]) : Url::toEdit($formModel), 'post', [
-        'class' => 'cf-studio__form',
-        'id' => 'cf-studio-form',
-        'enctype' => 'multipart/form-data',
-    ]) ?>
-    <?= Html::hiddenInput('studio_tab', (string)Yii::$app->request->get('tab', 'builder'), ['data-cf-studio-tab' => true]) ?>
-    <?= Html::activeHiddenInput($formModel, 'kind') ?>
-    <?= Html::activeHiddenInput($formModel, 'is_template') ?>
-    <?= Html::activeHiddenInput($formModel, 'source_template_id') ?>
-    <?= Html::hiddenInput('fields_json', '', ['data-cf-fields-json' => true]) ?>
 
     <div class="cf-studio__tabs" role="tablist">
-        <button type="button" class="cf-studio__tab is-active" data-cf-tab="builder" role="tab" aria-selected="true">
+        <button type="button" class="cf-studio__tab<?= $openTab === 'builder' ? ' is-active' : '' ?>" data-cf-tab="builder" role="tab" aria-selected="<?= $openTab === 'builder' ? 'true' : 'false' ?>">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Form builder') ?>
         </button>
-        <button type="button" class="cf-studio__tab" data-cf-tab="settings" role="tab" aria-selected="false">
+        <button type="button" class="cf-studio__tab<?= $openTab === 'settings' ? ' is-active' : '' ?>" data-cf-tab="settings" role="tab" aria-selected="<?= $openTab === 'settings' ? 'true' : 'false' ?>">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Settings') ?>
         </button>
-        <button type="button" class="cf-studio__tab" data-cf-tab="integrity" role="tab" aria-selected="false">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Response integrity') ?>
-        </button>
-        <?php if ($formModel->usesWaves()): ?>
-            <button type="button" class="cf-studio__tab" data-cf-tab="panel" role="tab" aria-selected="false">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Panel & waves') ?>
-            </button>
-        <?php endif; ?>
-        <?php if ($formModel->isConsensus()): ?>
-            <button type="button" class="cf-studio__tab" data-cf-tab="rounds" role="tab" aria-selected="false">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Rounds') ?>
-            </button>
-        <?php endif; ?>
-        <?php if ($formModel->isProject()): ?>
-            <button type="button" class="cf-studio__tab" data-cf-tab="approval" role="tab" aria-selected="false">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Approval') ?>
-            </button>
-        <?php endif; ?>
-        <button type="button" class="cf-studio__tab" data-cf-tab="translations" role="tab" aria-selected="false">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Translations') ?>
-        </button>
-        <button type="button" class="cf-studio__tab" data-cf-tab="css" role="tab" aria-selected="false">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'CSS') ?>
-        </button>
-        <button type="button" class="cf-studio__tab" data-cf-tab="share" role="tab" aria-selected="false">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Share') ?>
-        </button>
         <a class="cf-studio__help-link"
-           href="<?= Html::encode(Url::toHelp($contentContainer, 'creators-builder')) ?>"
+           href="<?= Html::encode(Url::toHelp($contentContainer, $openTab === 'settings' ? 'creators-settings' : 'creators-builder')) ?>"
            target="_blank"
            rel="noopener"
            data-cf-studio-help
@@ -268,13 +250,27 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                'translations' => Url::toHelp($contentContainer, 'creators-settings'),
                'css' => Url::toHelp($contentContainer, 'creators-settings'),
                'share' => Url::toHelp($contentContainer, 'creators-results'),
+               'versions' => Url::toHelp($contentContainer, 'creators-versioning'),
            ])) ?>">
             <i class="fa fa-question-circle" aria-hidden="true"></i>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Help') ?>
         </a>
     </div>
 
-    <div class="cf-studio__panel is-active" data-cf-panel="builder">
+    <div class="cf-studio__content<?= $isSettingsExtra ? ' is-settings-extra' : '' ?>" data-cf-studio-content>
+    <?= Html::beginForm($isNew ? Url::toCreate($contentContainer, ['kind' => $formModel->kind]) : Url::toEdit($formModel), 'post', [
+        'class' => 'cf-studio__form',
+        'id' => 'cf-studio-form',
+        'enctype' => 'multipart/form-data',
+    ]) ?>
+    <?= Html::hiddenInput('studio_tab', $openTab, ['data-cf-studio-tab' => true]) ?>
+    <?= Html::hiddenInput('studio_section', $openSection, ['data-cf-studio-section-input' => true]) ?>
+    <?= Html::activeHiddenInput($formModel, 'kind') ?>
+    <?= Html::activeHiddenInput($formModel, 'is_template') ?>
+    <?= Html::activeHiddenInput($formModel, 'source_template_id') ?>
+    <?= Html::hiddenInput('fields_json', '', ['data-cf-fields-json' => true]) ?>
+
+    <div class="cf-studio__panel<?= $openTab === 'builder' ? ' is-active' : '' ?>" data-cf-panel="builder">
         <div class="cf-studio__workspace">
             <aside class="cf-studio__palette" data-cf-palette>
                 <div class="cf-palette__tabs">
@@ -378,32 +374,39 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
         </div>
     </div>
 
-    <div class="cf-studio__panel" data-cf-panel="settings">
-        <?= $this->render('_studio_settings', [
-            'formModel' => $formModel,
-            'isNew' => $isNew,
-            'contentContainer' => $contentContainer,
-            'isPoll' => $isPoll,
-            'fieldList' => $fieldList,
-            'emailTemplateOptions' => $emailTemplateOptions,
-            'enrolPanelOptions' => $enrolPanelOptions,
-        ]) ?>
-    </div>
+    <div class="cf-studio__panel<?= $openTab === 'settings' ? ' is-active' : '' ?>" data-cf-panel="settings">
+        <div class="cf-settings-workspace">
+            <?= $this->render('_studio_rail', [
+                'formModel' => $formModel,
+                'isNew' => $isNew,
+                'activeSection' => $openSection,
+            ]) ?>
+            <div class="cf-settings-main">
+                <?= $this->render('_studio_settings', [
+                    'formModel' => $formModel,
+                    'isNew' => $isNew,
+                    'contentContainer' => $contentContainer,
+                    'isPoll' => $isPoll,
+                    'fieldList' => $fieldList,
+                    'emailTemplateOptions' => $emailTemplateOptions,
+                    'enrolPanelOptions' => $enrolPanelOptions,
+                    'activeSection' => $openSection,
+                ]) ?>
 
-    <div class="cf-studio__panel" data-cf-panel="integrity">
-        <?= $this->render('_studio_integrity', [
-            'formModel' => $formModel,
-            'isNew' => $isNew,
-            'fieldList' => $fieldList,
-        ]) ?>
-    </div>
+                <section class="cf-settings-pane<?= $openSection === 'integrity' ? ' is-active' : '' ?>" data-cf-settings-pane="integrity" role="tabpanel"<?= $openSection === 'integrity' ? '' : ' hidden' ?>>
+                    <?= $this->render('_studio_integrity', [
+                        'formModel' => $formModel,
+                        'isNew' => $isNew,
+                        'fieldList' => $fieldList,
+                    ]) ?>
+                </section>
 
-    <div class="cf-studio__panel" data-cf-panel="css">
-        <?= $this->render('_studio_css', ['formModel' => $formModel]) ?>
-    </div>
+                <section class="cf-settings-pane<?= $openSection === 'css' ? ' is-active' : '' ?>" data-cf-settings-pane="css" role="tabpanel"<?= $openSection === 'css' ? '' : ' hidden' ?>>
+                    <?= $this->render('_studio_css', ['formModel' => $formModel]) ?>
+                </section>
 
-    <div class="cf-studio__panel" data-cf-panel="share">
-        <div class="cf-studio__settings">
+                <section class="cf-settings-pane<?= $openSection === 'share' ? ' is-active' : '' ?>" data-cf-settings-pane="share" role="tabpanel"<?= $openSection === 'share' ? '' : ' hidden' ?>>
+<div class="cf-studio__settings">
             <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Distribution URL') ?></h5>
             <?php if ($isNew): ?>
                 <p class="cf-hint text-muted">
@@ -463,6 +466,24 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                         <i class="fa fa-external-link"></i>
                     </a>
                 </p>
+                <?php if (\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()): ?>
+                    <hr>
+                    <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Publish') ?></h5>
+                    <p class="cf-hint text-muted">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Participants use the published edition, not your unsaved working draft. Publish before setting status to Open. You can also publish from the Versions tab.') ?>
+                    </p>
+                    <?php
+                    $hasEdition = (new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($formModel);
+                    ?>
+                    <button type="submit" class="btn btn-primary btn-sm" form="cf-publish-draft-form">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Publish current draft') ?>
+                    </button>
+                    <?php if (!$hasEdition): ?>
+                        <div class="alert alert-warning" style="margin-top:12px">
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'No edition published yet. You cannot set status to Open until you publish.') ?>
+                        </div>
+                    <?php endif; ?>
+                <?php endif; ?>
                 <hr>
                 <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview and test') ?></h5>
                 <p class="cf-hint text-muted">
@@ -586,6 +607,9 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
                 </button>
             <?php endif; ?>
         </div>
+                </section>
+            </div>
+        </div>
     </div>
 
     <script type="text/template" id="cf-field-template">
@@ -628,29 +652,48 @@ $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
 
     <div class="cf-studio__extra">
     <?php if ($formModel->usesWaves()): ?>
-        <div class="cf-studio__panel" data-cf-panel="panel">
+        <div class="cf-studio__panel<?= $openSection === 'panel' ? ' is-active' : '' ?>" data-cf-panel="panel">
             <?= $this->render('_studio_panel', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
         </div>
     <?php endif; ?>
 
     <?php if ($formModel->isConsensus()): ?>
-        <div class="cf-studio__panel" data-cf-panel="rounds">
+        <div class="cf-studio__panel<?= $openSection === 'rounds' ? ' is-active' : '' ?>" data-cf-panel="rounds">
             <?= $this->render('_studio_rounds', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
         </div>
     <?php endif; ?>
 
     <?php if ($formModel->isProject()): ?>
-        <div class="cf-studio__panel" data-cf-panel="approval">
+        <div class="cf-studio__panel<?= $openSection === 'approval' ? ' is-active' : '' ?>" data-cf-panel="approval">
             <?= $this->render('_studio_approval', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
         </div>
     <?php endif; ?>
 
-    <div class="cf-studio__panel" data-cf-panel="translations">
+    <div class="cf-studio__panel<?= $openSection === 'translations' ? ' is-active' : '' ?>" data-cf-panel="translations">
         <?= $this->render('_studio_translations', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
     </div>
+
+    <?php if (!$isNew && \humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()): ?>
+        <div class="cf-studio__panel<?= $openSection === 'versions' ? ' is-active' : '' ?>" data-cf-panel="versions">
+            <div class="cf-studio__settings cf-studio__settings--versions">
+                <?= $this->render('_studio_versions', ['formModel' => $formModel]) ?>
+            </div>
+        </div>
+    <?php endif; ?>
     </div>
+    </div><!-- /.cf-studio__content -->
 
     <?php if (!$isNew): ?>
+        <?php
+        $publishDraftUrl = $formModel->isGlobal()
+            ? \yii\helpers\Url::to(['/thiscovery-forms/global/publish-version', 'id' => $formModel->id])
+            : $formModel->content->container->createUrl('/thiscovery-forms/form/publish-version', ['id' => $formModel->id]);
+        ?>
+        <?php if (\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()): ?>
+            <?= Html::beginForm($publishDraftUrl, 'post', ['id' => 'cf-publish-draft-form', 'class' => 'd-none', 'data-pjax-prevent' => true]) ?>
+                <?= Html::hiddenInput('revision_id', '') ?>
+            <?= Html::endForm() ?>
+        <?php endif; ?>
         <?= Html::beginForm(Url::toSaveTemplate($formModel), 'post', ['id' => 'cf-template-form', 'class' => 'd-none']) ?>
         <?= Html::endForm() ?>
         <?= Html::beginForm(Url::toRegeneratePreview($formModel), 'post', ['id' => 'cf-regen-preview-form', 'class' => 'd-none']) ?>

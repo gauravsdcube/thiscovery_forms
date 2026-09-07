@@ -29,6 +29,7 @@ class FormController extends ContentContainerController
     use PanelAdminTrait;
     use EmailAdminTrait;
     use HelpTrait;
+    use VersioningTrait;
 
     protected function getAccessRules()
     {
@@ -84,7 +85,13 @@ class FormController extends ContentContainerController
             if (!$form->load($request->post())) {
                 Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Invalid form data.'));
             } elseif (!$form->save()) {
-                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.'));
+                $errors = $form->getFirstErrors();
+                Yii::$app->session->setFlash(
+                    'error',
+                    $errors
+                        ? implode(' ', $errors)
+                        : Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.')
+                );
             } else {
                 $fieldError = null;
                 $fieldRows = $this->postedFieldRows($fieldError);
@@ -96,6 +103,11 @@ class FormController extends ContentContainerController
                     $integrityPost = Yii::$app->request->post('integrity');
                     if (is_array($integrityPost)) {
                         \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveForm($form, $integrityPost);
+                    }
+                    try {
+                        (new \humhub\modules\thiscoveryForms\services\FormVersionService())->recordSave($form);
+                    } catch (\Throwable $e) {
+                        Yii::warning('Thiscovery Forms revision save failed: ' . $e->getMessage(), 'thiscovery-forms');
                     }
                     Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
                     if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
@@ -178,6 +190,13 @@ class FormController extends ContentContainerController
     ) {
         $this->applyFillLayout($form);
         $preview = $this->isPreviewMode($form);
+        try {
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())
+                ->applyFillDefinition($form, $existing, $preview);
+            $submit->form = $form;
+        } catch (\Throwable $e) {
+            Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
         $openCaptchaError = null;
         if (!$preview) {
             $svc = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
@@ -235,6 +254,9 @@ class FormController extends ContentContainerController
             $existing = $draft;
         }
 
+        $this->applyEditionForFill($form, $existing);
+        $submit->form = $form;
+
         if (!$this->canContinueDraft($form, $existing)) {
             throw new ForbiddenHttpException();
         }
@@ -273,6 +295,9 @@ class FormController extends ContentContainerController
         }
 
         $this->applyFillLayout($form);
+        if (!$isPreview && $form->usesCompletionRedirect()) {
+            return $this->redirect($form->getCompletionRedirectUrl());
+        }
         return $this->render('thankyou', [
             'formModel' => $form,
             'contentContainer' => $this->contentContainer,

@@ -33,6 +33,7 @@ class GlobalController extends Controller
     use PanelAdminTrait;
     use EmailAdminTrait;
     use HelpTrait;
+    use VersioningTrait;
 
     public $subLayout = '@thiscovery-forms/views/layouts/default';
 
@@ -65,7 +66,8 @@ class GlobalController extends Controller
                 'panel-wave-save', 'panel-wave-status',
                 'email-templates', 'email-template-edit', 'email-template-delete',
                 'regenerate-preview', 'regenerate-dashboard-share',
-                'help',
+                'help', 'help-download',
+                'publish-version', 'restore-version', 'delete-revision', 'delete-edition',
             ]],
         ];
     }
@@ -129,7 +131,13 @@ class GlobalController extends Controller
             if (!$form->load($request->post())) {
                 Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Invalid form data.'));
             } elseif (!$form->save()) {
-                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.'));
+                $errors = $form->getFirstErrors();
+                Yii::$app->session->setFlash(
+                    'error',
+                    $errors
+                        ? implode(' ', $errors)
+                        : Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.')
+                );
             } else {
                 $fieldError = null;
                 $fieldRows = $this->postedFieldRows($fieldError);
@@ -141,6 +149,11 @@ class GlobalController extends Controller
                     $integrityPost = Yii::$app->request->post('integrity');
                     if (is_array($integrityPost)) {
                         \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveForm($form, $integrityPost);
+                    }
+                    try {
+                        (new \humhub\modules\thiscoveryForms\services\FormVersionService())->recordSave($form);
+                    } catch (\Throwable $e) {
+                        Yii::warning('Thiscovery Forms revision save failed: ' . $e->getMessage(), 'thiscovery-forms');
                     }
                     Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
                     if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
@@ -243,6 +256,13 @@ class GlobalController extends Controller
     ) {
         $this->applyFillLayout($form);
         $preview = $this->isPreviewMode($form);
+        try {
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())
+                ->applyFillDefinition($form, $existing, $preview);
+            $submit->form = $form;
+        } catch (\Throwable $e) {
+            Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
         $openCaptchaError = null;
         if (!$preview) {
             $svc = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
@@ -299,6 +319,9 @@ class GlobalController extends Controller
             $existing = $draft;
         }
 
+        $this->applyEditionForFill($form, $existing);
+        $submit->form = $form;
+
         if (!$this->canContinueDraft($form, $existing)) {
             throw new ForbiddenHttpException();
         }
@@ -337,6 +360,9 @@ class GlobalController extends Controller
         }
 
         $this->applyFillLayout($form);
+        if (!$isPreview && $form->usesCompletionRedirect()) {
+            return $this->redirect($form->getCompletionRedirectUrl());
+        }
         return $this->render('@thiscovery-forms/views/form/thankyou', [
             'formModel' => $form,
             'contentContainer' => null,

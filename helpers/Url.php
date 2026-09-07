@@ -678,6 +678,18 @@ class Url
     }
 
     /**
+     * Secured Help attachment download.
+     */
+    public static function toHelpDownload($container = null, string $file = ''): string
+    {
+        $params = ['file' => $file];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/help-download'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/help-download', $params);
+    }
+
+    /**
      * Base URL for the public form-file endpoint (without guid).
      * Returns e.g. "/thiscovery-forms/global/form-file?id=42"
      */

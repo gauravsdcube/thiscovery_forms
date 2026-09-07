@@ -322,6 +322,25 @@ $searching = $filters['q'] !== '';
                                 <?php else: ?>
                                     <?= Badge::success($status) ?>
                                 <?php endif; ?>
+                                <?php
+                                if (\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable() && $formModel->id) {
+                                    $periods = (new \humhub\modules\thiscoveryVersioning\services\VersioningService())
+                                        ->openPeriods()
+                                        ->listPeriods('form', (int)$formModel->id);
+                                    $latest = $periods[0] ?? null;
+                                    if ($latest) {
+                                        $label = $latest->closed_at
+                                            ? Yii::t('ThiscoveryFormsModule.base', 'Last open: {from} – {to}', [
+                                                'from' => Yii::$app->formatter->asDate($latest->opened_at, 'short'),
+                                                'to' => Yii::$app->formatter->asDate($latest->closed_at, 'short'),
+                                            ])
+                                            : Yii::t('ThiscoveryFormsModule.base', 'Open since {from}', [
+                                                'from' => Yii::$app->formatter->asDate($latest->opened_at, 'short'),
+                                            ]);
+                                        echo '<div class="cf-form-row__period text-muted small">' . Html::encode($label) . '</div>';
+                                    }
+                                }
+                                ?>
                             </td>
                             <td class="cf-form-table__form-col">
                                 <div class="cf-form-row__title">

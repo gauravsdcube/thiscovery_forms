@@ -62,7 +62,10 @@ foreach ($allFields as $other) {
     }
     if ($other->collectsAnswer() || FormField::isChoiceType($other->type) || !FormField::isStructuralType($other->type)) {
         if ($other->type !== FormField::TYPE_PAGE_BREAK && $other->type !== FormField::TYPE_RICH_TEXT && $other->type !== FormField::TYPE_QUESTION_GROUP && $other->type !== FormField::TYPE_GROUP_END) {
-            $conditionOptions[$otherStudioKey] = $other->label ?: ('#' . $other->id);
+            $conditionOptions[$otherStudioKey] = ($other->internal_label ?: $other->label) ?: ('#' . $other->id);
+            if ($other->variable) {
+                $conditionOptions[$otherStudioKey] .= ' [' . $other->variable . ']';
+            }
         }
     }
     if ($other->type === FormField::TYPE_PAGE_BREAK) {
@@ -107,7 +110,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
         <div class="cf-field-card__title">
             <span class="cf-field-card__index" data-cf-index></span>
             <span class="cf-field-card__name" data-cf-title>
-                <?= Html::encode($field->label ?: Yii::t('ThiscoveryFormsModule.base', 'Untitled field')) ?>
+                <?= Html::encode(($field->internal_label ?: $field->label) ?: Yii::t('ThiscoveryFormsModule.base', 'Untitled field')) ?>
             </span>
             <span class="cf-field-card__type-badge" data-cf-type-label>
                 <?= Html::encode($typeLabels[$type] ?? $type) ?>
@@ -148,7 +151,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 <?= Html::textInput($namePrefix . '[label]', $field->label, [
                     'class' => 'form-control',
                     'data-cf-field-label' => true,
-                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Field label'),
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Shown to participants'),
                 ]) ?>
             </div>
             <div class="col-md-3">
@@ -198,6 +201,33 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Expected answer, e.g. Agree'),
                     ]) ?>
                 </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mt-1<?= $isGroupEnd ? ' d-none' : '' ?>" data-cf-identity-wrap>
+            <div class="col-md-6">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Internal label') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'studio only') ?></span>
+                </label>
+                <?= Html::textInput($namePrefix . '[internal_label]', $field->internal_label, [
+                    'class' => 'form-control',
+                    'data-cf-internal-label' => true,
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Name used in the builder'),
+                ]) ?>
+            </div>
+            <div class="col-md-6">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Variable name') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'export / piping / logic') ?></span>
+                </label>
+                <?= Html::textInput($namePrefix . '[variable]', $field->variable, [
+                    'class' => 'form-control',
+                    'data-cf-variable' => true,
+                    'data-cf-variable-touched' => $field->variable ? '1' : '0',
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. q_age'),
+                    'pattern' => '[A-Za-z][A-Za-z0-9_]*',
+                    'autocomplete' => 'off',
+                ]) ?>
+                <p class="cf-hint text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'Stable ID for this question. Must be unique in the form. Auto-fills from the label; you can edit it.') ?></p>
             </div>
         </div>
 
@@ -270,15 +300,49 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
 
         <div class="cf-options-panel<?= $needsOptions ? '' : ' d-none' ?>" data-cf-options-panel>
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Choices') ?>
-                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? ' d-none' : '' ?>" data-cf-options-hint-choice><?= Yii::t('ThiscoveryFormsModule.base', 'One option per line. Optional internal code before |') ?></span>
-                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? '' : ' d-none' ?>" data-cf-options-hint-ranking><?= Yii::t('ThiscoveryFormsModule.base', 'Items respondents will rank (one per line)') ?></span>
+                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? ' d-none' : '' ?>" data-cf-options-hint-choice><?= Yii::t('ThiscoveryFormsModule.base', 'Participant label required. Internal code optional — if you set one code, every choice needs a code.') ?></span>
+                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? '' : ' d-none' ?>" data-cf-options-hint-ranking><?= Yii::t('ThiscoveryFormsModule.base', 'Items respondents will rank') ?></span>
             </label>
-            <?= Html::textarea($namePrefix . '[options]', $field->getOptionsAsText(), [
-                'class' => 'form-control',
-                'rows' => 4,
-                'placeholder' => Yii::t('ThiscoveryFormsModule.base', "P1 | Public sector\nP2 | Private sector\nP3 | Third sector"),
-                'data-cf-options' => true,
-            ]) ?>
+            <?php
+            $choicePairs = $field->getChoicePairs();
+            if (!$choicePairs) {
+                $choicePairs = [['code' => '', 'label' => '']];
+            }
+            ?>
+            <div class="cf-option-items" data-cf-option-items>
+                <div class="row g-2 mb-1 text-muted small d-none d-md-flex">
+                    <div class="col-md-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Internal code') ?></div>
+                    <div class="col-md-7"><?= Yii::t('ThiscoveryFormsModule.base', 'Participant label') ?></div>
+                </div>
+                <?php foreach ($choicePairs as $oi => $pair): ?>
+                    <div class="row g-2 mb-2 align-items-center" data-cf-option-item>
+                        <div class="col-md-4">
+                            <?= Html::textInput($namePrefix . '[option_items][' . $oi . '][code]', $pair['code'] ?? '', [
+                                'class' => 'form-control',
+                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Code'),
+                                'data-cf-option-code' => true,
+                                'autocomplete' => 'off',
+                            ]) ?>
+                        </div>
+                        <div class="col-md-7">
+                            <?= Html::textInput($namePrefix . '[option_items][' . $oi . '][label]', $pair['label'] ?? '', [
+                                'class' => 'form-control',
+                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Label'),
+                                'data-cf-option-label' => true,
+                            ]) ?>
+                        </div>
+                        <div class="col-md-1">
+                            <button type="button" class="btn btn-light btn-sm" data-cf-remove-option title="<?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?>">
+                                <i class="fa fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+            <button type="button" class="btn btn-light btn-sm" data-cf-add-option>
+                <i class="fa fa-plus"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Add choice') ?>
+            </button>
             <div class="cf-switch mt-2">
                 <label>
                     <?= Html::checkbox($namePrefix . '[randomize]', $randomize, [
@@ -347,7 +411,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <div class="cf-field-note<?= in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true) ? '' : ' d-none' ?>" data-cf-choice-note>
                 <i class="fa fa-info-circle" aria-hidden="true"></i>
                 <div>
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Each line is one choice. Use code | Label so respondents see the label and answers store the code. Add a line called Other to let people type their own answer.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Respondents see the participant label. Answers store the internal code when set, otherwise the label. Add a choice labelled Other to let people type their own answer.') ?>
                 </div>
             </div>
             <div class="cf-field-note" data-cf-randomize-note>
@@ -614,26 +678,75 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Grid (matrix)') ?></label>
             <div class="cf-field-note">
                 <i class="fa fa-info-circle" aria-hidden="true"></i>
-                <div><?= Yii::t('ThiscoveryFormsModule.base', 'Rows are statements; columns are the scale. Single-select allows one column per row; multi-select allows several.') ?></div>
+                <div><?= Yii::t('ThiscoveryFormsModule.base', 'Rows are statements; columns are the scale. Internal codes are optional — if you set one, every row or column in that list needs a code.') ?></div>
             </div>
+            <?php
+            $gridRows = $gridCfg['rows'] ?: [['code' => '', 'label' => '', 'value' => '']];
+            $gridCols = $gridCfg['columns'] ?: [['code' => '', 'label' => '', 'value' => '']];
+            ?>
             <div class="row g-3">
                 <div class="col-md-6">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Rows') ?></label>
-                    <?= Html::textarea($namePrefix . '[grid_rows]', implode("\n", $gridCfg['rows']), [
-                        'class' => 'form-control',
-                        'rows' => 4,
-                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', "Statement A\nStatement B"),
-                    ]) ?>
+                    <div data-cf-grid-items="rows">
+                        <?php foreach ($gridRows as $gi => $pair): ?>
+                            <div class="row g-2 mb-2" data-cf-grid-item>
+                                <div class="col-5">
+                                    <?= Html::textInput($namePrefix . '[grid_row_items][' . $gi . '][code]', $pair['code'] ?? '', [
+                                        'class' => 'form-control form-control-sm',
+                                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Code'),
+                                    ]) ?>
+                                </div>
+                                <div class="col-6">
+                                    <?= Html::textInput($namePrefix . '[grid_row_items][' . $gi . '][label]', $pair['label'] ?? '', [
+                                        'class' => 'form-control form-control-sm',
+                                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Label'),
+                                    ]) ?>
+                                </div>
+                                <div class="col-1">
+                                    <button type="button" class="btn btn-light btn-sm" data-cf-remove-grid-item><i class="fa fa-times"></i></button>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="btn btn-light btn-sm" data-cf-add-grid-item="rows"><?= Yii::t('ThiscoveryFormsModule.base', 'Add row') ?></button>
                 </div>
                 <div class="col-md-6">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Columns') ?></label>
-                    <?= Html::textarea($namePrefix . '[grid_columns]', implode("\n", $gridCfg['columns']), [
-                        'class' => 'form-control',
-                        'rows' => 4,
-                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', "Strongly disagree\nDisagree\nNeutral\nAgree\nStrongly agree"),
-                    ]) ?>
+                    <div data-cf-grid-items="columns">
+                        <?php foreach ($gridCols as $gi => $pair): ?>
+                            <div class="row g-2 mb-2" data-cf-grid-item>
+                                <div class="col-5">
+                                    <?= Html::textInput($namePrefix . '[grid_column_items][' . $gi . '][code]', $pair['code'] ?? '', [
+                                        'class' => 'form-control form-control-sm',
+                                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Code'),
+                                    ]) ?>
+                                </div>
+                                <div class="col-6">
+                                    <?= Html::textInput($namePrefix . '[grid_column_items][' . $gi . '][label]', $pair['label'] ?? '', [
+                                        'class' => 'form-control form-control-sm',
+                                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Label'),
+                                    ]) ?>
+                                </div>
+                                <div class="col-1">
+                                    <button type="button" class="btn btn-light btn-sm" data-cf-remove-grid-item><i class="fa fa-times"></i></button>
+                                </div>
+                            </div>
+                        <?php endforeach; ?>
+                    </div>
+                    <button type="button" class="btn btn-light btn-sm" data-cf-add-grid-item="columns"><?= Yii::t('ThiscoveryFormsModule.base', 'Add column') ?></button>
                 </div>
             </div>
+            <div class="cf-switch mt-3">
+                <label>
+                    <?= Html::checkbox($namePrefix . '[grid_mobile_stack]', ($gridCfg['mobile_layout'] ?? 'scroll') === 'stack', [
+                        'value' => '1',
+                        'uncheck' => '0',
+                        'data-cf-grid-mobile-stack' => true,
+                    ]) ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'On mobile, show each row as a stacked list of options') ?>
+                </label>
+            </div>
+            <p class="cf-hint text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'When off, mobile keeps the horizontal scroll table. Applies to single-select and multi-select grids.') ?></p>
         </div>
 
         <div class="cf-items-panel<?= $isItems ? '' : ' d-none' ?>" data-cf-items-panel>

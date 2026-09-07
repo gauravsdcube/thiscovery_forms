@@ -173,6 +173,30 @@ class FormStyleService
         return $clean;
     }
 
+    /**
+     * Overlay form style tokens on a theme. Non-empty form values win.
+     */
+    public function mergeStyles(array $base, array $overlay): array
+    {
+        $out = $base;
+        foreach ($overlay as $groupId => $values) {
+            if (!is_array($values)) {
+                continue;
+            }
+            if (!isset($out[$groupId]) || !is_array($out[$groupId])) {
+                $out[$groupId] = [];
+            }
+            foreach ($values as $name => $raw) {
+                $raw = trim((string)$raw);
+                if ($raw === '') {
+                    continue;
+                }
+                $out[$groupId][$name] = $raw;
+            }
+        }
+        return $this->normalize($out);
+    }
+
     protected function controlSelectorForType(string $type, string $block): string
     {
         return match ($type) {

@@ -33,6 +33,7 @@ class HelpService
                     'creators-builder',
                     'creators-csv-import',
                     'creators-settings',
+                    'creators-versioning',
                     'creators-response-integrity',
                     'creators-results',
                     'creators-panels',
@@ -78,6 +79,12 @@ class HelpService
                 'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, emails, languages, and custom functions.'),
                 'icon' => 'wrench',
             ],
+            'creators-versioning' => [
+                'file' => 'creators-versioning.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Versions and publishing'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Revisions, editions, publish before Open, restore, and open-period history.'),
+                'icon' => 'history',
+            ],
             'creators-response-integrity' => [
                 'file' => 'creators-response-integrity.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Response integrity'),
@@ -103,6 +110,32 @@ class HelpService
                 'icon' => 'files-o',
             ],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function downloadFiles(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<int, array{file:string,label:string}>
+     */
+    public static function downloadsFor(string $slug): array
+    {
+        return [];
+    }
+
+    public static function resolveDownload(string $file): ?string
+    {
+        return null;
+    }
+
+    public static function downloadMime(string $file): string
+    {
+        return 'application/octet-stream';
     }
 
     public static function find(string $slug): ?array

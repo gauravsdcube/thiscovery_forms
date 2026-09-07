@@ -12,6 +12,7 @@ use humhub\modules\thiscoveryForms\services\HelpService;
 use Yii;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
+use yii\web\Response;
 
 /**
  * In-product Help for form creators and administrators.
@@ -60,6 +61,7 @@ trait HelpTrait
                 'contentContainer' => $container,
                 'sections' => HelpService::sections(),
                 'pages' => HelpService::pages(),
+                'downloads' => HelpService::downloadsFor($page),
             ]);
         }
 
@@ -67,6 +69,26 @@ trait HelpTrait
             'contentContainer' => $container,
             'sections' => HelpService::sections(),
             'pages' => HelpService::pages(),
+        ]);
+    }
+
+    /**
+     * Download a whitelisted Help attachment (login + Help permission required).
+     */
+    public function actionHelpDownload($file = null)
+    {
+        if (!$this->canViewHelp()) {
+            throw new ForbiddenHttpException();
+        }
+
+        $path = HelpService::resolveDownload((string)$file);
+        if ($path === null) {
+            throw new NotFoundHttpException();
+        }
+
+        return Yii::$app->response->sendFile($path, basename($path), [
+            'mimeType' => HelpService::downloadMime((string)$file),
+            'inline' => false,
         ]);
     }
 }

@@ -496,6 +496,11 @@ class SubmitForm extends Model
             return null;
         }
 
+        if (!$isTest && !$answer->edition_id && $this->form->current_edition_id) {
+            $answer->updateAttributes(['edition_id' => (int)$this->form->current_edition_id]);
+            $answer->edition_id = (int)$this->form->current_edition_id;
+        }
+
         $existingFields = [];
         foreach ($answer->answerFields as $af) {
             $existingFields[$af->field_id] = $af;
@@ -663,11 +668,39 @@ class SubmitForm extends Model
         $cfg = $field->getGridConfig();
         $rows = $cfg['rows'];
         $cols = $cfg['columns'];
+        $colValues = [];
+        foreach ($cols as $col) {
+            if (is_array($col)) {
+                foreach ([(string)($col['value'] ?? ''), (string)($col['code'] ?? ''), (string)($col['label'] ?? '')] as $key) {
+                    if ($key !== '') {
+                        $colValues[$key] = true;
+                    }
+                }
+            } else {
+                $colValues[(string)$col] = true;
+            }
+        }
         $multi = $field->type === FormField::TYPE_GRID_MULTI;
-        foreach ($rows as $rowLabel) {
-            $cell = $value[$rowLabel] ?? null;
+        foreach ($rows as $row) {
+            $rowKeys = [];
+            if (is_array($row)) {
+                foreach ([(string)($row['value'] ?? ''), (string)($row['code'] ?? ''), (string)($row['label'] ?? '')] as $key) {
+                    if ($key !== '') {
+                        $rowKeys[] = $key;
+                    }
+                }
+            } else {
+                $rowKeys[] = (string)$row;
+            }
+            $cell = null;
+            foreach ($rowKeys as $rowKey) {
+                if (array_key_exists($rowKey, $value)) {
+                    $cell = $value[$rowKey];
+                    break;
+                }
+            }
             if ($cell === null || $cell === '' || $cell === []) {
-                if ($field->required) {
+                if ($field->required && $this->scenario !== self::SCENARIO_DRAFT) {
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required.', [
                         'label' => $field->label,
                     ]));
@@ -677,7 +710,7 @@ class SubmitForm extends Model
             }
             $picked = $multi ? (is_array($cell) ? $cell : [$cell]) : [$cell];
             foreach ($picked as $col) {
-                if (!in_array((string)$col, $cols, true)) {
+                if (!isset($colValues[(string)$col])) {
                     $this->invalid($field);
                     return;
                 }

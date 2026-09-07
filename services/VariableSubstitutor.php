@@ -40,6 +40,14 @@ class VariableSubstitutor
             $fieldsById[(int)$field->id] = $field;
             $labelMap[mb_strtolower(trim($field->label))] = (int)$field->id;
             $labelMap[(string)$field->id] = (int)$field->id;
+            $var = trim((string)$field->variable);
+            if ($var !== '') {
+                $labelMap[mb_strtolower($var)] = (int)$field->id;
+            }
+            $internal = trim((string)$field->internal_label);
+            if ($internal !== '') {
+                $labelMap[mb_strtolower($internal)] = (int)$field->id;
+            }
         }
 
         $format = function ($fieldId, $asLabel = false) use ($answers, $fieldsById, $escape) {

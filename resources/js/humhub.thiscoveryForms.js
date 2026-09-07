@@ -1,6 +1,201 @@
 humhub.module('thiscoveryForms', function (module, require, $) {
     var OPTION_TYPES = ['dropdown', 'radio', 'checkbox'];
 
+    var parseCssColor = function (value) {
+        var v = String(value || '').trim();
+        if (!v || /^transparent$/i.test(v)) {
+            return null;
+        }
+        var hex = v.match(/^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i);
+        if (hex) {
+            var h = hex[1];
+            if (h.length === 3) {
+                h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+            }
+            var a = h.length === 8 ? (parseInt(h.slice(6, 8), 16) / 255) : 1;
+            return {
+                r: parseInt(h.slice(0, 2), 16),
+                g: parseInt(h.slice(2, 4), 16),
+                b: parseInt(h.slice(4, 6), 16),
+                a: a
+            };
+        }
+        var rgb = v.match(/^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)(?:\s*,\s*([\d.]+))?\s*\)$/i);
+        if (rgb) {
+            return {
+                r: Math.round(parseFloat(rgb[1])),
+                g: Math.round(parseFloat(rgb[2])),
+                b: Math.round(parseFloat(rgb[3])),
+                a: rgb[4] !== undefined ? parseFloat(rgb[4]) : 1
+            };
+        }
+        return null;
+    };
+
+    var toHex6 = function (r, g, b) {
+        var h = function (n) {
+            var s = Math.max(0, Math.min(255, n | 0)).toString(16);
+            return s.length === 1 ? '0' + s : s;
+        };
+        return '#' + h(r) + h(g) + h(b);
+    };
+
+    var formatCssColor = function (r, g, b, a) {
+        if (a >= 0.999) {
+            return toHex6(r, g, b);
+        }
+        var alpha = Math.round(a * 1000) / 1000;
+        return 'rgba(' + r + ', ' + g + ', ' + b + ', ' + alpha + ')';
+    };
+
+    var checkerPreview = 'linear-gradient(45deg, #cbd5e1 25%, transparent 25%), linear-gradient(-45deg, #cbd5e1 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #cbd5e1 75%), linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)';
+
+    var syncStyleColorUi = function ($wrap) {
+        var $input = $wrap.find('[data-cf-style-color]');
+        var $swatch = $wrap.find('[data-cf-style-swatch]');
+        var $preview = $wrap.find('[data-cf-style-preview]');
+        var $slider = $wrap.find('[data-cf-style-alpha-slider]');
+        var $label = $wrap.find('[data-cf-style-alpha-label]');
+        var $transparent = $wrap.find('[data-cf-style-transparent]');
+        var value = String($input.val() || '').trim();
+        var transparent = /^transparent$/i.test(value);
+        $transparent.prop('checked', transparent);
+        $swatch.prop('disabled', transparent);
+        $slider.prop('disabled', transparent);
+        if (transparent) {
+            $preview.css({
+                backgroundImage: checkerPreview,
+                backgroundSize: '10px 10px',
+                backgroundPosition: '0 0, 0 5px, 5px -5px, -5px 0',
+                backgroundColor: '#fff'
+            });
+            $label.text('0%');
+            $slider.val(0);
+            return;
+        }
+        var parsed = parseCssColor(value);
+        if (!parsed) {
+            $preview.css({
+                backgroundImage: 'none',
+                backgroundColor: '#ffffff'
+            });
+            $swatch.val('#ffffff');
+            $slider.val(100);
+            $label.text('100%');
+            return;
+        }
+        var hex = toHex6(parsed.r, parsed.g, parsed.b);
+        $swatch.val(hex);
+        var pct = Math.round(Math.max(0, Math.min(1, parsed.a)) * 100);
+        $slider.val(pct);
+        $label.text(pct + '%');
+        $preview.css({
+            backgroundImage: 'none',
+            backgroundColor: value || hex
+        });
+    };
+
+    var writeStyleColorFromPicker = function ($wrap) {
+        var $input = $wrap.find('[data-cf-style-color]');
+        var $swatch = $wrap.find('[data-cf-style-swatch]');
+        var $slider = $wrap.find('[data-cf-style-alpha-slider]');
+        if ($wrap.find('[data-cf-style-transparent]').is(':checked')) {
+            $input.val('transparent');
+            syncStyleColorUi($wrap);
+            return;
+        }
+        var hex = String($swatch.val() || '#ffffff');
+        var parsed = parseCssColor(hex) || {r: 255, g: 255, b: 255, a: 1};
+        var a = parseInt($slider.val(), 10);
+        if (isNaN(a)) {
+            a = 100;
+        }
+        $input.val(formatCssColor(parsed.r, parsed.g, parsed.b, a / 100));
+        syncStyleColorUi($wrap);
+    };
+
+    var closeStyleColorPanels = function ($except) {
+        $('[data-cf-style-color-wrap]').each(function () {
+            var $wrap = $(this);
+            if ($except && $wrap[0] === $except[0]) {
+                return;
+            }
+            $wrap.find('[data-cf-style-picker-panel]').prop('hidden', true);
+            $wrap.find('[data-cf-style-picker-toggle]').attr('aria-expanded', 'false');
+        });
+    };
+
+    var initStyleColors = function (root) {
+        var $root = $(root);
+        if (!$root.length) {
+            return;
+        }
+        $root.find('[data-cf-style-color-wrap]').each(function () {
+            syncStyleColorUi($(this));
+        });
+        if ($root.data('cf-style-colors-bound')) {
+            return;
+        }
+        $root.data('cf-style-colors-bound', 1);
+
+        $root.on('click', '[data-cf-style-picker-toggle]', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var $wrap = $(this).closest('[data-cf-style-color-wrap]');
+            var $panel = $wrap.find('[data-cf-style-picker-panel]');
+            var open = $panel.prop('hidden');
+            closeStyleColorPanels(open ? $wrap : null);
+            $panel.prop('hidden', !open);
+            $(this).attr('aria-expanded', open ? 'true' : 'false');
+            if (open) {
+                syncStyleColorUi($wrap);
+            }
+        });
+
+        $root.on('click', '[data-cf-style-picker-panel]', function (e) {
+            e.stopPropagation();
+        });
+
+        $root.on('input', '[data-cf-style-swatch], [data-cf-style-alpha-slider]', function () {
+            writeStyleColorFromPicker($(this).closest('[data-cf-style-color-wrap]'));
+        });
+
+        $root.on('change', '[data-cf-style-transparent]', function () {
+            var $wrap = $(this).closest('[data-cf-style-color-wrap]');
+            if ($(this).is(':checked')) {
+                $wrap.data('cf-style-pre-transparent', $wrap.find('[data-cf-style-color]').val());
+                $wrap.find('[data-cf-style-color]').val('transparent');
+            } else {
+                var prev = $wrap.data('cf-style-pre-transparent');
+                if (prev && !/^transparent$/i.test(String(prev))) {
+                    $wrap.find('[data-cf-style-color]').val(prev);
+                } else {
+                    writeStyleColorFromPicker($wrap);
+                    return;
+                }
+            }
+            syncStyleColorUi($wrap);
+        });
+
+        $root.on('input change', '[data-cf-style-color]', function () {
+            syncStyleColorUi($(this).closest('[data-cf-style-color-wrap]'));
+        });
+
+        $root.on('click', '[data-cf-style-clear]', function (e) {
+            e.preventDefault();
+            var $wrap = $(this).closest('[data-cf-style-color-wrap]');
+            $wrap.find('[data-cf-style-color]').val('');
+            $wrap.find('[data-cf-style-transparent]').prop('checked', false);
+            $wrap.find('[data-cf-style-swatch]').val('#ffffff');
+            $wrap.find('[data-cf-style-alpha-slider]').val(100);
+            syncStyleColorUi($wrap);
+        });
+
+        $(document).off('click.cfStyleColor').on('click.cfStyleColor', function () {
+            closeStyleColorPanels(null);
+        });
+    };
+
     var initBuilder = function (root) {
         var $root = $(root);
         if (!$root.length) {
@@ -19,6 +214,39 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 $(this).find('[data-cf-sort-order]').val(String(i));
             });
             $root.find('[data-cf-empty]').toggleClass('d-none', $root.find('.thiscovery-forms-field-row').length > 0);
+        };
+
+        var slugVariable = function (label) {
+            var s = String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+            if (!s) {
+                s = 'field';
+            }
+            if (!/^[a-z]/.test(s)) {
+                s = 'f_' + s;
+            }
+            return s.slice(0, 100);
+        };
+
+        var reindexOptionItems = function ($list) {
+            $list.find('[data-cf-option-item]').each(function (i) {
+                $(this).find('[data-cf-option-code]').attr('name', function (_, name) {
+                    return String(name || '').replace(/\[option_items\]\[\d+\]/, '[option_items][' + i + ']');
+                });
+                $(this).find('[data-cf-option-label]').attr('name', function (_, name) {
+                    return String(name || '').replace(/\[option_items\]\[\d+\]/, '[option_items][' + i + ']');
+                });
+            });
+        };
+
+        var reindexGridItems = function ($list, which) {
+            var key = which === 'columns' ? 'grid_column_items' : 'grid_row_items';
+            var re = new RegExp('\\[' + key + '\\]\\[\\d+\\]');
+            $list.find('[data-cf-grid-item]').each(function (i) {
+                $(this).find('input').each(function () {
+                    var name = String($(this).attr('name') || '');
+                    $(this).attr('name', name.replace(re, '[' + key + '][' + i + ']'));
+                });
+            });
         };
 
         var ownCard = function ($row) {
@@ -125,7 +353,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     : (isPanelAttr ? (panelLabels[panelKey] || typeLabels[type] || type) : (typeLabels[type] || type))
             );
 
-            var label = $.trim($own.find('[data-cf-field-label]').first().val());
+            var label = $.trim($own.find('[data-cf-internal-label]').first().val())
+                || $.trim($own.find('[data-cf-field-label]').first().val());
             if (!label && (isPage || isRich || isHtml || type === 'question_group')) {
                 label = typeLabels[type] || type;
             }
@@ -572,6 +801,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             } else if (!$.trim($row.find('[data-cf-field-label]').val())) {
                 $row.find('[data-cf-field-label]').val(typeLabels[type] || '');
             }
+            var labelNow = $.trim($row.find('[data-cf-field-label]').val());
+            if (labelNow && !$.trim($row.find('[data-cf-variable]').val())) {
+                $row.find('[data-cf-variable]').val(slugVariable(labelNow));
+            }
+            if (labelNow && !$.trim($row.find('[data-cf-internal-label]').val())) {
+                $row.find('[data-cf-internal-label]').val(labelNow);
+            }
             $row.find('[data-cf-action-row]').each(function () {
                 $(this).find('[data-cf-action-fn]').val('none');
                 refreshActionParams($(this));
@@ -710,32 +946,132 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return $row;
         };
 
-        // Tabs: Form builder | Settings | Response integrity | CSS | Share
-        $root.on('click', '[data-cf-tab]', function (e) {
-            e.preventDefault();
-            var tab = $(this).data('cf-tab');
+        // Top tabs: Form builder | Settings. Settings has a left rail of sections.
+        var formPanes = {
+            basics: 1, end: 1, access: 1, display: 1, sharing: 1,
+            enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
+            integrity: 1, css: 1, share: 1
+        };
+        var extraSections = {
+            panel: 1, rounds: 1, approval: 1, translations: 1, versions: 1
+        };
+        var footerSections = {
+            basics: 1, end: 1, access: 1, display: 1, sharing: 1,
+            enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
+            integrity: 1, css: 1, share: 1
+        };
+
+        var activateTopTab = function (tab, section) {
+            tab = String(tab || 'builder');
+            section = section ? String(section) : '';
+            if (tab === 'settings' && !section) {
+                section = $root.find('[data-cf-studio-section-input]').val() || 'basics';
+                if (!formPanes[section] && !extraSections[section]) {
+                    section = 'basics';
+                }
+            }
+            if (tab !== 'settings') {
+                section = '';
+            }
+
             $root.find('[data-cf-tab]').removeClass('is-active').attr('aria-selected', 'false');
-            $(this).addClass('is-active').attr('aria-selected', 'true');
+            $root.find('[data-cf-tab="' + tab + '"]').addClass('is-active').attr('aria-selected', 'true');
+
             $root.find('[data-cf-panel]').removeClass('is-active');
-            $root.find('[data-cf-panel="' + tab + '"]').addClass('is-active');
-            $root.find('.cf-studio__footer').toggle(tab === 'builder' || tab === 'settings' || tab === 'integrity' || tab === 'css' || tab === 'share');
+            $root.toggleClass('is-settings-extra', false);
+            $root.find('[data-cf-studio-content]').removeClass('is-settings-extra');
+
+            if (tab === 'builder') {
+                $root.find('[data-cf-panel="builder"]').addClass('is-active');
+                $root.find('.cf-studio__footer').show();
+            } else {
+                activateSettingsSection(section);
+            }
+
             $root.find('[data-cf-studio-tab]').val(tab);
+            $root.find('[data-cf-studio-section-input]').val(section || '');
+
             var $help = $root.find('[data-cf-studio-help]');
             if ($help.length) {
                 var pages = {};
                 try {
                     pages = JSON.parse($help.attr('data-cf-help-pages') || '{}');
                 } catch (err) {}
-                if (pages[tab]) {
-                    $help.attr('href', pages[tab]);
+                var helpKey = tab === 'settings' ? (pages[section] ? section : 'settings') : 'builder';
+                if (pages[helpKey]) {
+                    $help.attr('href', pages[helpKey]);
                 }
             }
-            if (tab === 'settings' || tab === 'builder' || tab === 'translations' || tab === 'rounds') {
+
+            if (tab === 'builder' || (tab === 'settings' && (section === 'translations' || section === 'rounds'))) {
                 setTimeout(function () {
-                    initRichEditors($root.find('[data-cf-panel="' + tab + '"]'));
+                    var $scope = tab === 'builder'
+                        ? $root.find('[data-cf-panel="builder"]')
+                        : $root.find('[data-cf-panel="' + section + '"], [data-cf-settings-pane="' + section + '"]');
+                    initRichEditors($scope);
                 }, 30);
             }
             setTimeout(layoutStudioPanes, 0);
+        };
+
+        var activateSettingsSection = function (section) {
+            section = String(section || 'basics');
+            var isExtra = !!extraSections[section];
+
+            $root.find('[data-cf-tab]').removeClass('is-active').attr('aria-selected', 'false');
+            $root.find('[data-cf-tab="settings"]').addClass('is-active').attr('aria-selected', 'true');
+
+            $root.find('[data-cf-panel]').removeClass('is-active');
+            $root.find('[data-cf-panel="settings"]').addClass('is-active');
+
+            var $rail = $root.find('[data-cf-settings-rail]');
+            $rail.find('[data-cf-settings-nav]').removeClass('is-active').attr('aria-selected', 'false');
+            $rail.find('[data-cf-settings-nav="' + section + '"]').addClass('is-active').attr('aria-selected', 'true');
+
+            $root.find('[data-cf-settings-pane]').removeClass('is-active').attr('hidden', true);
+
+            if (isExtra) {
+                $root.addClass('is-settings-extra');
+                $root.find('[data-cf-studio-content]').addClass('is-settings-extra');
+                $root.find('[data-cf-panel="' + section + '"]').addClass('is-active');
+                $root.find('.cf-studio__footer').hide();
+            } else {
+                $root.removeClass('is-settings-extra');
+                $root.find('[data-cf-studio-content]').removeClass('is-settings-extra');
+                var $pane = $root.find('[data-cf-settings-pane="' + section + '"]');
+                $pane.addClass('is-active').removeAttr('hidden');
+                $root.find('.cf-studio__footer').toggle(!!footerSections[section]);
+                setTimeout(function () {
+                    initRichEditors($pane);
+                }, 30);
+            }
+
+            $root.find('[data-cf-studio-tab]').val('settings');
+            $root.find('[data-cf-studio-section-input]').val(section);
+
+            var $help = $root.find('[data-cf-studio-help]');
+            if ($help.length) {
+                var pages = {};
+                try {
+                    pages = JSON.parse($help.attr('data-cf-help-pages') || '{}');
+                } catch (err) {}
+                var helpKey = pages[section] ? section : 'settings';
+                if (pages[helpKey]) {
+                    $help.attr('href', pages[helpKey]);
+                }
+            }
+
+            setTimeout(layoutStudioPanes, 0);
+        };
+
+        $root.on('click', '[data-cf-tab]', function (e) {
+            e.preventDefault();
+            activateTopTab($(this).data('cf-tab'), null);
+        });
+
+        $root.on('click', '[data-cf-settings-nav]', function (e) {
+            e.preventDefault();
+            activateSettingsSection($(this).attr('data-cf-settings-nav'));
         });
 
         var syncEnrol = function () {
@@ -750,58 +1086,86 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('change', '[data-cf-enrol-mode]', syncEnrol);
         syncEnrol();
 
-        $root.on('click', '[data-cf-guide-toggle]', function (e) {
-            e.preventDefault();
-            var $btn = $(this);
-            var expanded = $btn.attr('aria-expanded') === 'true';
-            var next = !expanded;
-            var $panel = $('#' + $btn.attr('aria-controls'));
-            $btn.attr('aria-expanded', next ? 'true' : 'false');
-            $btn.toggleClass('is-open', next);
-            $panel.prop('hidden', !next);
-        });
-
         $root.on('click', '[data-cf-acc-all]', function () {
             var open = $(this).attr('data-cf-acc-all') === 'open';
             $root.find('[data-cf-panel="settings"] details.cf-set-acc').prop('open', open);
         });
 
-        try {
-            var params = new URLSearchParams(window.location.search);
-            var openTab = params.get('tab');
-            if (openTab) {
-                $root.find('[data-cf-tab="' + openTab + '"]').trigger('click');
+        var syncCompletionMode = function () {
+            var $box = $root.find('[data-cf-completion-mode]');
+            if (!$box.length) {
+                return;
             }
-        } catch (e) {}
-
-        var toSwatchHex = function (value) {
-            var v = String(value || '').trim();
-            var short = v.match(/^#([0-9a-f]{3})$/i);
-            if (short) {
-                return '#' + short[1].split('').map(function (c) { return c + c; }).join('');
-            }
-            var full = v.match(/^#([0-9a-f]{6})(?:[0-9a-f]{2})?$/i);
-            return full ? ('#' + full[1]) : '';
+            var mode = $box.find('[data-cf-completion-choice]:checked').val()
+                || $box.find('input[name="CustomForm[completion_mode]"]:checked').val()
+                || 'message';
+            $box.find('[data-cf-completion-panel]').attr('hidden', true);
+            $box.find('[data-cf-completion-panel="' + mode + '"]').removeAttr('hidden');
+            var showBtn = $box.find('input[name="CustomForm[completion_button_enabled]"]').is(':checked');
+            $box.find('[data-cf-completion-button-fields]').toggle(mode === 'message' && showBtn);
         };
 
-        $root.on('input', '[data-cf-style-swatch]', function () {
-            var $text = $(this).closest('.cf-style-color').find('[data-cf-style-color]');
-            $text.val(this.value);
-        });
-
-        $root.on('input change', '[data-cf-style-color]', function () {
-            var hex = toSwatchHex(this.value);
-            if (hex) {
-                $(this).closest('.cf-style-color').find('[data-cf-style-swatch]').val(hex);
+        var syncAlreadyButton = function () {
+            var $panel = $root.find('[data-cf-settings-pane="end"]');
+            if (!$panel.length) {
+                return;
             }
+            var on = $panel.find('input[name="CustomForm[already_submitted_button_enabled]"]').is(':checked');
+            $panel.find('[data-cf-already-button-fields]').toggle(on);
+        };
+
+        $root.on('change', '[data-cf-completion-choice], input[name="CustomForm[completion_mode]"], input[name="CustomForm[completion_button_enabled]"]', syncCompletionMode);
+        $root.on('change', 'input[name="CustomForm[already_submitted_button_enabled]"]', syncAlreadyButton);
+        syncCompletionMode();
+        syncAlreadyButton();
+
+        try {
+            var params = new URLSearchParams(window.location.search);
+            var openTab = params.get('tab') || $root.find('[data-cf-studio-tab]').val() || 'builder';
+            var openSection = params.get('section') || $root.find('[data-cf-studio-section-input]').val() || '';
+            if (openTab !== 'builder' && openTab !== 'settings') {
+                openSection = openTab;
+                openTab = 'settings';
+            }
+            if (formPanes[openTab] || extraSections[openTab]) {
+                openSection = openTab;
+                openTab = 'settings';
+            }
+            activateTopTab(openTab, openSection || null);
+        } catch (e) {
+            activateTopTab('builder', null);
+        }
+
+        $root.on('change', '[data-cf-theme-select]', function () {
+            var $sel = $(this);
+            var val = String($sel.val() || '');
+            if (val !== '') {
+                return;
+            }
+            var raw = $sel.attr('data-cf-default-theme-style') || '{}';
+            var css = $sel.attr('data-cf-default-theme-css') || '';
+            var style = {};
+            try {
+                style = JSON.parse(raw) || {};
+            } catch (err) {
+                style = {};
+            }
+            Object.keys(style).forEach(function (groupId) {
+                var group = style[groupId] || {};
+                Object.keys(group).forEach(function (name) {
+                    var $input = $root.find('[name="CustomForm[style][' + groupId + '][' + name + ']"]');
+                    if ($input.length) {
+                        $input.val(group[name]);
+                        if ($input.is('[data-cf-style-color]')) {
+                            $input.trigger('change');
+                        }
+                    }
+                });
+            });
+            $root.find('[name="CustomForm[custom_css]"]').val(css);
         });
 
-        $root.on('click', '[data-cf-style-clear]', function (e) {
-            e.preventDefault();
-            var $row = $(this).closest('.cf-style-color');
-            $row.find('[data-cf-style-color]').val('');
-            $row.find('[data-cf-style-swatch]').val('#ffffff');
-        });
+        initStyleColors($root);
 
         $root.on('click', '[data-cf-copy-url]', function (e) {
             e.preventDefault();
@@ -944,12 +1308,24 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             syncRichEditors();
             syncAllLogicKeep();
             var $form = $(this);
+            // Re-enable any fields left disabled by a previous aborted submit.
+            $form.find('[data-cf-fields] .thiscovery-forms-field-row').find('input, select, textarea').each(function () {
+                var name = this.name;
+                if (name && name.indexOf('fields[') === 0) {
+                    this.disabled = false;
+                }
+            });
             var payload = collectFieldsPayload();
             var $json = $form.find('[data-cf-fields-json]');
             if (!$json.length) {
                 $json = $('<input type="hidden" name="fields_json" data-cf-fields-json="true">').appendTo($form);
             }
             $json.prop('disabled', false).val(JSON.stringify(payload));
+            $form.find('input[name="clear_fields_confirmed"]').remove();
+            if ($form.data('cf-clear-fields-confirmed') && Object.keys(payload).length === 0) {
+                $('<input type="hidden" name="clear_fields_confirmed" value="1">').appendTo($form);
+            }
+            $form.removeData('cf-clear-fields-confirmed');
             $form.find('[data-cf-fields] .thiscovery-forms-field-row').find('input, select, textarea').each(function () {
                 var name = this.name;
                 if (name && name.indexOf('fields[') === 0) {
@@ -1511,6 +1887,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             $root.find('[data-cf-fields]').empty();
+            $root.find('form.cf-studio__form').data('cf-clear-fields-confirmed', true);
             refreshIndexes();
             refreshConditionOptions();
         });
@@ -1839,10 +2216,102 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         $root.on('input', '[data-cf-field-label]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
+            var $own = ownCard($row);
             refreshTypeUi($row);
             var key = String($row.attr('data-cf-key') || '');
             var label = $.trim(String($(this).val() || '')) || ('#' + key);
-            retitleConditionOption(key, label);
+            var internal = $.trim(String($own.find('[data-cf-internal-label]').val() || ''));
+            retitleConditionOption(key, (internal || label) + (function () {
+                var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
+                return v ? (' [' + v + ']') : '';
+            })());
+            var $var = $own.find('[data-cf-variable]').first();
+            if ($var.length && $var.attr('data-cf-variable-touched') !== '1') {
+                $var.val(slugVariable(label));
+            }
+            var $internal = $own.find('[data-cf-internal-label]').first();
+            if ($internal.length && !$internal.attr('data-cf-internal-touched') && !$.trim($internal.val())) {
+                $internal.val(label);
+            }
+        });
+
+        $root.on('input', '[data-cf-internal-label]', function () {
+            $(this).attr('data-cf-internal-touched', '1');
+            var $row = $(this).closest('.thiscovery-forms-field-row');
+            refreshTypeUi($row);
+            var key = String($row.attr('data-cf-key') || '');
+            var $own = ownCard($row);
+            var label = $.trim(String($(this).val() || ''))
+                || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
+                || ('#' + key);
+            var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
+            retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
+        });
+
+        $root.on('input', '[data-cf-variable]', function () {
+            $(this).attr('data-cf-variable-touched', '1');
+            var $row = $(this).closest('.thiscovery-forms-field-row');
+            var $own = ownCard($row);
+            var key = String($row.attr('data-cf-key') || '');
+            var label = $.trim(String($own.find('[data-cf-internal-label]').val() || ''))
+                || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
+                || ('#' + key);
+            var v = $.trim(String($(this).val() || ''));
+            retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
+        });
+
+        $root.on('click', '[data-cf-add-option]', function (e) {
+            e.preventDefault();
+            var $panel = $(this).closest('[data-cf-options-panel]');
+            var $list = $panel.find('[data-cf-option-items]');
+            var $first = $list.find('[data-cf-option-item]').first();
+            if (!$first.length) {
+                return;
+            }
+            var $clone = $first.clone();
+            $clone.find('input').val('');
+            $list.append($clone);
+            reindexOptionItems($list);
+        });
+
+        $root.on('click', '[data-cf-remove-option]', function (e) {
+            e.preventDefault();
+            var $item = $(this).closest('[data-cf-option-item]');
+            var $list = $item.closest('[data-cf-option-items]');
+            if ($list.find('[data-cf-option-item]').length <= 1) {
+                $item.find('input').val('');
+                return;
+            }
+            $item.remove();
+            reindexOptionItems($list);
+        });
+
+        $root.on('click', '[data-cf-add-grid-item]', function (e) {
+            e.preventDefault();
+            var which = String($(this).attr('data-cf-add-grid-item') || 'rows');
+            var $panel = $(this).closest('[data-cf-grid-panel]');
+            var $list = $panel.find('[data-cf-grid-items="' + which + '"]');
+            var $first = $list.find('[data-cf-grid-item]').first();
+            if (!$first.length) {
+                return;
+            }
+            var $clone = $first.clone();
+            $clone.find('input').val('');
+            $list.append($clone);
+            reindexGridItems($list, which);
+        });
+
+        $root.on('click', '[data-cf-remove-grid-item]', function (e) {
+            e.preventDefault();
+            var $item = $(this).closest('[data-cf-grid-item]');
+            var $list = $item.closest('[data-cf-grid-items]');
+            var which = String($list.attr('data-cf-grid-items') || 'rows');
+            if ($list.find('[data-cf-grid-item]').length <= 1) {
+                $item.find('input').val('');
+                return;
+            }
+            $item.remove();
+            reindexGridItems($list, which);
         });
 
         $root.on('change', '[data-cf-required]', function () {
@@ -2327,17 +2796,35 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
             }
             if (type === 'grid_single' || type === 'grid_multi') {
-                var ok = true;
-                $field.find('tbody tr').each(function () {
-                    if (type === 'grid_multi') {
-                        if ($(this).find('input[type="checkbox"]:checked').length < 1) {
-                            ok = false;
-                        }
-                    } else if (!$(this).find('input[type="radio"]:checked').length) {
-                        ok = false;
+                var $gridActive = $field.find('[data-cf-mobile-layout="stack"]').length && window.matchMedia('(max-width: 767.98px)').matches
+                    ? $field.find('[data-cf-grid-stack]')
+                    : $field.find('tbody');
+                var rowKeys = {};
+                var answered = {};
+                $gridActive.find(type === 'grid_multi' ? 'input[type="checkbox"]' : 'input[type="radio"]').each(function () {
+                    if (this.disabled) {
+                        return;
+                    }
+                    var name = String(this.name || '');
+                    var m = name.match(/\[([^\[\]]+)\](?:\[\])?$/);
+                    if (!m) {
+                        return;
+                    }
+                    rowKeys[m[1]] = true;
+                    if (this.checked) {
+                        answered[m[1]] = true;
                     }
                 });
-                return ok && $field.find('tbody tr').length > 0;
+                var keys = Object.keys(rowKeys);
+                if (!keys.length) {
+                    return false;
+                }
+                for (var gi = 0; gi < keys.length; gi++) {
+                    if (!answered[keys[gi]]) {
+                        return false;
+                    }
+                }
+                return true;
             }
             if (type === 'best_worst') {
                 return !!$field.find('input[name$="[best]"]:checked').val()
@@ -2959,16 +3446,30 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 if (type === 'grid_single' || type === 'grid_multi') {
                     var grid = {};
-                    $field.find('tbody tr').each(function () {
-                        var row = $.trim(String($(this).find('th').first().text() || ''));
+                    var $gridScope = $field.find('[data-cf-mobile-layout="stack"]').length && window.matchMedia('(max-width: 767.98px)').matches
+                        ? $field.find('[data-cf-grid-stack]')
+                        : $field.find('tbody');
+                    $gridScope.find(type === 'grid_multi' ? 'input[type="checkbox"]' : 'input[type="radio"]').each(function () {
+                        if (this.disabled) {
+                            return;
+                        }
+                        var name = String(this.name || '');
+                        var m = name.match(/\[([^\[\]]+)\](?:\[\])?$/);
+                        if (!m) {
+                            return;
+                        }
+                        var row = m[1];
                         if (type === 'grid_multi') {
-                            var cols = [];
-                            $(this).find('input[type="checkbox"]:checked').each(function () {
-                                cols.push(String($(this).val()));
-                            });
-                            grid[row] = cols;
-                        } else {
-                            grid[row] = String($(this).find('input[type="radio"]:checked').val() || '');
+                            if (!Array.isArray(grid[row])) {
+                                grid[row] = [];
+                            }
+                            if (this.checked) {
+                                grid[row].push(String(this.value));
+                            }
+                        } else if (this.checked) {
+                            grid[row] = String(this.value || '');
+                        } else if (grid[row] === undefined) {
+                            grid[row] = '';
                         }
                     });
                     values[id] = grid;
@@ -3398,6 +3899,31 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return seen;
         };
 
+        var clearFieldAnswers = function ($field) {
+            if (!$field || !$field.length || $field.is('[data-cf-respondent-hidden]')) {
+                return;
+            }
+            $field.find('input[type="radio"], input[type="checkbox"]').each(function () {
+                this.checked = false;
+                this.removeAttribute('checked');
+            });
+            $field.find('.cf-rating-option.is-selected').removeClass('is-selected');
+            $field.find('select').each(function () {
+                this.selectedIndex = 0;
+                if ($(this).find('option[value=""]').length) {
+                    $(this).val('');
+                }
+                $(this).find('option').prop('selected', false);
+                $(this).find('option[value=""]').prop('selected', true);
+            });
+            $field.find('textarea, input[type="text"], input[type="number"], input[type="email"], input[type="url"], input[type="tel"], input[type="date"], input[type="time"], input[type="datetime-local"], input[type="search"]')
+                .not('[data-cf-other-text]')
+                .val('');
+            $field.find('[data-cf-other-text]').val('');
+            $field.find('[data-cf-html-value], [data-cf-drilldown-value], [data-cf-hotspot-value], [data-cf-rank-value], [data-cf-grid-value], [data-cf-map-value]').val('');
+            setFieldMessage($field, '');
+        };
+
         var applyUnreachablePages = function () {
             if (!multiPage) {
                 return;
@@ -3407,8 +3933,14 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $page = $(this);
                 var p = parseInt($page.attr('data-cf-page'), 10);
                 var onPath = !isNaN(p) && !!reachable[p];
+                var wasOff = $page.hasClass('cf-page-offpath');
                 $page.toggleClass('cf-page-offpath', !onPath);
                 if (!onPath) {
+                    if (!wasOff) {
+                        $page.find('[data-cf-conditional][data-cf-answerable]').each(function () {
+                            clearFieldAnswers($(this));
+                        });
+                    }
                     $page.find('input, select, textarea').prop('disabled', true);
                 }
             });
@@ -3658,6 +4190,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 var wasHidden = $field.hasClass('cf-hidden');
                 $field.toggleClass('cf-hidden', !visible);
+                if (!visible && !wasHidden && $field.is('[data-cf-answerable]')) {
+                    clearFieldAnswers($field);
+                }
                 if (visible && wasHidden && $field.closest('[data-cf-page].is-active, .cf-form-page.is-active').length) {
                     newlyShown.push($field.get(0));
                 }
@@ -3962,7 +4497,18 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.find('[data-cf-grid-scroll]').on('scroll.cfGridOverflow', syncGridOverflow);
         $(window).off('resize.cfGridOverflow').on('resize.cfGridOverflow', function () {
             window.requestAnimationFrame(syncGridOverflow);
+            syncGridMobileInputs();
         });
+
+        var syncGridMobileInputs = function () {
+            var mobile = window.matchMedia('(max-width: 767.98px)').matches;
+            $root.find('[data-cf-mobile-layout="stack"]').each(function () {
+                var $wrap = $(this);
+                $wrap.find('.cf-grid-fade').find('input, select, textarea').prop('disabled', mobile);
+                $wrap.find('[data-cf-grid-stack]').find('input, select, textarea').prop('disabled', !mobile);
+            });
+        };
+        syncGridMobileInputs();
 
         evaluate();
         clearUnsavedChoicePrefill();
@@ -4275,6 +4821,29 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
     };
 
+    var initGuides = function () {
+        // Bind once on document. Binding again on the studio root caused the ? toggle
+        // to fire twice (open then immediately close).
+        $(document).off('click.cfGuide', '[data-cf-guide-toggle]').on('click.cfGuide', '[data-cf-guide-toggle]', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var $btn = $(this);
+            var expanded = $btn.attr('aria-expanded') === 'true';
+            var next = !expanded;
+            var panelId = $btn.attr('aria-controls');
+            var $panel = panelId ? $('#' + panelId) : $();
+            $btn.attr('aria-expanded', next ? 'true' : 'false');
+            $btn.toggleClass('is-open', next);
+            if ($panel.length) {
+                if (next) {
+                    $panel.removeAttr('hidden');
+                } else {
+                    $panel.attr('hidden', 'hidden');
+                }
+            }
+        });
+    };
+
     var initIntegritySettings = function () {
         $('[data-cf-integrity-settings]').each(function () {
             var $root = $(this);
@@ -4302,6 +4871,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
     var init = function () {
         initListForms();
+        initGuides(document);
         initIntegritySettings();
         $('[data-cf-poll-embed]').each(function () {
             initPollEmbed(this);
@@ -4317,6 +4887,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
     module.initAnswers = initAnswers;
     module.initListForms = initListForms;
     module.initEmailTemplate = initEmailTemplate;
+    module.initGuides = initGuides;
+    module.initStyleColors = initStyleColors;
     module.text = function (key) {
         return module.config[key] || key;
     };
@@ -4330,6 +4902,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         initAnswers: initAnswers,
         initListForms: initListForms,
         initEmailTemplate: initEmailTemplate,
+        initGuides: initGuides,
+        initStyleColors: initStyleColors,
         initPollEmbed: initPollEmbed
     });
 });

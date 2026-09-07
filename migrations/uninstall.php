@@ -6,6 +6,7 @@ class uninstall extends Migration
 {
     public function up()
     {
+        $this->dropTable('custom_form_theme');
         $this->dropTable('custom_form_access_token');
         $this->dropTable('custom_form_integrity_audit');
         $this->dropTable('custom_form_integrity_meta');

@@ -30,7 +30,8 @@ The studio is the editor for one form. Tabs typically include:
 | Settings | Title, status, who can take part, emails, languages, functions |
 | Response integrity | Bot protection, quality scoring, consistency rules, invitation links |
 | CSS | Fill-page colours and layout; blank keeps the site theme |
-| Share | Live link, preview link, dashboard link, save as template |
+| Share | Live link, preview link, publish current draft, dashboard link, save as template |
+| Versions | Revisions (every save), published editions, restore, open-period history |
 | Panel & waves | Shown when the form uses waves |
 | Approval | Project type only |
 | Rounds | Consensus / Delphi only |
@@ -53,8 +54,10 @@ On **Settings → Basics**:
 | Status | Meaning |
 | --- | --- |
 | Draft | You and other managers can open it; respondents should not treat it as live |
-| Open | People who are allowed to can fill it |
+| Open | People who are allowed to can fill it — only after you have **published an edition** |
 | Closed | Filling stops; you can still view answers and export |
+
+**Publish** (Versions or Share) freezes an edition that participants use. Saving alone does not change what people see while the form is Open. See [Versions and publishing](creators-versioning.md).
 
 Set status to **Open** when you are ready to share the live link. Close it when fieldwork ends.
 
@@ -76,7 +79,8 @@ On Settings you can file the form in a folder, or leave it **Unfiled**. Folders 
 3. On **Settings**, set title, status **Draft**, and who can take part.
 4. **Save**, then **Preview**. Walk through as a respondent would.
 5. Fix wording and logic. Save again.
-6. Set status to **Open**. Copy the live link from **Share**.
+6. **Publish current draft** (Share or Versions).
+7. Set status to **Open**. Copy the live link from **Share**.
 7. After responses arrive, use the form’s dashboard and CSV (see [Sharing and results](creators-results.md)).
 
 ## Related pages

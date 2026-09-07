@@ -10,6 +10,19 @@ use Yii;
 
 class ExportService
 {
+    public const HEADER_LABEL = 'label';
+    public const HEADER_VARIABLE = 'variable';
+    public const HEADER_BOTH = 'both';
+
+    public static function headerModeLabels(): array
+    {
+        return [
+            self::HEADER_LABEL => Yii::t('ThiscoveryFormsModule.base', 'Participant labels'),
+            self::HEADER_VARIABLE => Yii::t('ThiscoveryFormsModule.base', 'Variable names'),
+            self::HEADER_BOTH => Yii::t('ThiscoveryFormsModule.base', 'Variable and label'),
+        ];
+    }
+
     public function toCsv(CustomForm $form, array $params = []): string
     {
         $params['forExport'] = 1;
@@ -17,6 +30,10 @@ class ExportService
         $query->with(['answerFields', 'user', 'wave', 'round', 'panelMember', 'integrityMeta']);
 
         $fields = array_values(array_filter($form->fields, static fn($f) => $f->collectsAnswer()));
+        $headerMode = (string)($params['header_mode'] ?? self::HEADER_LABEL);
+        if (!isset(self::headerModeLabels()[$headerMode])) {
+            $headerMode = self::HEADER_LABEL;
+        }
         $fh = fopen('php://temp', 'r+');
 
         $header = [
@@ -42,9 +59,9 @@ class ExportService
             $header[] = Yii::t('ThiscoveryFormsModule.base', 'Weight');
         }
         foreach ($fields as $field) {
-            $header[] = $field->label;
+            $header[] = $this->fieldHeader($field, $headerMode);
             if ($field->supportsJustification()) {
-                $header[] = $field->label . ' — ' . Yii::t('ThiscoveryFormsModule.base', 'Comment');
+                $header[] = $this->fieldHeader($field, $headerMode) . ' — ' . Yii::t('ThiscoveryFormsModule.base', 'Comment');
             }
         }
         fputcsv($fh, $header);
@@ -108,6 +125,25 @@ class ExportService
         fclose($fh);
 
         return $csv === false ? '' : $csv;
+    }
+
+    private function fieldHeader(FormField $field, string $mode): string
+    {
+        $label = trim((string)$field->label);
+        $variable = trim((string)$field->variable);
+        if ($variable === '') {
+            $variable = $label;
+        }
+        if ($mode === self::HEADER_VARIABLE) {
+            return $variable !== '' ? $variable : $label;
+        }
+        if ($mode === self::HEADER_BOTH) {
+            if ($variable !== '' && $label !== '' && strcasecmp($variable, $label) !== 0) {
+                return $variable . ' — ' . $label;
+            }
+            return $variable !== '' ? $variable : $label;
+        }
+        return $label !== '' ? $label : $variable;
     }
 
     private function formatCell($val): string

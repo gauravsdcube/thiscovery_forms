@@ -22,6 +22,8 @@ class QuestionImportExportService
         'type',
         'key',
         'label',
+        'variable',
+        'internal_label',
         'help',
         'required',
         'options',
@@ -36,6 +38,7 @@ class QuestionImportExportService
         'rating_display',
         'grid_rows',
         'grid_columns',
+        'grid_mobile_layout',
         'items',
         'maxdiff_set_size',
         'maxdiff_set_count',
@@ -188,6 +191,8 @@ class QuestionImportExportService
                 'type' => $type,
                 'key' => (string)($map['key'] ?? ''),
                 'label' => $label,
+                'variable' => trim((string)($map['variable'] ?? '')),
+                'internal_label' => trim((string)($map['internal_label'] ?? '')),
                 'help_text' => (string)($map['help'] ?? $map['help_text'] ?? ''),
                 'required' => $this->cellBool($map['required'] ?? ''),
                 'options' => (string)($map['options'] ?? ''),
@@ -202,6 +207,7 @@ class QuestionImportExportService
                 'rating_display' => (string)($map['rating_display'] ?? FormField::RATING_DISPLAY_PILLS),
                 'grid_rows' => (string)($map['grid_rows'] ?? ''),
                 'grid_columns' => (string)($map['grid_columns'] ?? ''),
+                'grid_mobile_layout' => (string)($map['grid_mobile_layout'] ?? 'scroll'),
                 'items' => (string)($map['items'] ?? ''),
                 'maxdiff_set_size' => $map['maxdiff_set_size'] ?? 4,
                 'maxdiff_set_count' => $map['maxdiff_set_count'] ?? '',
@@ -382,12 +388,18 @@ class QuestionImportExportService
                 return (string)($row['key'] ?? '');
             case 'label':
                 return (string)$field->label;
+            case 'variable':
+                return (string)($field->variable ?? $row['variable'] ?? '');
+            case 'internal_label':
+                return (string)($field->internal_label ?? $row['internal_label'] ?? '');
             case 'help':
                 return (string)$field->help_text;
             case 'required':
                 return !empty($row['required']) ? '1' : '0';
             case 'options':
                 return (string)($row['options'] ?? '');
+            case 'grid_mobile_layout':
+                return (string)($row['grid_mobile_layout'] ?? 'scroll');
             case 'branches':
             case 'logic_rules':
             case 'image_regions':

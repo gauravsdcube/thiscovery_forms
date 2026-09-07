@@ -531,14 +531,53 @@ class DashboardService
     private function gridChart(FormField $field, CustomForm $form): ?array
     {
         $cfg = $field->getGridConfig();
-        $rows = $cfg['rows'];
-        $cols = $cfg['columns'];
-        if (!$rows || !$cols) {
+        $rowMeta = [];
+        foreach ($cfg['rows'] as $row) {
+            if (is_array($row)) {
+                $value = (string)($row['value'] ?? $row['label'] ?? '');
+                $label = (string)($row['label'] ?? $value);
+                $aliases = array_values(array_filter([
+                    (string)($row['value'] ?? ''),
+                    (string)($row['code'] ?? ''),
+                    (string)($row['label'] ?? ''),
+                ], static fn($k) => $k !== ''));
+            } else {
+                $value = (string)$row;
+                $label = $value;
+                $aliases = [$value];
+            }
+            if ($value === '') {
+                continue;
+            }
+            $rowMeta[] = ['value' => $value, 'label' => $label, 'aliases' => $aliases];
+        }
+        $colMeta = [];
+        foreach ($cfg['columns'] as $col) {
+            if (is_array($col)) {
+                $value = (string)($col['value'] ?? $col['label'] ?? '');
+                $label = (string)($col['label'] ?? $value);
+                $aliases = array_values(array_filter([
+                    (string)($col['value'] ?? ''),
+                    (string)($col['code'] ?? ''),
+                    (string)($col['label'] ?? ''),
+                ], static fn($k) => $k !== ''));
+            } else {
+                $value = (string)$col;
+                $label = $value;
+                $aliases = [$value];
+            }
+            if ($value === '') {
+                continue;
+            }
+            $colMeta[] = ['value' => $value, 'label' => $label, 'aliases' => $aliases];
+        }
+        if (!$rowMeta || !$colMeta) {
             return null;
         }
+        $colKeys = array_column($colMeta, 'value');
         $totals = [];
-        foreach ($rows as $row) {
-            $totals[$row] = array_fill_keys($cols, 0);
+        foreach ($rowMeta as $row) {
+            $totals[$row['value']] = array_fill_keys($colKeys, 0);
         }
         $n = 0;
         foreach ($this->fieldRawValues($form, $field) as $raw) {
@@ -547,12 +586,22 @@ class DashboardService
                 continue;
             }
             $n++;
-            foreach ($rows as $row) {
-                $cell = $decoded[$row] ?? null;
+            foreach ($rowMeta as $row) {
+                $cell = null;
+                foreach ($row['aliases'] as $alias) {
+                    if (array_key_exists($alias, $decoded)) {
+                        $cell = $decoded[$alias];
+                        break;
+                    }
+                }
                 $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [$cell] : []);
                 foreach ($picked as $col) {
-                    if (isset($totals[$row][(string)$col])) {
-                        $totals[$row][(string)$col]++;
+                    $col = (string)$col;
+                    foreach ($colMeta as $cm) {
+                        if (in_array($col, $cm['aliases'], true)) {
+                            $totals[$row['value']][$cm['value']]++;
+                            break;
+                        }
                     }
                 }
             }
@@ -561,19 +610,19 @@ class DashboardService
             return null;
         }
         $datasets = [];
-        foreach ($cols as $col) {
+        foreach ($colMeta as $col) {
             $series = [];
-            foreach ($rows as $row) {
-                $series[] = (int)($totals[$row][$col] ?? 0);
+            foreach ($rowMeta as $row) {
+                $series[] = (int)($totals[$row['value']][$col['value']] ?? 0);
             }
-            $datasets[] = ['label' => $col, 'data' => $series];
+            $datasets[] = ['label' => $col['label'], 'data' => $series];
         }
         return [
             'fieldId' => $field->id,
             'label' => $field->label,
             'type' => $field->type,
             'chartType' => 'ranking',
-            'labels' => $rows,
+            'labels' => array_column($rowMeta, 'label'),
             'datasets' => $datasets,
             'total' => $n,
         ];
