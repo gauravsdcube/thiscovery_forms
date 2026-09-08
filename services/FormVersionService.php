@@ -135,11 +135,11 @@ class FormVersionService
         $targetEditionId = null;
         if ($answer && $answer->edition_id) {
             $targetEditionId = (int)$answer->edition_id;
-        } elseif ($form->current_edition_id) {
-            $targetEditionId = (int)$form->current_edition_id;
         } else {
             $current = $this->versions->currentEdition(FormVersionAdapter::OWNER_TYPE, (int)$form->id);
-            $targetEditionId = $current ? (int)$current->id : null;
+            $targetEditionId = $current
+                ? (int)$current->id
+                : ($form->current_edition_id ? (int)$form->current_edition_id : null);
         }
 
         if (!$targetEditionId) {

@@ -309,7 +309,14 @@ class QuestionImportExportService
         }
 
         if (!$form->saveFieldsFromPost($existing)) {
-            return Yii::t('ThiscoveryFormsModule.base', 'Could not import questions.');
+            $detail = Yii::$app->session->getFlash('error', null, true);
+            if (is_array($detail)) {
+                $detail = implode(' ', array_map('strval', $detail));
+            }
+            $detail = trim((string)$detail);
+            return $detail !== ''
+                ? $detail
+                : Yii::t('ThiscoveryFormsModule.base', 'Could not import questions.');
         }
 
         return null;

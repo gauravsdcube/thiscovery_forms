@@ -155,7 +155,9 @@ class GlobalController extends Controller
                     } catch (\Throwable $e) {
                         Yii::warning('Thiscovery Forms revision save failed: ' . $e->getMessage(), 'thiscovery-forms');
                     }
-                    Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
+                    if ((string)Yii::$app->request->post('after_save', '') !== 'publish') {
+                        Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
+                    }
                     if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
                         \humhub\modules\thiscoveryTranslate\services\FormsHook::queueFormTranslation((int)$form->id);
                         $pub = \humhub\modules\thiscoveryTranslate\services\FormsHook::checkPublishReady($form);
@@ -256,13 +258,8 @@ class GlobalController extends Controller
     ) {
         $this->applyFillLayout($form);
         $preview = $this->isPreviewMode($form);
-        try {
-            (new \humhub\modules\thiscoveryForms\services\FormVersionService())
-                ->applyFillDefinition($form, $existing, $preview);
-            $submit->form = $form;
-        } catch (\Throwable $e) {
-            Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
-        }
+        $this->applyEditionForFill($form, $existing, !empty($extra['editingAnswer']) ? true : null);
+        $submit->form = $form;
         $openCaptchaError = null;
         if (!$preview) {
             $svc = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
@@ -319,7 +316,7 @@ class GlobalController extends Controller
             $existing = $draft;
         }
 
-        $this->applyEditionForFill($form, $existing);
+        $this->applyEditionForFill($form, $existing, (bool)$existing);
         $submit->form = $form;
 
         if (!$this->canContinueDraft($form, $existing)) {

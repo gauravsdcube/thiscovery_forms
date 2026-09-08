@@ -29,7 +29,7 @@ trait ProgrammeTrait
 
     protected function redirectStudio(CustomForm $form, string $tab)
     {
-        return $this->redirect(Url::toEdit($form) . '?tab=' . urlencode($tab));
+        return $this->redirect(Url::toEdit($form, ['tab' => 'settings', 'section' => $tab]));
     }
 
     protected function requireManageForm($id): CustomForm
@@ -383,13 +383,17 @@ trait ProgrammeTrait
 
         $upload = UploadedFile::getInstanceByName('translation_file');
         if (!$upload || $upload->hasError) {
-            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Please choose a JSON or CSV translation file to import.'));
+            $msg = Yii::t('ThiscoveryFormsModule.base', 'Please choose a JSON or CSV translation file to import.');
+            $this->view->error($msg);
+            Yii::$app->session->setFlash('cf_i18n_import_notice', ['type' => 'error', 'message' => $msg]);
             return $this->redirectStudio($form, 'translations');
         }
 
         $raw = @file_get_contents($upload->tempName);
         if ($raw === false || $raw === '') {
-            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not read the uploaded file.'));
+            $msg = Yii::t('ThiscoveryFormsModule.base', 'Could not read the uploaded file.');
+            $this->view->error($msg);
+            Yii::$app->session->setFlash('cf_i18n_import_notice', ['type' => 'error', 'message' => $msg]);
             return $this->redirectStudio($form, 'translations');
         }
 
@@ -400,7 +404,12 @@ trait ProgrammeTrait
             : $service->importJson($form, $raw);
 
         if ($error) {
-            Yii::$app->session->setFlash('error', $error);
+            $this->view->error($error);
+            Yii::$app->session->setFlash('cf_i18n_import_notice', ['type' => 'error', 'message' => $error]);
+        } else {
+            $msg = Yii::t('ThiscoveryFormsModule.base', 'Translations imported.');
+            $this->view->success($msg);
+            Yii::$app->session->setFlash('cf_i18n_import_notice', ['type' => 'success', 'message' => $msg]);
         }
 
         return $this->redirectStudio($form, 'translations');

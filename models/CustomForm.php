@@ -923,6 +923,15 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function afterFind()
     {
         parent::afterFind();
+        $this->syncSettingsAttributes();
+    }
+
+    /**
+     * Copy settings_json into virtual attributes used by fill/studio.
+     * Safe to call after an in-memory snapshot hydrate.
+     */
+    public function syncSettingsAttributes(): void
+    {
         $this->show_results = $this->showsPollResults() ? 1 : 0;
         $this->source_language = (string)$this->getSetting('source_language', 'en-GB') ?: 'en-GB';
         $langs = $this->getSetting('enabled_languages', [$this->source_language]);
@@ -1974,8 +1983,12 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     $mobileLayout = 'stack';
                 }
                 $field->setGridConfig([
-                    'rows' => $row['grid_row_items'] ?? ($row['grid_rows'] ?? ''),
-                    'columns' => $row['grid_column_items'] ?? ($row['grid_columns'] ?? ''),
+                    'rows' => (!empty($row['grid_row_items']) && is_array($row['grid_row_items']))
+                        ? $row['grid_row_items']
+                        : ($row['grid_rows'] ?? ''),
+                    'columns' => (!empty($row['grid_column_items']) && is_array($row['grid_column_items']))
+                        ? $row['grid_column_items']
+                        : ($row['grid_columns'] ?? ''),
                     'mobile_layout' => $mobileLayout,
                 ]);
             } elseif ($type === FormField::TYPE_BEST_WORST || $type === FormField::TYPE_MAXDIFF) {
@@ -2082,6 +2095,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field->condition_value = null;
 
             if (!$field->save()) {
+                $first = $field->getFirstErrors();
+                $msg = $first ? (string)reset($first) : Yii::t('ThiscoveryFormsModule.base', 'Validation failed.');
+                Yii::$app->session->setFlash('error', Yii::t(
+                    'ThiscoveryFormsModule.base',
+                    'Could not save question "{label}": {error}',
+                    [
+                        'label' => mb_substr((string)$field->label, 0, 80),
+                        'error' => $msg,
+                    ]
+                ));
+                Yii::warning(
+                    'Thiscovery Forms: field save failed on form #' . (int)$this->id
+                    . ' type=' . $type . ' errors=' . json_encode($field->getErrors()),
+                    'thiscovery-forms'
+                );
                 return false;
             }
 
@@ -2205,6 +2233,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 Yii::warning('Thiscovery Forms image attach failed: ' . $e->getMessage(), 'thiscovery-forms');
             }
         }
+
+        unset($this->fields);
 
         return true;
     }

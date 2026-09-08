@@ -122,6 +122,7 @@ class FormVersionAdapter implements VersionableAdapter
             return;
         }
         $form->updateAttributes(['current_edition_id' => $editionId]);
+        $form->current_edition_id = $editionId;
 
         // If the form is currently Open, stamp the active open period with the new edition.
         if ((int)$form->status === CustomForm::STATUS_OPEN

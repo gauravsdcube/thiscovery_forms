@@ -496,6 +496,7 @@ return [
     'No questions found in the CSV file.' => 'No questions found in the CSV file.',
     'No questions found in the import file.' => 'No questions found in the import file.',
     'Could not import questions.' => 'Could not import questions.',
+    'Could not save question "{label}": {error}' => 'Could not save question "{label}": {error}',
     'Panel and wave tools for longitudinal surveys will be added in a later release. You can still design the survey now.' => 'Panel and wave tools for longitudinal surveys will be added in a later release. You can still design the survey now.',
     'Round, Delphi, and anonymity controls will be added in a later release. You can still design the survey now.' => 'Round, Delphi, and anonymity controls will be added in a later release. You can still design the survey now.',
     'Global' => 'Global',

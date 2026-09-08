@@ -470,12 +470,12 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     <hr>
                     <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Publish') ?></h5>
                     <p class="cf-hint text-muted">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Participants use the published edition, not your unsaved working draft. Publish before setting status to Open. You can also publish from the Versions tab.') ?>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Participants use the published edition. Publish current draft saves your latest studio changes first, then freezes that edition for the live form.') ?>
                     </p>
                     <?php
                     $hasEdition = (new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($formModel);
                     ?>
-                    <button type="submit" class="btn btn-primary btn-sm" form="cf-publish-draft-form">
+                    <button type="submit" name="after_save" value="publish" class="btn btn-primary btn-sm" form="cf-studio-form">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Publish current draft') ?>
                     </button>
                     <?php if (!$hasEdition): ?>
@@ -560,6 +560,15 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 <?php endif; ?>
                 <hr>
                 <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Import and export questions') ?></h5>
+                <?php
+                $importNotice = Yii::$app->session->getFlash('cf_import_notice');
+                if (is_array($importNotice) && !empty($importNotice['message'])):
+                    $noticeType = (($importNotice['type'] ?? '') === 'success') ? 'success' : 'danger';
+                ?>
+                    <div class="alert alert-<?= Html::encode($noticeType) ?>" role="alert">
+                        <?= Html::encode((string)$importNotice['message']) ?>
+                    </div>
+                <?php endif; ?>
                 <p class="cf-hint text-muted">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'CSV can include every question type, including page breaks. Tick Replace to overwrite the form; leave it unticked to append. See Help for columns and examples.') ?>
                 </p>

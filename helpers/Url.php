@@ -130,13 +130,14 @@ class Url
         return $url;
     }
 
-    public static function toEdit(CustomForm $form): string
+    public static function toEdit(CustomForm $form, array $params = []): string
     {
+        $params = array_merge(['id' => $form->id], $params);
         if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/edit', 'id' => $form->id]);
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/edit'], $params));
         }
 
-        return $form->content->container->createUrl('/thiscovery-forms/form/edit', ['id' => $form->id]);
+        return $form->content->container->createUrl('/thiscovery-forms/form/edit', $params);
     }
 
     public static function toCreate($container = null, array $params = []): string

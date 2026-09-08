@@ -2,6 +2,13 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.24.1 (September 8, 2026)
+
+- Fix: **Publish current draft** now saves the studio first, so the live form uses the questions you just edited instead of the previous saved snapshot
+- Fix: Fill uses the current published edition (not a previous response’s old edition) unless the respondent is still in progress or editing that response
+- Fix: Published fill applies snapshot settings (theme, display, style) as well as questions
+- Fix: Question and translation import messages stay visible on Share and Languages
+
 ## 1.24.0 (September 7, 2026)
 
 - Enh: Studio **Settings** tab with palette-style left nav (form, programme, quality, publish); Form builder stays a separate top tab

@@ -81,11 +81,22 @@ trait FillResumeTrait
     /**
      * Hydrate published/historical edition onto the in-memory form for fill & submit.
      */
-    protected function applyEditionForFill(CustomForm $form, ?FormAnswer $existing = null): void
+    /**
+     * Hydrate published/historical edition onto the in-memory form for fill & submit.
+     *
+     * In-progress responses keep the edition they started. Completed responses
+     * only keep that edition when explicitly editing. A normal open of the live
+     * URL uses the current published edition.
+     */
+    protected function applyEditionForFill(CustomForm $form, ?FormAnswer $existing = null, ?bool $lockToAnswerEdition = null): void
     {
+        if ($lockToAnswerEdition === null) {
+            $lockToAnswerEdition = $existing && $existing->isInProgress();
+        }
+        $lock = $lockToAnswerEdition && $existing && $existing->edition_id;
         try {
             (new \humhub\modules\thiscoveryForms\services\FormVersionService())
-                ->applyFillDefinition($form, $existing, $this->isPreviewMode($form));
+                ->applyFillDefinition($form, $lock ? $existing : null, $this->isPreviewMode($form));
         } catch (\Throwable $e) {
             Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
         }
@@ -423,7 +434,7 @@ trait FillResumeTrait
             $existing = $this->resolveProgressDraft($form) ?: $existing;
         }
 
-        $this->applyEditionForFill($form, $existing);
+        $this->applyEditionForFill($form, $existing, (bool)$existing);
         $submit->form = $form;
 
         if (!$this->canContinueDraft($form, $existing)) {

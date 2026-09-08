@@ -214,7 +214,9 @@ class FormSnapshotService
             ]);
             $fields[] = $field;
         }
+        unset($form->fields);
         $form->populateRelation('fields', $fields);
+        $form->syncSettingsAttributes();
     }
 
     protected function importTranslations(CustomForm $form, array $translations): void

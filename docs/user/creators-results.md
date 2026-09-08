@@ -2,26 +2,28 @@
 
 How people open the form, how you watch progress, and how you export data.
 
-## Share tab
+## Settings → Share
 
 | Link | Use |
 | --- | --- |
 | Fill / share link | Real respondents. Works when status is **Open** and they are allowed to take part. For a public audience, tick **Allow anonymous submissions** as well. |
 | Preview / test link | Stakeholders try the form. Answers are **not** counted as participant submissions. |
-| Dashboard share | Aggregate results without sign-in, only if **Share dashboard without sign-in** is enabled on Settings and you have saved. You can regenerate the link if it has leaked. |
+| Dashboard share | Aggregate results without sign-in, only if **Share dashboard without sign-in** is enabled on **Settings → Sharing and display** and you have saved. You can regenerate the link if it has leaked. |
+
+**Publish current draft** freezes a published edition when Thiscovery Versioning is on (same action as **Settings → Versions**).
 
 **Save as template** stores the form design for reuse. It does not include answers. Templates are labelled by form type on the Create screen.
 
-**Import and export questions** (same tab) accepts JSON or CSV. Leave **Replace all existing questions** unticked to append, or tick it to overwrite the form. Column names and every field type are described in [Import questions from CSV](creators-csv-import.md).
+**Import and export questions** (same section) accepts JSON or CSV. Leave **Replace all existing questions** unticked to append, or tick it to overwrite the form. Column names and every field type are described in [Import questions from CSV](creators-csv-import.md).
 
 ## Opening from the site
 
 - **Forms list** — Open, Edit (managers), dashboard.
-- **Space menu** — if **Show in menu** is on and the form is Open.
+- **Space menu** — if **Show in side menu** is on and the form is Open.
 - **Stream card** — a wall entry can link to the form.
 - **Quick poll** — can be embedded on the stream and on Thiscovery pages.
 
-Headerless forms still open from these places; the fill page simply omits the HumHub header.
+Headerless forms still open from these places; the fill page simply omits the HumHub header (**Run without HumHub header**).
 
 ## Who can see answers
 
@@ -40,6 +42,12 @@ Longitudinal and wave forms can show attrition across waves. Consensus dashboard
 Polls can show a simple result chart where you have enabled poll results.
 
 ## CSV export
+
+On the Answers export, choose **Export headers**:
+
+- **Participant labels** — question text (default)
+- **Variable names** — the field variable ids
+- **Variable and label** — both
 
 CSV export adds quality score, integrity status, analysis status, and flags when Response integrity is in use. Incomplete rows are included only when you kept incomplete responses. Preview answers are not included. Excluded responses are omitted from CSV unless you choose **Export including excluded**. Filter the Answers list (Trusted only, minimum score, flag type) before export if you want a subset.
 
@@ -60,6 +68,7 @@ The form author and managers can be notified when someone submits. Check that si
 
 - [Getting started](creators-getting-started.md)
 - [Form settings](creators-settings.md)
+- [Versions and publishing](creators-versioning.md)
 - [Response integrity](creators-response-integrity.md)
 - [Import questions from CSV](creators-csv-import.md)
 - [Form types](creators-form-types.md)

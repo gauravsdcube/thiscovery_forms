@@ -39,6 +39,15 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
         </div>
     <?php else: ?>
         <h6><?= Yii::t('ThiscoveryFormsModule.base', 'Export and import translations') ?></h6>
+        <?php
+        $i18nNotice = Yii::$app->session->getFlash('cf_i18n_import_notice');
+        if (is_array($i18nNotice) && !empty($i18nNotice['message'])):
+            $i18nType = (($i18nNotice['type'] ?? '') === 'success') ? 'success' : 'danger';
+        ?>
+            <div class="alert alert-<?= Html::encode($i18nType) ?>" role="alert">
+                <?= Html::encode((string)$i18nNotice['message']) ?>
+            </div>
+        <?php endif; ?>
         <p class="cf-hint text-muted">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Export every question in the source language. Translate the extra language columns (you can fill several languages in one file), then import it back. Questions themselves are not replaced — only the overlay for each language is updated.') ?>
         </p>

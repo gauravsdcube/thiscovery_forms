@@ -37,21 +37,16 @@ Attaching a panel on **Panel & waves** adds each completer who can be identified
 
 **Longitudinal** forms always use waves: one complete response per panel member per wave.
 
-**Ordinary surveys** use waves only if:
-
-1. An administrator has allowed waves on surveys in module configuration, and
-2. You tick **Use waves** on that survey’s Settings.
-
-Then the **Panel & waves** tab appears.
+**Ordinary surveys** (and related types that support it) use waves when you tick **Use waves** on **Settings → Who can take part**. After you save, **Settings → Panel & waves** appears under Programme.
 
 ### Per survey versus per panel
 
-Administrators choose the **wave calendar**:
+On the same settings pane, choose **Where waves live**:
 
 - **Per survey** — you open and close waves on this form. Other forms keep their own dates.
 - **Per panel** — the panel has one calendar. Every form attached to that panel uses the wave that is currently open. You still send invite emails **from each form**.
 
-Ask your administrator which mode the site uses before you promise dates to a panel.
+Pick the mode that matches how your study is run before you promise dates to a panel.
 
 ### Wave 1 and later waves
 

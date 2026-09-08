@@ -2,6 +2,8 @@
 
 These pages are shown in the product under **Help**. Form creators and administrators open Help from the forms list, the studio, the dashboard, panels, email templates, and module configuration. People filling a form do not see this.
 
+In the studio, the top tabs are **Form builder** and **Settings**. Help opens the page that matches the section you are on (builder, settings, integrity, panels, versions, and so on).
+
 The same files can still be copied into HumHub **Wiki** or **Custom Pages** if you want a public copy. Headings match the product labels.
 
 Suggested page tree:
@@ -18,4 +20,4 @@ Suggested page tree:
    8. [Panels, waves, and email](creators-panels.md)
    9. [Form types](creators-form-types.md)
 
-Written for Thiscovery Forms **1.24.0**.
+Written for Thiscovery Forms **1.24.1**.

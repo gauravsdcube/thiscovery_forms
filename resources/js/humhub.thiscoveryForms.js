@@ -1334,6 +1334,23 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         });
 
+        // Versions "Publish current draft" must save the studio first, otherwise
+        // unpublished builder changes are left out of the live edition.
+        $root.on('submit', '.tc-versions__publish-current', function (e) {
+            var $studio = $root.find('form.cf-studio__form');
+            if (!$studio.length) {
+                return;
+            }
+            e.preventDefault();
+            $studio.find('input[name="after_save"][value="publish"]').remove();
+            $('<input type="hidden" name="after_save" value="publish">').appendTo($studio);
+            if (typeof $studio.get(0).requestSubmit === 'function') {
+                $studio.get(0).requestSubmit();
+            } else {
+                $studio.trigger('submit');
+            }
+        });
+
         $root.on('submit', '[data-cf-panel="rounds"] form', function () {
             var api = editorApi();
             if (api && typeof api.saveEditors === 'function') {

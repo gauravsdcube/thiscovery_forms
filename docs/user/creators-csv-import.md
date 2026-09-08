@@ -1,12 +1,12 @@
 # Import questions from CSV
 
-Use a spreadsheet to build or update a long questionnaire, then import it from the **Share** tab. Excel is fine: save or export as **CSV UTF-8** (`.csv`). Do not upload `.xlsx`.
+Use a spreadsheet to build or update a long questionnaire, then import it from **Settings → Share**. Excel is fine: save or export as **CSV UTF-8** (`.csv`). Do not upload `.xlsx`.
 
 There is no limit on how many questions you can import. Empty rows and unknown types are skipped.
 
 ## Replace or append
 
-On Share, choose the CSV (or JSON) file, then:
+On **Settings → Share**, choose the CSV (or JSON) file, then:
 
 - Leave **Replace all existing questions** **unticked** to **append**. Imported questions are added after the ones already on the form.
 - Tick **Replace all existing questions** to **remove every question** on the form and use only the file. You will be asked to confirm. Answers already collected will no longer match the old questions.
@@ -29,10 +29,12 @@ Download **Sample CSV** from Share if you want a working file to copy.
 | --- | --- |
 | `type` | Question type code (see below). Display names such as `Page break` also work. |
 | `key` | Optional short id (`age`, `hear_about`). Use this when skip logic, carry-forward, or page-break branches need to point at another row. Letters, numbers, and underscore only. |
+| `variable` | Stable variable name for export, piping, and logic (letters, numbers, underscore; unique in the form). |
+| `internal_label` | Studio-only name for the question card. |
 | `label` | Question text. For a page break this can be left blank. |
 | `help` | Help text under the question. |
 | `required` | `1` / `yes` if required, otherwise `0` or blank. |
-| `options` | One choice per line in the cell. Used by radio, checkbox, dropdown, and ranking. Use `code \| Label` for an internal code. |
+| `options` | One choice per line in the cell. Used by radio, checkbox, dropdown, and ranking. Use `code \| Label` for an internal code (matches studio Internal code + Participant label). |
 | `hidden` | `1` to hide the question from respondents (internal variable). |
 | `default_value` | Value stored when the question is hidden. |
 | `meta_key` | For `respondent_meta`: `ip`, `browser`, `os`, `device`, `screen`, `language`, `timezone`, or `userAgent`. |
@@ -43,6 +45,7 @@ Download **Sample CSV** from Share if you want a working file to copy.
 | `rating_low_label`, `rating_high_label` | Labels under the lowest and highest values. |
 | `rating_display` | `pills` (horizontal) or `thermometer` (vertical). |
 | `grid_rows`, `grid_columns` | One label per line. Grids only. |
+| `grid_mobile_layout` | Grids: `scroll` (default) or `stack` (each row as a stacked list on mobile). |
 | `items` | One item per line for ranking, best–worst, and MaxDiff. If empty, `options` is used. |
 | `maxdiff_set_size`, `maxdiff_set_count` | MaxDiff set size and how many sets to show. |
 | `exclusive_option` | Checkbox label that clears the other ticks (for example `None of these`). Several labels can be separated with `\|`. |
@@ -181,7 +184,7 @@ Complex actions, field emails, and image hotspots are easier in the builder, or 
 
 ## After import
 
-Open the **Builder** tab and check order, page titles, and required flags. Use **Preview** before you open the form to respondents.
+Open **Form builder** and check order, page titles, and required flags. Use **Preview** before you open the form to respondents.
 
 ## Related pages
 

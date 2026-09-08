@@ -1420,13 +1420,13 @@ class FormField extends ActiveRecord
         if ($layout !== 'stack') {
             $layout = 'scroll';
         }
-        $storeRows = array_map(static function (array $p): array {
+        $storeRows = array_map(static function (array $p) {
             if (($p['code'] ?? '') === '') {
                 return (string)$p['label'];
             }
             return ['code' => (string)$p['code'], 'label' => (string)$p['label']];
         }, $rows);
-        $storeCols = array_map(static function (array $p): array {
+        $storeCols = array_map(static function (array $p) {
             if (($p['code'] ?? '') === '') {
                 return (string)$p['label'];
             }

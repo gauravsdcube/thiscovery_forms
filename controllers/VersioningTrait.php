@@ -31,6 +31,8 @@ trait VersioningTrait
 
         $revisionId = (int)Yii::$app->request->post('revision_id', 0) ?: null;
         try {
+            unset($form->fields);
+            $form->refresh();
             $edition = (new FormVersionService())->publish($form, $revisionId);
             Yii::$app->session->setFlash(
                 'success',

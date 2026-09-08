@@ -6,7 +6,7 @@ Choose a type when you create the form. Each type is a different workflow. Admin
 
 Full multi-page form. Any question type, logic, actions, translations, optional resume, optional anonymous fill.
 
-Use waves on a survey only if your administrator has allowed it **and** you tick **Use waves**. Otherwise treat it as a single fieldwork window.
+Use waves on a survey when you tick **Use waves** on **Settings → Who can take part**, then set up the panel and schedule under **Settings → Panel & waves**. Choose **Where waves live** (per survey or per panel) on the same access settings. Otherwise treat the survey as a single fieldwork window.
 
 ## Quick poll
 
@@ -22,7 +22,7 @@ Starts as a short rating plus comments. Edit it like a survey. Good for event or
 
 The same **panel** answers **repeating waves** of this questionnaire. Attrition appears on the dashboard.
 
-Always uses waves. Build the questions once; schedule waves and mail from **Panel & waves**.
+Always uses waves. Build the questions once; schedule waves and mail from **Settings → Panel & waves**.
 
 ## Consensus / Delphi
 
@@ -30,9 +30,9 @@ Multi-round process:
 
 - One submission per person **per round**
 - Published summaries between rounds
-- Identity modes, comments, and weighted votes as you configure them
+- Identity, threshold, freeze, and required comments under **Settings → Consensus**
 
-Set rounds on the **Rounds** tab. Do not use this type for a simple one-off survey.
+Set rounds on **Settings → Rounds**. Do not use this type for a simple one-off survey.
 
 ## Project
 
@@ -42,7 +42,7 @@ A structured **record** (default title is like a project record) with:
 - Request-changes and a **decision log**
 - A **catalogue** of records that have been published through the workflow
 
-Submissions are not a public catalogue item until they pass the stages on the **Approval** tab. Use this for applications, case records, or anything that needs sign-off, not for anonymous opinion polls.
+Submissions are not a public catalogue item until they pass the stages on **Settings → Approval**. Use this for applications, case records, or anything that needs sign-off, not for anonymous opinion polls.
 
 ## Which type should I pick?
 
@@ -51,7 +51,7 @@ Submissions are not a public catalogue item until they pass the stages on the **
 | Long questionnaire, one window | Survey |
 | Single question on a page or stream | Quick poll |
 | Quick rating and comment | Feedback form |
-| Same people, several time points | Longitudinal survey (or survey + waves if allowed) |
+| Same people, several time points | Longitudinal survey (or survey with **Use waves**) |
 | Experts, rounds, feedback of the group | Consensus / Delphi |
 | Record plus approvals and a published list | Project |
 

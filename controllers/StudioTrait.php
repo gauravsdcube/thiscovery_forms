@@ -59,7 +59,7 @@ trait StudioTrait
     }
 
     /**
-     * Stay in the studio after save. Optionally reopen a tab or the test preview.
+     * Stay in the studio after save. Optionally reopen a tab, open the test preview, or publish.
      */
     protected function redirectAfterStudioSave(CustomForm $form)
     {
@@ -67,6 +67,10 @@ trait StudioTrait
         $after = (string)Yii::$app->request->post('after_save', 'stay');
         if ($after === 'preview') {
             return $this->redirect(Url::toPreview($form));
+        }
+        if ($after === 'publish') {
+            $this->publishSavedDraft($form);
+            $tab = 'versions';
         }
         $url = Url::toEdit($form);
         if ($tab !== '' && $tab !== 'builder') {
@@ -77,6 +81,36 @@ trait StudioTrait
             }
         }
         return $this->redirect($url);
+    }
+
+    /**
+     * Publish the revision created by the save that just ran (no duplicate snapshot).
+     */
+    protected function publishSavedDraft(CustomForm $form): void
+    {
+        if (!\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable() || !$form->id) {
+            return;
+        }
+        try {
+            $svc = new \humhub\modules\thiscoveryForms\services\FormVersionService();
+            unset($form->fields);
+            $form->refresh();
+            $latest = $svc->versions()->latestRevision(
+                \humhub\modules\thiscoveryForms\services\FormVersionAdapter::OWNER_TYPE,
+                (int)$form->id
+            );
+            $edition = $svc->publish($form, $latest ? (int)$latest->id : null);
+            Yii::$app->session->setFlash(
+                'success',
+                Yii::t(
+                    'ThiscoveryFormsModule.base',
+                    'Saved and published edition #{n}. Participants now see this version.',
+                    ['n' => $edition ? $edition->edition_number : '?']
+                )
+            );
+        } catch (\Throwable $e) {
+            Yii::$app->session->setFlash('error', $e->getMessage());
+        }
     }
 
     /**
@@ -321,20 +355,25 @@ trait StudioTrait
         if (!$form->canManage()) {
             throw new ForbiddenHttpException();
         }
+        $shareUrl = Url::toEdit($form, ['tab' => 'settings', 'section' => 'share']);
         if (!Yii::$app->request->isPost) {
-            return $this->redirect(Url::toEdit($form));
+            return $this->redirect($shareUrl);
         }
 
         $upload = UploadedFile::getInstanceByName('import_file');
         if (!$upload || $upload->hasError) {
-            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Please choose a JSON or CSV file to import.'));
-            return $this->redirect(Url::toEdit($form) . '#import');
+            $msg = Yii::t('ThiscoveryFormsModule.base', 'Please choose a JSON or CSV file to import.');
+            $this->view->error($msg);
+            Yii::$app->session->setFlash('cf_import_notice', ['type' => 'error', 'message' => $msg]);
+            return $this->redirect($shareUrl);
         }
 
         $raw = @file_get_contents($upload->tempName);
         if ($raw === false || $raw === '') {
-            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not read the uploaded file.'));
-            return $this->redirect(Url::toEdit($form));
+            $msg = Yii::t('ThiscoveryFormsModule.base', 'Could not read the uploaded file.');
+            $this->view->error($msg);
+            Yii::$app->session->setFlash('cf_import_notice', ['type' => 'error', 'message' => $msg]);
+            return $this->redirect($shareUrl);
         }
 
         $service = new QuestionImportExportService();
@@ -345,14 +384,17 @@ trait StudioTrait
             : $service->importJson($form, $raw, $replace);
 
         if ($error) {
-            Yii::$app->session->setFlash('error', $error);
-        } elseif ($replace) {
-            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Existing questions were replaced with the imported file.'));
+            $this->view->error($error);
+            Yii::$app->session->setFlash('cf_import_notice', ['type' => 'error', 'message' => $error]);
         } else {
-            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Questions imported.'));
+            $msg = $replace
+                ? Yii::t('ThiscoveryFormsModule.base', 'Existing questions were replaced with the imported file.')
+                : Yii::t('ThiscoveryFormsModule.base', 'Questions imported.');
+            $this->view->success($msg);
+            Yii::$app->session->setFlash('cf_import_notice', ['type' => 'success', 'message' => $msg]);
         }
 
-        return $this->redirect(Url::toEdit($form));
+        return $this->redirect($shareUrl);
     }
 
     public function actionLibraryList()

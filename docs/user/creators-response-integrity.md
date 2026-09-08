@@ -1,6 +1,6 @@
 # Response integrity
 
-The **Response integrity** tab (and the matching defaults under **Administration → Modules → Thiscovery Forms**) score how a submission looks for review **when Enable integrity checks is ticked**. They do **not** prove fraud, misconduct, or that a person is not genuine, and they do **not** delete answers. If the checkbox is off, no quality scores or integrity metadata are stored.
+**Settings → Response integrity** (and the matching defaults under **Administration → Modules → Thiscovery Forms**) score how a submission looks for review **when Enable integrity checks is ticked**. They do **not** prove fraud, misconduct, or that a person is not genuine, and they do **not** delete answers. If the checkbox is off, no quality scores or integrity metadata are stored.
 
 Use the **?** next to each setting in the studio for a short explanation. This page is the longer guide, including what you can tell clients and ethics committees.
 
@@ -15,8 +15,8 @@ In the product that is enforced: **one signal type can at most produce “Review
 | Place | What it controls |
 | --- | --- |
 | **Administration → Modules → Thiscovery Forms** | Site-wide defaults. Cloudflare Turnstile keys (optional) are only set here. |
-| Studio **Response integrity** tab | Overrides for this survey. **Use site default** inherits the administration value. |
-| Builder field card | **Attention check** and the expected answer on an instructed-response question |
+| **Settings → Response integrity** | Overrides for this survey. **Use site default** inherits the administration value. |
+| Form builder field card | **Attention check** and the expected answer on an instructed-response question |
 
 Preview / test fills are not scored for integrity and do not appear on the integrity dashboard.
 
@@ -51,7 +51,7 @@ Leave a survey control on **Use site default** unless this study needs different
 | Speed detection | Faster than your floor seconds or faster than typical time. Browser timings are supporting signals and can be spoofed |
 | Straight-lining detection | Identical grids, flat ratings, sequences such as 1,2,3,4,5 |
 | Attention checks | Scores Builder questions marked as attention checks. Match is exact (code or label), not a substring |
-| Logical consistency checks | Your IF/AND rules on this tab |
+| Logical consistency checks | Your IF/AND rules on this settings section |
 | Free-text quality checks | Short, empty, repeated, question-echoing, or low letter-variety text. The product does **not** detect AI writing |
 | Similar-response detection | Compares this submission with others on the same survey (last 250 completes) |
 | Integrity scoring | Builds the overall score and suggested status |
