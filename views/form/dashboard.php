@@ -55,7 +55,12 @@ JS
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Open form'))->link(Url::toView($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->loader(false) ?>
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Answers'))->link(Url::toAnswers($formModel))->sm()->loader(false) ?>
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Response integrity'))->link(Url::toIntegrity($formModel))->sm()->icon('shield')->loader(false) ?>
-                <?= Button::info(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))->link(Url::toExport($formModel))->sm()->loader(false) ?>
+                <?= $this->render('_export_csv_button', [
+                    'formModel' => $formModel,
+                    'exportParams' => [],
+                    'style' => 'info',
+                    'showIcon' => false,
+                ]) ?>
             <?php else: ?>
                 <span class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Shared dashboard') ?></span>
             <?php endif; ?>

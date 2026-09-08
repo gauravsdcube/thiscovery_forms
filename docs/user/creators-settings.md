@@ -7,7 +7,7 @@ Under **Settings**, a left-hand list opens each area in the main pane. Groups ma
 - **Form** — Basics, End of survey, Who can take part, Participant display, Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions (plus Consensus when relevant)
 - **Programme** — Panel & waves / Rounds / Approval when the type needs them
 - **Quality & style** — Response integrity, Translations, CSS
-- **Publish** — Share; Versions when Thiscovery Versioning is available
+- **Publish** — Share; Export (CSV columns and PII scrubbing); Versions when Thiscovery Versioning is available
 
 Each setting has a short **?** guide in the studio. This page is the longer reference. Save still applies to the whole form.
 
@@ -168,6 +168,21 @@ Visible only on **Consensus / Delphi** forms (**Settings → Consensus**):
 | Require a comment after each choice | Asks for a short comment after each choice in a round |
 
 Schedule rounds under **Settings → Rounds**. See [Form types](creators-form-types.md).
+
+## Export
+
+**Settings → Export** controls the **answers CSV** only (not question or translation downloads). Answers, Dashboard, and Response integrity all use this set — there is no per-download column picker.
+
+| Setting | What it does |
+| --- | --- |
+| Scrub PII | Off by default. When on, identity and personal-data columns are omitted, remaining cells have emails, phone numbers, and IP addresses replaced with `[redacted]`, and the filename ends with `-scrubbed.csv`. Stored answers are not changed. |
+| Response metadata / Questions | Tick columns to include. Untick to exclude. New questions stay included until you exclude them. |
+
+While **Scrub PII** is on, identity and PII-tagged columns are locked off on this page (User, email questions, IP and user agent, panel name/email, and anything tagged **Contains personal data** in the builder). They are omitted from the CSV even if you had included them.
+
+Header labels (question text vs variable names) are still chosen on the **Answers** page when you download.
+
+Do not rely on scrubbing as the only privacy control: it does not detect names in free text, and it does not redact postcodes or NHS numbers.
 
 ## CSS (Appearance)
 

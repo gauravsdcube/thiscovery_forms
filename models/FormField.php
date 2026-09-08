@@ -423,6 +423,48 @@ class FormField extends ActiveRecord
         $this->writeDecodedOptions($decoded);
     }
 
+    /**
+     * Whether this question is treated as personal data for CSV export.
+     * Defaults on for email, respondent IP, and panel name/email attributes.
+     */
+    public function isContainsPii(): bool
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && !array_is_list($decoded) && array_key_exists('pii', $decoded)) {
+            return !empty($decoded['pii']);
+        }
+        return $this->defaultContainsPii();
+    }
+
+    public function defaultContainsPii(): bool
+    {
+        if ($this->type === self::TYPE_EMAIL) {
+            return true;
+        }
+        if ($this->type === self::TYPE_RESPONDENT_META) {
+            return $this->getRespondentMetaKey() === RespondentMetaService::KEY_IP;
+        }
+        if ($this->type === self::TYPE_PANEL_ATTR) {
+            return in_array($this->getPanelAttrKey(), [
+                PanelFieldService::KEY_FIRST,
+                PanelFieldService::KEY_LAST,
+                PanelFieldService::KEY_EMAIL,
+                PanelFieldService::KEY_DISPLAY,
+            ], true);
+        }
+        return false;
+    }
+
+    public function setContainsPii(bool $pii): void
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => array_values($decoded)];
+        }
+        $decoded['pii'] = $pii;
+        $this->writeDecodedOptions($decoded);
+    }
+
     public function getDefaultValue(): string
     {
         $decoded = $this->decodedOptions();
@@ -1820,6 +1862,7 @@ class FormField extends ActiveRecord
             'options' => $this->getOptionsAsText(),
             'option_items' => self::isChoiceType($this->type) ? $this->getChoicePairs() : [],
             'hidden' => $this->isHiddenFromRespondent() ? '1' : '',
+            'pii' => $this->isContainsPii() ? '1' : '',
             'default_value' => $this->getDefaultValue(),
             'meta_key' => $this->getRespondentMetaKey(),
             'panel_key' => $this->getPanelAttrKey(),
@@ -2003,6 +2046,10 @@ class FormField extends ActiveRecord
             'condition_value' => $payload['condition_value'] ?? '',
         ];
 
+        if (array_key_exists('pii', $payload)) {
+            $row['pii'] = !empty($payload['pii']) ? '1' : '';
+        }
+
         return $row;
     }
 
@@ -2118,6 +2165,9 @@ class FormField extends ActiveRecord
         }
         if ($field->type === self::TYPE_PANEL_ATTR) {
             $field->setPanelAttrKey((string)($row['panel_key'] ?? ''));
+        }
+        if ($field->collectsAnswer()) {
+            $field->setContainsPii(array_key_exists('pii', $row) ? !empty($row['pii']) : $field->defaultContainsPii());
         }
         return $field;
     }

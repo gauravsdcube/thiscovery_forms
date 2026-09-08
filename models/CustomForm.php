@@ -1465,6 +1465,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $this->setSetting('test_token', self::generateShareToken());
         }
         $this->persistCompletionSettings();
+        \humhub\modules\thiscoveryForms\services\ExportSettings::persistFromRequest($this);
     }
 
     protected function persistCompletionSettings(): void
@@ -2084,6 +2085,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
             if ($type === FormField::TYPE_PANEL_ATTR) {
                 $field->setPanelAttrKey((string)($row['panel_key'] ?? $field->getPanelAttrKey()));
+            }
+            if ($field->collectsAnswer()) {
+                $field->setContainsPii(array_key_exists('pii', $row) ? !empty($row['pii']) : $field->defaultContainsPii());
             }
             if ($field->isHiddenFromRespondent()) {
                 $field->required = false;

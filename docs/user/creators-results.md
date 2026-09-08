@@ -49,9 +49,13 @@ On the Answers export, choose **Export headers**:
 - **Variable names** — the field variable ids
 - **Variable and label** — both
 
+Which columns appear, and whether personal data is scrubbed, is set once under **Settings → Export**. Every **Export CSV** button (Answers, Dashboard, Response integrity) uses that set.
+
+**Scrub PII** (off by default) omits identity and PII-tagged columns and replaces emails, phone numbers, and IP addresses in remaining cells with `[redacted]`. The file is named `*-scrubbed.csv`. Answers in the database are unchanged.
+
 CSV export adds quality score, integrity status, analysis status, and flags when Response integrity is in use. Incomplete rows are included only when you kept incomplete responses. Preview answers are not included. Excluded responses are omitted from CSV unless you choose **Export including excluded**. Filter the Answers list (Trusted only, minimum score, flag type) before export if you want a subset.
 
-Files uploaded on the form are not the CSV itself; they are stored as HumHub files and referenced from the response.
+Files uploaded on the form are not the CSV itself; they are stored as HumHub files and referenced from the response. If a file question is tagged as personal data and scrubbing is on, the file **name** column is omitted.
 
 ## Notifications
 

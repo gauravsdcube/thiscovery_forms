@@ -10,6 +10,7 @@ use humhub\modules\thiscoveryForms\models\SubmitForm;
 use humhub\modules\thiscoveryForms\notifications\FormAnsweredNotification;
 use humhub\modules\thiscoveryForms\services\DashboardService;
 use humhub\modules\thiscoveryForms\services\ExportService;
+use humhub\modules\thiscoveryForms\services\ExportSettings;
 use humhub\modules\thiscoveryForms\services\FolderService;
 use humhub\modules\thiscoveryForms\services\FormListService;
 use Yii;
@@ -399,7 +400,7 @@ class FormController extends ContentContainerController
         }
 
         $csv = (new ExportService())->toCsv($form, Yii::$app->request->queryParams);
-        $filename = 'form-' . $form->id . '-' . date('Ymd-His') . '.csv';
+        $filename = ExportSettings::downloadFilename($form);
 
         Yii::$app->response->format = Response::FORMAT_RAW;
         Yii::$app->response->headers->set('Content-Type', 'text/csv; charset=UTF-8');

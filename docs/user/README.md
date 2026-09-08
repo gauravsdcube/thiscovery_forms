@@ -20,4 +20,4 @@ Suggested page tree:
    8. [Panels, waves, and email](creators-panels.md)
    9. [Form types](creators-form-types.md)
 
-Written for Thiscovery Forms **1.24.1**.
+Written for Thiscovery Forms **1.25.0**.

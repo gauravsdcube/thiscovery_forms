@@ -32,7 +32,12 @@ $card = static function (string $label, $value, ?string $filter = null) use ($fo
         <div class="cf-dash-actions">
             <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Answers'))->link(Url::toAnswers($formModel))->sm()->loader(false) ?>
             <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Form dashboard'))->link(Url::toDashboard($formModel))->sm()->loader(false) ?>
-            <?= Button::info(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))->link(Url::toExport($formModel))->sm()->loader(false) ?>
+            <?= $this->render('_export_csv_button', [
+                'formModel' => $formModel,
+                'exportParams' => [],
+                'style' => 'info',
+                'showIcon' => false,
+            ]) ?>
         </div>
     </div>
     <div class="cf-stat-grid">

@@ -172,7 +172,7 @@ $openTab = (string)Yii::$app->request->get('tab', 'builder');
 $openSection = (string)Yii::$app->request->get('section', 'basics');
 $formSettingSections = ['basics', 'end', 'access', 'display', 'sharing', 'enrol', 'email', 'languages', 'actions', 'consensus'];
 $settingsNavSections = array_merge($formSettingSections, [
-    'integrity', 'css', 'share', 'translations', 'versions', 'panel', 'rounds', 'approval',
+    'integrity', 'css', 'share', 'export', 'translations', 'versions', 'panel', 'rounds', 'approval',
 ]);
 if ($openTab !== 'builder' && $openTab !== 'settings') {
     if (in_array($openTab, $settingsNavSections, true)) {
@@ -250,6 +250,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                'translations' => Url::toHelp($contentContainer, 'creators-settings'),
                'css' => Url::toHelp($contentContainer, 'creators-settings'),
                'share' => Url::toHelp($contentContainer, 'creators-results'),
+               'export' => Url::toHelp($contentContainer, 'creators-settings'),
                'versions' => Url::toHelp($contentContainer, 'creators-versioning'),
            ])) ?>">
             <i class="fa fa-question-circle" aria-hidden="true"></i>
@@ -616,6 +617,13 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 </button>
             <?php endif; ?>
         </div>
+                </section>
+
+                <section class="cf-settings-pane<?= $openSection === 'export' ? ' is-active' : '' ?>" data-cf-settings-pane="export" role="tabpanel"<?= $openSection === 'export' ? '' : ' hidden' ?>>
+                    <?= $this->render('_studio_export', [
+                        'formModel' => $formModel,
+                        'fieldList' => $fieldList,
+                    ]) ?>
                 </section>
             </div>
         </div>

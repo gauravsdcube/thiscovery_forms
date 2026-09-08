@@ -62,6 +62,7 @@ class QuestionImportExportService
         'carry_mode',
         'prefill_profile',
         'hidden',
+        'pii',
         'default_value',
         'meta_key',
         'logic_action',
@@ -243,6 +244,9 @@ class QuestionImportExportService
             }
             if (!is_array($payload['logic_rules'])) {
                 $payload['logic_rules'] = [];
+            }
+            if (array_key_exists('pii', $map)) {
+                $payload['pii'] = $this->cellBool($map['pii']);
             }
             $payloads[] = $payload;
         }

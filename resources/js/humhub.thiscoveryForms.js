@@ -299,6 +299,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-help-wrap]').toggleClass('d-none', hideHelp);
             $own.find('[data-cf-hidden-wrap]').toggleClass('d-none', isPage || type === 'question_group' || type === 'group_end' || isRich);
             $own.find('[data-cf-attention-wrap]').toggleClass('d-none', hideRequired || isMeta || isPanelAttr);
+            var htmlCollect = isHtml && $own.find('[name$="[html_collect]"]').is(':checked');
+            $own.find('[data-cf-pii-wrap]').toggleClass('d-none', isPage || type === 'question_group' || type === 'group_end' || isRich || (isHtml && !htmlCollect));
             $own.find('[data-cf-hidden-field]').prop('disabled', isMeta);
             if (isMeta) {
                 $own.find('[data-cf-hidden-field]').prop('checked', true);
@@ -773,6 +775,20 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $body.children('[data-cf-group-empty]').toggleClass('d-none', hasKids);
         };
 
+        var applyDefaultPii = function ($row) {
+            var $own = ownCard($row);
+            var type = $own.find('[data-cf-field-type]').val() || '';
+            var metaKey = String($own.find('[data-cf-meta-key]').val() || '');
+            var panelKey = String($own.find('[data-cf-panel-key]').val() || '');
+            var identity = ['first_name', 'last_name', 'email', 'display_name'];
+            var on = type === 'email'
+                || (type === 'respondent_meta' && (metaKey === 'ip' || !metaKey))
+                || (type === 'panel_attr' && identity.indexOf(panelKey) !== -1);
+            if (on) {
+                $own.find('[data-cf-pii-field]').prop('checked', true);
+            }
+        };
+
         var createFieldRow = function (type, opts) {
             type = type || 'text';
             opts = opts || {};
@@ -813,6 +829,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 refreshActionParams($(this));
             });
             refreshTypeUi($row);
+            applyDefaultPii($row);
             return $row;
         };
 
@@ -950,7 +967,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         var formPanes = {
             basics: 1, end: 1, access: 1, display: 1, sharing: 1,
             enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
-            integrity: 1, css: 1, share: 1
+            integrity: 1, css: 1, share: 1, export: 1
         };
         var extraSections = {
             panel: 1, rounds: 1, approval: 1, translations: 1, versions: 1
@@ -958,7 +975,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         var footerSections = {
             basics: 1, end: 1, access: 1, display: 1, sharing: 1,
             enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
-            integrity: 1, css: 1, share: 1
+            integrity: 1, css: 1, share: 1, export: 1
         };
 
         var activateTopTab = function (tab, section) {
@@ -1072,6 +1089,42 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('click', '[data-cf-settings-nav]', function (e) {
             e.preventDefault();
             activateSettingsSection($(this).attr('data-cf-settings-nav'));
+        });
+
+        var syncExportLocks = function () {
+            var on = $root.find('[data-cf-export-scrub]').is(':checked');
+            $root.find('[data-cf-export-pii-note]').toggleClass('d-none', !on);
+            $root.find('[data-cf-export-col]').each(function () {
+                var $cb = $(this);
+                var lock = $cb.attr('data-cf-export-lock') === '1';
+                var $label = $cb.closest('.cf-export-col');
+                var pref = $cb.attr('data-cf-export-pref') === '1';
+                $label.find('[data-cf-export-lock-hold]').remove();
+                if (lock && on) {
+                    $cb.prop('checked', false).prop('disabled', true);
+                    $label.addClass('is-locked');
+                    if (pref) {
+                        $('<input type="hidden" name="export_include[]" data-cf-export-lock-hold="true">')
+                            .val($cb.val())
+                            .insertBefore($cb);
+                    }
+                } else {
+                    $cb.prop('disabled', false).prop('checked', pref);
+                    $label.removeClass('is-locked');
+                }
+            });
+        };
+        $root.on('change', '[data-cf-export-scrub]', syncExportLocks);
+        $root.on('change', '[data-cf-export-col]', function () {
+            $(this).attr('data-cf-export-pref', $(this).is(':checked') ? '1' : '0');
+        });
+        $root.on('click', '[data-cf-export-all], [data-cf-export-none]', function (e) {
+            e.preventDefault();
+            var group = $(this).attr('data-cf-export-all') || $(this).attr('data-cf-export-none');
+            var check = $(this).is('[data-cf-export-all]');
+            $root.find('[data-cf-export-group="' + group + '"] [data-cf-export-col]:not(:disabled)').each(function () {
+                $(this).prop('checked', check).attr('data-cf-export-pref', check ? '1' : '0');
+            });
         });
 
         var syncEnrol = function () {
@@ -2211,10 +2264,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             renderHotspotBuilder($row);
         });
 
+        $root.on('change', '[name$="[html_collect]"]', function () {
+            refreshTypeUi($(this).closest('.thiscovery-forms-field-row'));
+        });
+
         $root.on('change', '[data-cf-field-type]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
             var type = String($(this).val() || '');
             refreshTypeUi($row);
+            applyDefaultPii($row);
             if (type === 'question_group') {
                 var $body = $row.find('[data-cf-group-body]').first();
                 if ($body.length && !$body.children('[data-cf-type="group_end"]').length) {
@@ -2357,6 +2415,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 $label.val(labels[next] || cur);
             }
             refreshTypeUi($row);
+            applyDefaultPii($row);
         });
 
         $root.on('change', '[data-cf-panel-key]', function () {
@@ -2373,6 +2432,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 $label.val(labels[next] || cur);
             }
             refreshTypeUi($row);
+            applyDefaultPii($row);
         });
 
         $root.on('change', '[data-cf-condition-field], [data-cf-branch-field], [data-cf-carry-from]', function () {

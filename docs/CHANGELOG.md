@@ -2,6 +2,13 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.25.0 (September 8, 2026)
+
+- Enh: **Settings → Export** — choose which answers-CSV columns to include; new questions stay included until excluded
+- Enh: **Scrub PII** on Export omits identity/personal-data columns, redacts emails, phones, and IPs in remaining cells, and names the file `*-scrubbed.csv`
+- Enh: Builder **Contains personal data (PII)** on questions (on by default for email, IP, and panel name/email)
+- Change: Answers, Dashboard, and Integrity **Export CSV** always use the saved Export settings (header labels still chosen on Answers)
+
 ## 1.24.2 (September 8, 2026)
 
 - Fix: Filling a published edition no longer crashes when snapshot question IDs were replaced (import/restore); answers map onto the live questions

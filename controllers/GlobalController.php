@@ -14,6 +14,7 @@ use humhub\modules\thiscoveryForms\permissions\CreateGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\services\DashboardService;
 use humhub\modules\thiscoveryForms\services\ExportService;
+use humhub\modules\thiscoveryForms\services\ExportSettings;
 use humhub\modules\thiscoveryForms\services\FolderService;
 use humhub\modules\thiscoveryForms\services\FormListService;
 use Yii;
@@ -449,7 +450,7 @@ class GlobalController extends Controller
         }
 
         $csv = (new ExportService())->toCsv($form, Yii::$app->request->queryParams);
-        $filename = 'form-' . $form->id . '-' . date('Ymd-His') . '.csv';
+        $filename = ExportSettings::downloadFilename($form);
 
         Yii::$app->response->format = Response::FORMAT_RAW;
         Yii::$app->response->headers->set('Content-Type', 'text/csv; charset=UTF-8');

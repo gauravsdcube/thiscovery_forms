@@ -76,7 +76,7 @@ class HelpService
             'creators-settings' => [
                 'file' => 'creators-settings.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Form settings'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, emails, languages, and custom functions.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, export CSV columns, emails, languages, and custom functions.'),
                 'icon' => 'wrench',
             ],
             'creators-versioning' => [
@@ -94,7 +94,7 @@ class HelpService
             'creators-results' => [
                 'file' => 'creators-results.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Sharing and results'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Share links, preview, dashboards, and CSV export.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Share links, preview, dashboards, CSV columns, and PII scrubbing.'),
                 'icon' => 'bar-chart',
             ],
             'creators-panels' => [

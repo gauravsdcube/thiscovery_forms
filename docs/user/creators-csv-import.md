@@ -36,6 +36,7 @@ Download **Sample CSV** from Share if you want a working file to copy.
 | `required` | `1` / `yes` if required, otherwise `0` or blank. |
 | `options` | One choice per line in the cell. Used by radio, checkbox, dropdown, and ranking. Use `code \| Label` for an internal code (matches studio Internal code + Participant label). |
 | `hidden` | `1` to hide the question from respondents (internal variable). |
+| `pii` | `1` if the question contains personal data (used by **Settings → Export → Scrub PII**). Omit the column to keep the type default (on for email, IP, and panel name/email). |
 | `default_value` | Value stored when the question is hidden. |
 | `meta_key` | For `respondent_meta`: `ip`, `browser`, `os`, `device`, `screen`, `language`, `timezone`, or `userAgent`. |
 | `page_key` | Stable id for this **page** (page break rows). Used by skip logic and “go to page”. |

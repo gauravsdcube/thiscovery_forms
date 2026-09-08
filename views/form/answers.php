@@ -92,11 +92,12 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
                     ->icon('folder-open')
                     ->loader(false) ?>
             <?php endif; ?>
-            <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Export CSV'))
-                ->link(Url::toExport($formModel, $exportParams))
-                ->sm()
-                ->icon('download')
-                ->loader(false) ?>
+            <?= $this->render('_export_csv_button', [
+                'formModel' => $formModel,
+                'exportParams' => $exportParams,
+                'style' => 'primary',
+                'showIcon' => true,
+            ]) ?>
             <div class="dropdown d-inline-block">
                 <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Export headers') ?>

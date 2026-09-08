@@ -69,6 +69,7 @@ $navItem = static function (string $section, string $title, string $icon, string
         <div class="cf-palette__group">
             <div class="cf-palette__group-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Publish') ?></div>
             <?= $navItem('share', Yii::t('ThiscoveryFormsModule.base', 'Share'), 'fa-link', Yii::t('ThiscoveryFormsModule.base', 'Links, import, templates')) ?>
+            <?= $navItem('export', Yii::t('ThiscoveryFormsModule.base', 'Export'), 'fa-download', Yii::t('ThiscoveryFormsModule.base', 'CSV columns and PII scrubbing')) ?>
             <?php if (!$isNew && \humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()): ?>
                 <?= $navItem('versions', Yii::t('ThiscoveryFormsModule.base', 'Versions'), 'fa-history', Yii::t('ThiscoveryFormsModule.base', 'Revisions and published editions')) ?>
             <?php endif; ?>

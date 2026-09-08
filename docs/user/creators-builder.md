@@ -44,6 +44,8 @@ Each question can also have:
 
 **Hidden from respondents:** tick this on any question to store an internal variable. People filling the form never see it. Set a **Stored value** if you want a fixed code on every response. Logic, piping, and export still use the stored value.
 
+**Contains personal data (PII):** tick this on an answer-collecting question so **Settings → Export → Scrub PII** will omit that column from the answers CSV. Email questions, respondent IP, and panel name/email fields are tagged by default. You can tag any other question (for example a free-text name). This does not change what is stored, only what the CSV includes when scrubbing is on.
+
 **Attention check:** tick this on an instructed-response question (for example “Please select Agree”) and type the expected answer. Pass and fail are stored on the response. They add to the quality score; they do not auto-reject. Turn on **Attention checks** under **Settings → Response integrity**.
 
 **Choices:** in the studio, each option has an optional **Internal code** and a required **Participant label**. Respondents only see the label. Answers, logic, and CSV export use the code when you set one. If you set a code on any choice, every choice on that question needs a code. In CSV import you can still write `code | Label` on one line.

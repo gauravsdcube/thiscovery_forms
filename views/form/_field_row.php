@@ -184,6 +184,18 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Hidden from respondents') ?>
                     </label>
                 </div>
+                <div class="cf-switch mt-2<?= $isAnswerable ? '' : ' d-none' ?>" data-cf-pii-wrap>
+                    <label>
+                        <?= Html::hiddenInput($namePrefix . '[pii]', '0') ?>
+                        <?= Html::checkbox($namePrefix . '[pii]', $field->isContainsPii(), [
+                            'value' => '1',
+                            'uncheck' => null,
+                            'data-cf-pii-field' => true,
+                        ]) ?>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Contains personal data (PII)') ?>
+                    </label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Tag this question as personal data. When Scrub PII is on in Settings → Export, this column is omitted from the answers CSV. Email, IP address, and panel name/email fields are tagged by default.')]) ?>
+                </div>
                 <div class="cf-switch mt-2<?= $isAnswerable ? '' : ' d-none' ?>" data-cf-attention-wrap>
                     <div class="cf-field">
                         <label>
