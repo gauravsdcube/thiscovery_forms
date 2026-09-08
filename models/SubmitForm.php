@@ -506,16 +506,25 @@ class SubmitForm extends Model
             $existingFields[$af->field_id] = $af;
         }
 
+        $liveFieldIds = array_flip(FormField::find()
+            ->select('id')
+            ->where(['form_id' => (int)$this->form->id])
+            ->column());
+
         foreach ($this->form->fields as $field) {
             if (!$field->collectsAnswer()) {
                 continue;
             }
+            $fieldId = (int)$field->id;
+            if ($fieldId < 1 || !isset($liveFieldIds[$fieldId])) {
+                continue;
+            }
             $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
-            $value = $visible ? ($this->values[$field->id] ?? null) : null;
+            $value = $visible ? ($this->values[$fieldId] ?? null) : null;
 
             if (!$visible || $this->isEmptyValue($value)) {
-                if (isset($existingFields[$field->id])) {
-                    $existingFields[$field->id]->delete();
+                if (isset($existingFields[$fieldId])) {
+                    $existingFields[$fieldId]->delete();
                 }
                 continue;
             }
@@ -524,9 +533,9 @@ class SubmitForm extends Model
                 $value = $this->scoreImageArea($field, is_array($value) ? $value : []);
             }
 
-            $af = $existingFields[$field->id] ?? new FormAnswerField();
+            $af = $existingFields[$fieldId] ?? new FormAnswerField();
             $af->answer_id = $answer->id;
-            $af->field_id = $field->id;
+            $af->field_id = $fieldId;
             $af->value = $this->encodeValue($value);
             $af->justification = $field->supportsJustification()
                 ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)

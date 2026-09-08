@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.24.2 (September 8, 2026)
+
+- Fix: Filling a published edition no longer crashes when snapshot question IDs were replaced (import/restore); answers map onto the live questions
+
 ## 1.24.1 (September 8, 2026)
 
 - Fix: **Publish current draft** now saves the studio first, so the live form uses the questions you just edited instead of the previous saved snapshot

@@ -214,9 +214,127 @@ class FormSnapshotService
             ]);
             $fields[] = $field;
         }
+        $this->bindHydratedFieldsToLiveRows($form, $fields);
         unset($form->fields);
         $form->populateRelation('fields', $fields);
         $form->syncSettingsAttributes();
+    }
+
+    /**
+     * Snapshot field IDs can be stale after import/replace. Answers still FK to
+     * custom_form_field, so map each hydrated field onto a live row.
+     *
+     * @param FormField[] $fields
+     */
+    protected function bindHydratedFieldsToLiveRows(CustomForm $form, array $fields): void
+    {
+        if (!$form->id || $fields === []) {
+            return;
+        }
+
+        /** @var FormField[] $live */
+        $live = FormField::find()->where(['form_id' => (int)$form->id])->all();
+        $byId = [];
+        $byVar = [];
+        $byLabelType = [];
+        foreach ($live as $row) {
+            $byId[(int)$row->id] = $row;
+            $var = strtolower(trim((string)$row->variable));
+            if ($var !== '') {
+                $byVar[$var][] = $row;
+            }
+            $byLabelType[mb_strtolower(trim((string)$row->label)) . "\0" . $row->type][] = $row;
+        }
+
+        $used = [];
+        $pick = static function (array $candidates) use (&$used): ?FormField {
+            foreach ($candidates as $candidate) {
+                if (!isset($used[(int)$candidate->id])) {
+                    return $candidate;
+                }
+            }
+            return $candidates[0] ?? null;
+        };
+
+        $idMap = [];
+        foreach ($fields as $field) {
+            $oldId = (int)$field->id;
+            $resolved = ($oldId && isset($byId[$oldId])) ? $byId[$oldId] : null;
+            if (!$resolved) {
+                $var = strtolower(trim((string)$field->variable));
+                if ($var !== '' && !empty($byVar[$var])) {
+                    $resolved = $pick($byVar[$var]);
+                }
+            }
+            if (!$resolved) {
+                $labelKey = mb_strtolower(trim((string)$field->label)) . "\0" . $field->type;
+                if (!empty($byLabelType[$labelKey])) {
+                    $resolved = $pick($byLabelType[$labelKey]);
+                }
+            }
+            if ($resolved) {
+                $newId = (int)$resolved->id;
+                if ($oldId) {
+                    $idMap[$oldId] = $newId;
+                }
+                $field->id = $newId;
+                $used[$newId] = true;
+                continue;
+            }
+            Yii::warning(
+                'Thiscovery Forms snapshot field #' . $oldId
+                . ' has no live custom_form_field row; answers for it will be skipped.',
+                'thiscovery-forms'
+            );
+        }
+
+        if ($idMap === []) {
+            return;
+        }
+
+        $mapKey = static function (string $key) use ($idMap): string {
+            if ($key !== '' && ctype_digit($key) && isset($idMap[(int)$key])) {
+                return (string)$idMap[(int)$key];
+            }
+            return $key;
+        };
+
+        foreach ($fields as $field) {
+            $logic = $field->getLogic();
+            $changed = false;
+            foreach ($logic['rules'] as $i => $rule) {
+                $next = $mapKey((string)($rule['fieldKey'] ?? ''));
+                if ($next !== (string)($rule['fieldKey'] ?? '')) {
+                    $logic['rules'][$i]['fieldKey'] = $next;
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $field->setLogic($logic);
+            }
+
+            if ($field->type === FormField::TYPE_PAGE_BREAK) {
+                $cfg = $field->getPageBreakConfig();
+                $branchChanged = false;
+                foreach ($cfg['branches'] as $i => $branch) {
+                    $next = $mapKey((string)($branch['fieldKey'] ?? ''));
+                    if ($next !== (string)($branch['fieldKey'] ?? '')) {
+                        $cfg['branches'][$i]['fieldKey'] = $next;
+                        $branchChanged = true;
+                    }
+                }
+                if ($branchChanged) {
+                    $field->setPageBreakConfig($cfg);
+                }
+            }
+
+            $carry = $field->getCarryForward();
+            $from = (string)($carry['from'] ?? '');
+            $mappedFrom = $mapKey($from);
+            if ($mappedFrom !== $from) {
+                $field->setCarryForward($mappedFrom, (string)($carry['mode'] ?? FormField::CARRY_SELECTED));
+            }
+        }
     }
 
     protected function importTranslations(CustomForm $form, array $translations): void
