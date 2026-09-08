@@ -2,7 +2,7 @@
 
 This page is for people who enable the module, choose which form types are available, and decide who can create, fill, and see answers. Form creators have their own pages.
 
-Thiscovery Forms lets teams build surveys, polls, feedback forms, projects, consensus rounds, and repeating-wave studies at **space** level or **network (global)** level. Rich text, thank-you pages, and email templates use **Thiscovery Editor**. Official EQ-5D instrument text is not included; the EQ-5D type is a layout only.
+Thiscovery Forms lets teams build surveys, polls, feedback forms, projects, consensus rounds, and repeating-wave studies at **space** level or **network (global)** level. Rich text, thank-you pages, and email templates use **Thiscovery Editor**.
 
 ## Enable the module
 
@@ -30,7 +30,6 @@ Available types:
 | Survey | Multi-page form with any question type |
 | Quick poll | One question, often embedded on a page or stream |
 | Feedback form | Short rating plus comments, ready to edit |
-| EQ-5D survey | Five one-question pages plus a 0–100 thermometer; repeating waves |
 | Longitudinal survey | The same panel answers repeating waves |
 | Consensus / Delphi | Multi-round consensus with summaries between rounds |
 | Project | Structured record with approval stages and a published catalogue |
@@ -39,17 +38,24 @@ If a type is missing on the Create screen, it is almost always switched off here
 
 ### Waves
 
-EQ-5D surveys and longitudinal surveys **always** use waves. Ordinary surveys only get a **Panel & waves** tab when both of the following are true:
+Longitudinal surveys **always** use waves. On Survey and related types, creators tick **Use waves** on **Settings → Who can take part**, then configure the panel and schedule under **Settings → Panel & waves**.
 
-1. **Allow waves on ordinary surveys** is on in this configuration, and
-2. The survey itself has **Use waves** ticked on its Settings tab.
-
-**Wave calendar** (wave scope):
+**Where waves live** is set on each form that uses waves:
 
 - **Per survey** — each form opens and closes its own waves. Use this when studies run on different calendars.
 - **Per panel** — the panel has one calendar. Every attached form uses the wave that is currently open on that panel. Invite emails are still sent from each form.
 
-Changing wave scope affects how creators schedule fieldwork. Agree this before a study goes live.
+Agree the wave scope with creators before a study goes live.
+
+### Response integrity defaults
+
+**Response integrity** is **off until you tick Enable integrity checks**. That checkbox is on this page (site default) and on each survey under **Settings → Response integrity**. Scores and integrity metadata are stored only when it is on. The rest of the section is site-wide defaults (CAPTCHA provider, optional Turnstile keys, weights, and so on) that surveys can inherit or override.
+
+**CAPTCHA:** HumHub Altcha is the default and needs no keys. Cloudflare Turnstile **site** and **secret** keys are only stored here and are used only when the CAPTCHA provider is set to Turnstile. Surveys cannot supply a different Turnstile key. An optional open-rate CAPTCHA gate can challenge before the fill page when opens exceed the configured count and window.
+
+The product combines several signals. It does not treat a single fast completion, shared IP, or failed attention check as proof of fraud. Automatic exclusion stays **off** unless you switch it on, and even then it needs more than one signal type.
+
+Creators’ guide: [Response integrity](creators-response-integrity.md).
 
 ## Permissions
 
@@ -94,16 +100,25 @@ Give these only to groups that should run site-wide studies. Space permissions d
 | Where it lives | One space | The network |
 | Who creates it | Create forms in that space | Create global forms |
 | Audience | Space members, plus guests if the form allows | Anyone the form and global permissions allow |
-| Menu | Optional **Show in space menu** on the form | Site navigation, if you add it |
+| Menu | Optional **Show in side menu** on the form | Site navigation, if you add it |
 
 Use a space when a community or project owns the work. Use a global form when the same instrument must appear once for the whole network.
 
 ## Dependencies and site settings
 
 - **Thiscovery Editor** must be enabled. Form descriptions, thank-you pages, rich-text blocks, and email templates use it.
+- **Thiscovery Versioning** (optional) — when enabled for Forms, creators publish editions before Opening a form. Configure under **Administration → Modules → Thiscovery Versioning**.
 - **Email** must work (HumHub mailer / SMTP). Invites, reminders, resume codes, and action emails will otherwise fail silently from the respondent’s point of view.
 - **Guests** must be allowed on the site if you want truly public fill links. HumHub’s guest access and the form’s **Allow anonymous submissions** both need to be on.
 - File-upload questions use HumHub file storage. Check upload size limits if respondents attach large files.
+
+### Fill page display
+
+Under **Fill page display**, set site defaults for whether participants see the form title, description, progress bar, and page numbers. Creators can override each control per form on **Settings → Participant display** (Use site default / Show / Hide).
+
+### Appearance themes
+
+Under **Appearance themes**, create, import, export, and set a default fill-page theme. Creators apply a theme on **Settings → CSS**. Updating a shared theme updates every form that uses it; form-level colour and CSS overrides still win.
 
 ## Folders
 
@@ -115,24 +130,23 @@ Deleting a form from the list or from the studio **permanently removes** the for
 
 ## Headerless fill pages
 
-Creators can tick **Hide HumHub header** so respondents see only the form (no top bar or space menu). Opening those forms from inside HumHub does a full page load so the header actually hides. That is expected, not a broken theme.
-
-## EQ-5D and licensing
-
-The **EQ-5D survey** type supplies a five-page layout and a vertical 0–100 scale. It does **not** ship official EuroQol wording. Your organisation must hold the right licence and paste licensed text and copyright onto each page. CSV export can include a five-digit health profile and a VAS score (blank stored as 999) for teams that analyse licensed data themselves.
+Creators can tick **Run without HumHub header** so respondents see only the form (no top bar or space menu). Opening those forms from inside HumHub does a full page load so the header actually hides. That is expected, not a broken theme.
 
 ## Checklist before the first live study
 
 1. Module enabled globally and on the relevant spaces.
 2. Form types you actually use are ticked; unused types are off to keep Create simple.
-3. Wave scope agreed (per survey vs per panel); waves on ordinary surveys on or off as needed.
-4. Space and/or group permissions set.
-5. Thiscovery Editor enabled; outbound email tested.
-6. Guest access decided if public links are required.
-7. At least one person with Manage can reach dashboards and CSV.
+3. Wave scope agreed with creators (per survey vs per panel on each wave-enabled form).
+4. Fill page display defaults and at least one appearance theme decided if you care about branding.
+5. Thiscovery Versioning enabled for Forms if you want publish-before-Open.
+6. Space and/or group permissions set.
+7. Thiscovery Editor enabled; outbound email tested.
+8. Guest access decided if public links are required.
+9. At least one person with Manage can reach dashboards and CSV.
 
 ## Related pages
 
 - [Getting started](creators-getting-started.md) (form creators)
+- [Response integrity](creators-response-integrity.md) (form creators)
 - [Form types](creators-form-types.md) (form creators)
 - [Panels, waves, and email](creators-panels.md) (form creators)

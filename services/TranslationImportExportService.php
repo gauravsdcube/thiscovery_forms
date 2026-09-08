@@ -358,10 +358,12 @@ class TranslationImportExportService
             if ($field->type === FormField::TYPE_GRID_SINGLE || $field->type === FormField::TYPE_GRID_MULTI) {
                 $grid = $field->getGridConfig();
                 foreach ($grid['rows'] as $i => $row) {
-                    $this->pushUnit($units, "field.$id.grid_row.$i", $type, 'grid_row', (string)$row, $id, true, (int)$i);
+                    $text = is_array($row) ? (string)($row['label'] ?? $row['value'] ?? '') : (string)$row;
+                    $this->pushUnit($units, "field.$id.grid_row.$i", $type, 'grid_row', $text, $id, true, (int)$i);
                 }
                 foreach ($grid['columns'] as $i => $col) {
-                    $this->pushUnit($units, "field.$id.grid_column.$i", $type, 'grid_column', (string)$col, $id, true, (int)$i);
+                    $text = is_array($col) ? (string)($col['label'] ?? $col['value'] ?? '') : (string)$col;
+                    $this->pushUnit($units, "field.$id.grid_column.$i", $type, 'grid_column', $text, $id, true, (int)$i);
                 }
             }
             if ($field->type === FormField::TYPE_BEST_WORST || $field->type === FormField::TYPE_MAXDIFF) {
@@ -563,10 +565,31 @@ class TranslationImportExportService
             $current = is_array($data[$listKey] ?? null) ? $data[$listKey] : [];
             $merged = [];
             foreach ($source as $i => $src) {
-                $existing = trim((string)($current[$i] ?? ''));
-                $merged[$i] = $existing !== '' ? $existing : (string)$src;
+                $existing = $current[$i] ?? null;
+                if (is_array($existing) && (isset($existing['label']) || isset($existing['code']) || isset($existing['value']))) {
+                    $merged[$i] = $existing;
+                    continue;
+                }
+                $existingText = trim((string)($existing ?? ''));
+                if (is_array($src)) {
+                    $merged[$i] = [
+                        'code' => (string)($src['code'] ?? ''),
+                        'label' => $existingText !== '' ? $existingText : (string)($src['label'] ?? $src['value'] ?? ''),
+                    ];
+                } else {
+                    $merged[$i] = $existingText !== '' ? $existingText : (string)$src;
+                }
             }
-            $merged[$index] = $value;
+            if (is_array($source[$index] ?? null)) {
+                $base = $merged[$index] ?? $source[$index];
+                if (!is_array($base)) {
+                    $base = ['code' => '', 'label' => (string)$base];
+                }
+                $base['label'] = $value;
+                $merged[$index] = $base;
+            } else {
+                $merged[$index] = $value;
+            }
             ksort($merged);
             $data[$listKey] = array_values($merged);
         }

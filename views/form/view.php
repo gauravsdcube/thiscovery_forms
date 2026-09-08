@@ -11,7 +11,10 @@ use humhub\modules\thiscoveryForms\services\FormPager;
 use humhub\modules\thiscoveryForms\services\HtmlSanitizer;
 use humhub\modules\thiscoveryForms\services\TranslationService;
 use humhub\modules\thiscoveryForms\services\VariableSubstitutor;
+use humhub\modules\thiscoveryForms\services\integrity\IntegritySettings;
 use humhub\widgets\bootstrap\Button;
+use humhub\widgets\form\CaptchaField;
+use yii\base\DynamicModel;
 use yii\helpers\Html;
 use yii\helpers\Json;
 
@@ -30,6 +33,13 @@ $ownDraft = $ownDraft ?? null;
 $startNew = !empty($startNew);
 $editingAnswer = !empty($editingAnswer);
 $isPreview = !empty($isPreview);
+$showCaptcha = !empty($showCaptcha);
+$integritySettings = $integritySettings ?? [];
+$captchaProvider = $captchaProvider
+    ?? (string)($integritySettings['captcha_provider'] ?? IntegritySettings::CAPTCHA_PROVIDER_ALTCHA);
+$integrityEnabled = !empty($integrityEnabled)
+    || \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::isOn($integritySettings, 'enabled');
+$accessToken = $accessToken ?? '';
 
 ThiscoveryFormsAsset::register($this);
 
@@ -39,6 +49,30 @@ $pageKeyIndex = $pager['pageKeyIndex'];
 
 $pagePayload = [];
 $pipe = new VariableSubstitutor();
+
+// Rewrite core file-download URLs to the forms public endpoint so images
+// load for anonymous respondents without hitting Content::canView().
+$formFileBase = Url::toFormFile($formModel);
+$rewriteFileUrls = static function (string $html) use ($formFileBase): string {
+    if ($formFileBase === '') {
+        return $html;
+    }
+    return preg_replace_callback(
+        // Rewrite HumHub core file-download URLs to this module's public endpoint.
+        // Handles both '&download=...' and '&amp;download=...' query encodings.
+        '#(?:https?://[^"\']+)?/file/file/download\?guid=([a-f0-9\-]+)([^"\']*)#i',
+        static function (array $m) use ($formFileBase): string {
+            $guid = $m[1];
+            $rest = $m[2] ?? '';
+            // Normalize raw '&' into '&amp;' so the result remains valid HTML attribute text.
+            if ($rest !== '' && str_starts_with($rest, '&') && !str_starts_with($rest, '&amp;')) {
+                $rest = '&amp;' . substr($rest, 1);
+            }
+            return $formFileBase . '&amp;guid=' . $guid . $rest;
+        },
+        $html
+    );
+};
 $user = Yii::$app->user->identity;
 foreach ($pages as $page) {
     $branches = [];
@@ -86,6 +120,7 @@ $this->registerJsConfig('thiscoveryForms', [
     'startPage' => ($existing && $existing->isInProgress() && $existing->current_page !== null)
         ? (int)$existing->current_page
         : 0,
+    'questionTiming' => $integrityEnabled && !empty($integritySettings['question_timing']),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initFill("#cf-fill");', \yii\web\View::POS_READY);
 
@@ -96,7 +131,7 @@ $canSubmit = $isPreview
         ? $formModel->isOpen()
         : ($existing
             ? ($formModel->canEditOwnAnswer($existing) || $formModel->canManage())
-            : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member)))));
+            : ($formModel->canAnswer() || ($fillContext && ($fillContext->tokenAccess || $fillContext->member)) || $accessToken !== '')));
 if (!$isPreview && $fillContext && $fillContext->blockReason && !$formModel->canManage() && !($existing && $existing->isComplete() && ($formModel->canEditOwnAnswer($existing) || $formModel->canManage()))) {
     $canSubmit = $existing && $existing->isInProgress() ? $canSubmit : false;
 }
@@ -184,27 +219,41 @@ $fillRtl = TranslationService::isRtl($fillLang);
     <?php endif; ?>
 
     <div class="cf-fill-body thiscovery-forms-fill">
+        <?php
+        $displayFlags = $formModel->getDisplayFlags();
+        $showTitle = !empty($displayFlags['show_title']);
+        $showDescription = !empty($displayFlags['show_description']);
+        $showProgress = !empty($displayFlags['show_progress']);
+        $showPageIndicator = !empty($displayFlags['show_page_indicator']);
+        ?>
+        <?php if ($showTitle || ($showDescription && trim((string)$formModel->description) !== '')): ?>
         <header class="cf-fill-hero">
-            <h1 class="cf-fill-hero__title"><?= Html::encode($formModel->title) ?></h1>
-            <?php
-            $enabledLangs = $formModel->getEnabledLanguages();
-            if (count($enabledLangs) > 1):
-                $langLabels = TranslationService::languageLabels();
-                $currentLang = $fillContext->language ?? $formModel->getSourceLanguage();
-            ?>
-                <div class="cf-lang-switch" role="navigation" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>">
-                    <?php foreach ($enabledLangs as $code): ?>
-                        <a class="cf-lang-switch__item<?= $code === $currentLang ? ' is-active' : '' ?>"
-                           href="<?= Html::encode(Url::toFillLanguage($formModel, $code)) ?>">
-                            <?= Html::encode($langLabels[$code] ?? $code) ?>
-                        </a>
-                    <?php endforeach; ?>
-                </div>
+            <?php if ($showTitle): ?>
+                <h1 class="cf-fill-hero__title"><?= Html::encode($formModel->title) ?></h1>
             <?php endif; ?>
-            <?php if (trim((string)$formModel->description) !== ''): ?>
+            <?php if ($showDescription && trim((string)$formModel->description) !== ''): ?>
                 <div class="cf-fill-hero__desc"><?= nl2br(Html::encode($formModel->description)) ?></div>
             <?php endif; ?>
         </header>
+        <?php endif; ?>
+        <?php
+        $enabledLangs = $formModel->getEnabledLanguages();
+        if (count($enabledLangs) > 1):
+            $langLabels = TranslationService::languageLabels();
+            if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
+                $langLabels = array_merge($langLabels, \humhub\modules\thiscoveryTranslate\services\LocaleMap::labels());
+            }
+            $currentLang = $fillContext->language ?? $formModel->getSourceLanguage();
+        ?>
+            <div class="cf-lang-switch" role="navigation" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>">
+                <?php foreach ($enabledLangs as $code): ?>
+                    <a class="cf-lang-switch__item<?= $code === $currentLang ? ' is-active' : '' ?>"
+                       href="<?= Html::encode(Url::toFillLanguage($formModel, $code)) ?>">
+                        <?= Html::encode($langLabels[$code] ?? $code) ?>
+                    </a>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
         <?php if ($isPreview): ?>
             <div class="alert alert-warning cf-preview-banner">
                 <strong><?= Yii::t('ThiscoveryFormsModule.base', 'Test mode') ?></strong>
@@ -243,17 +292,21 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <div class="alert alert-warning"><?= Yii::t('ThiscoveryFormsModule.base', 'This form is still a draft.') ?></div>
         <?php endif; ?>
 
-        <?php if ($answerableCount > 0 && $canSubmit && !$showResumeGate): ?>
+        <?php if ($answerableCount > 0 && $canSubmit && !$showResumeGate && ($showProgress || ($showPageIndicator && $multiPage))): ?>
             <div class="cf-fill-progress-wrap">
+                <?php if ($showProgress): ?>
                 <div class="cf-fill-progress" aria-hidden="true">
                     <div class="cf-fill-progress__bar" data-cf-progress-bar style="width:0%"></div>
                 </div>
+                <?php endif; ?>
                 <div class="cf-fill-progress__meta">
+                    <?php if ($showProgress): ?>
                     <span class="cf-fill-progress__label">
                         <span data-cf-progress-text>0 / <?= (int)$answerableCount ?></span>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'fields completed') ?>
                     </span>
-                    <?php if ($multiPage): ?>
+                    <?php endif; ?>
+                    <?php if ($showPageIndicator && $multiPage): ?>
                         <span class="cf-page-indicator" data-cf-page-indicator></span>
                     <?php endif; ?>
                 </div>
@@ -328,7 +381,18 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?php if ($panelToken !== ''): ?>
                 <?= Html::hiddenInput('panel_token', $panelToken) ?>
             <?php endif; ?>
+            <?php if (!empty($accessToken)): ?>
+                <?= Html::hiddenInput('access_token', $accessToken) ?>
+            <?php endif; ?>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
+            <?php if ($integrityEnabled): ?>
+            <?= Html::hiddenInput(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::TIMING_NAME, '{}', ['data-cf-integrity-timing' => true]) ?>
+            <div class="cf-honeypot" aria-hidden="true">
+                <label><?= Yii::t('ThiscoveryFormsModule.base', 'Company website') ?>
+                    <input type="text" name="<?= Html::encode(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::HONEYPOT_NAME) ?>" value="" tabindex="-1" autocomplete="off">
+                </label>
+            </div>
+            <?php endif; ?>
             <?= Html::hiddenInput('action_vars', ($existing instanceof FormAnswer) ? json_encode($existing->getVars(), JSON_UNESCAPED_UNICODE) : '{}', ['data-cf-action-vars' => true]) ?>
 
             <?php foreach ($pages as $page): ?>
@@ -439,6 +503,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 'frozen' => !empty($frozen),
                                 'fillRtl' => $fillRtl,
                                 'panelMember' => $fillContext->member ?? null,
+                                'rewriteFileUrls' => $rewriteFileUrls,
                             ]) ?>
                         </div>
                     <?php endforeach; ?>
@@ -468,6 +533,21 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         </button>
                     <?php endif; ?>
                     <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
+                        <?php if (!empty($showCaptcha)): ?>
+                            <?php if ($captchaProvider === IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE && !empty($integritySettings['turnstile_site_key'])): ?>
+                                <div class="cf-turnstile-wrap mb-3">
+                                    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+                                    <div class="cf-turnstile" data-sitekey="<?= Html::encode($integritySettings['turnstile_site_key']) ?>"></div>
+                                </div>
+                            <?php elseif ($captchaProvider !== IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE): ?>
+                                <div class="cf-captcha-wrap mb-3">
+                                    <?php
+                                    $captchaModel = new DynamicModel(['captcha' => null]);
+                                    echo CaptchaField::widget(['model' => $captchaModel, 'attribute' => 'captcha']);
+                                    ?>
+                                </div>
+                            <?php endif; ?>
+                        <?php endif; ?>
                         <?= Button::save($existing && !$isDraft
                             ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')
                             : ($formModel->isProject()
@@ -510,16 +590,42 @@ $fillRtl = TranslationService::isRtl($fillLang);
         <?php elseif ($existing && !$isDraft): ?>
             <div class="cf-fill-done">
                 <i class="fa fa-check-circle"></i>
-                <h3><?= Html::encode($alreadySubmittedMessage) ?></h3>
-                <?php if ($formModel->canEditOwnAnswer($existing)): ?>
-                    <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Edit your submission'))
-                        ->link(Url::toEditAnswer($formModel, $existing)) ?>
+                <?php if ($formModel->hasCustomAlreadySubmittedMessage()): ?>
+                    <div class="cf-fill-done__message richtext-output"><?= RichHtml::toHtml($alreadySubmittedMessage) ?></div>
+                <?php else: ?>
+                    <h3><?= Html::encode($alreadySubmittedMessage) ?></h3>
                 <?php endif; ?>
+                <div class="cf-fill-done__actions">
+                    <?php if ($formModel->canEditOwnAnswer($existing)): ?>
+                        <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Edit your submission'))
+                            ->link(Url::toEditAnswer($formModel, $existing)) ?>
+                    <?php endif; ?>
+                    <?php if ($formModel->showsAlreadySubmittedButton()): ?>
+                        <?= Button::light($formModel->getAlreadySubmittedButtonLabel())
+                            ->link($formModel->getAlreadySubmittedButtonUrl())
+                            ->options(str_starts_with($formModel->getAlreadySubmittedButtonUrl(), 'http')
+                                ? ['target' => '_blank', 'rel' => 'noopener']
+                                : []) ?>
+                    <?php endif; ?>
+                </div>
             </div>
         <?php elseif ($alreadyAnsweredAnon || $identifiedBlocked): ?>
             <div class="cf-fill-done">
                 <i class="fa fa-check-circle"></i>
-                <h3><?= Html::encode($alreadySubmittedMessage) ?></h3>
+                <?php if ($formModel->hasCustomAlreadySubmittedMessage()): ?>
+                    <div class="cf-fill-done__message richtext-output"><?= RichHtml::toHtml($alreadySubmittedMessage) ?></div>
+                <?php else: ?>
+                    <h3><?= Html::encode($alreadySubmittedMessage) ?></h3>
+                <?php endif; ?>
+                <?php if ($formModel->showsAlreadySubmittedButton()): ?>
+                    <div class="cf-fill-done__actions">
+                        <?= Button::primary($formModel->getAlreadySubmittedButtonLabel())
+                            ->link($formModel->getAlreadySubmittedButtonUrl())
+                            ->options(str_starts_with($formModel->getAlreadySubmittedButtonUrl(), 'http')
+                                ? ['target' => '_blank', 'rel' => 'noopener']
+                                : []) ?>
+                    </div>
+                <?php endif; ?>
             </div>
         <?php elseif ($formModel->isOpen()): ?>
             <div class="alert alert-warning"><?= Html::encode($fillContext?->blockReason ?? Yii::t('ThiscoveryFormsModule.base', 'You are not allowed to submit this form.')) ?></div>

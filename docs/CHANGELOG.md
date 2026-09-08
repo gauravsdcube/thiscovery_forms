@@ -2,6 +2,182 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.25.0 (September 8, 2026)
+
+- Enh: **Settings → Export** — choose which answers-CSV columns to include; new questions stay included until excluded
+- Enh: **Scrub PII** on Export omits identity/personal-data columns, redacts emails, phones, and IPs in remaining cells, and names the file `*-scrubbed.csv`
+- Enh: Builder **Contains personal data (PII)** on questions (on by default for email, IP, and panel name/email)
+- Change: Answers, Dashboard, and Integrity **Export CSV** always use the saved Export settings (header labels still chosen on Answers)
+
+## 1.24.2 (September 8, 2026)
+
+- Fix: Filling a published edition no longer crashes when snapshot question IDs were replaced (import/restore); answers map onto the live questions
+
+## 1.24.1 (September 8, 2026)
+
+- Fix: **Publish current draft** now saves the studio first, so the live form uses the questions you just edited instead of the previous saved snapshot
+- Fix: Fill uses the current published edition (not a previous response’s old edition) unless the respondent is still in progress or editing that response
+- Fix: Published fill applies snapshot settings (theme, display, style) as well as questions
+- Fix: Question and translation import messages stay visible on Share and Languages
+
+## 1.24.0 (September 7, 2026)
+
+- Enh: Studio **Settings** tab with palette-style left nav (form, programme, quality, publish); Form builder stays a separate top tab
+- Enh: **End of survey** settings — thank-you message/button or redirect; already-submitted message/button
+- Enh: Form versioning UI (revisions/editions) when Thiscovery Versioning is enabled
+- Enh: Appearance themes and style colour controls
+- Fix: Studio save no longer wipes questions on empty field payload (Settings-only saves)
+- Fix: Languages settings layout; Settings **?** guides; Participant display help
+
+## 1.23.5 (September 5, 2026)
+
+- Fix: Languages settings — “Enabled languages” no longer overlaps the availability hint
+
+## 1.23.4 (September 5, 2026)
+
+- Fix: Studio save no longer wipes all questions when an empty field payload is posted (Settings-only saves). Clear-all still works when confirmed
+- Note: SPARCS2 form #17 restored to 69 fields from the original import definition
+
+## 1.23.3 (September 5, 2026)
+
+- Change: Studio keeps **two top tabs** — Form builder and Settings. Form builder is unchanged (field palette + canvas)
+- Enh: Settings tab owns the palette-style left nav for form settings plus integrity, translations, CSS, share, versions, and programme tools
+
+## 1.23.2 (September 5, 2026)
+
+- Enh: Studio left rail (palette-style groups/icons) replaces the top tabs — Form builder, settings sections, programme, quality, and publish are all in one place
+- Change: Settings no longer use a nested second left nav; sections live in the shared studio rail
+
+## 1.23.1 (September 5, 2026)
+
+- Fix: Settings **?** guidance toggles work again (were opening and immediately closing)
+- Enh: Settings left nav matches the studio field palette (grouped labels, icons, short descriptions)
+
+## 1.23.0 (September 5, 2026)
+
+- Enh: Settings tab uses a studio-style left navigation with one section at a time in the main pane
+- Enh: New **End of survey** settings — thank-you message with configurable button, or redirect to a URL; already-submitted message (rich text) with optional configurable button
+- Change: Thank-you and already-submitted controls moved out of Basics into End of survey
+
+## 1.22.1 (September 5, 2026)
+
+- Fix: Versions tab layout — full-width panel (was capped at 860px), real table styling matching Forms lists, Actions column nowrap so Preview/Publish/Restore/Delete stay on one row
+- Fix: Versions tab table layout (aligned columns, Actions header, horizontal action buttons); panel moved outside the studio form to avoid nested-form breakage
+- Note: Versioning product toggles live under Administration → Modules → Thiscovery Versioning
+
+## 1.22.0 (September 5, 2026)
+
+- Enh: Form versioning via shared **Thiscovery Versioning** module — every studio save creates a **revision**; **Publish** freezes an **edition** that participants use
+- Enh: Versions studio tab (preview, restore, publish, delete); Publish current draft on Share; cannot Open until an edition is published
+- Enh: Answers stamp `edition_id`; fill uses published/historical edition snapshot (in-progress keep start edition)
+- Enh: Open-period history; Help page **Versions and publishing**
+- Note: Enable **thiscovery-versioning** before or with this update; Page Builder adapter comes later
+
+## 1.21.16 (September 4, 2026)
+
+- Fix: Appearance colour controls use a compact swatch + value field; opacity and Transparent live inside the colour picker panel (no more overlapping α / Transparent / Clear buttons in the grid)
+
+## 1.21.15 (September 4, 2026)
+
+- Fix: Scroll-mode grids stay as horizontal tables on mobile (form custom CSS can no longer force a broken card stack that hid column labels after internal codes changed)
+- Fix: Stacked mobile grid options show participant labels again; harden stack fieldset/legend styles against theme CSS
+
+## 1.21.14 (September 4, 2026)
+
+- Enh: Named appearance themes (create, edit, delete, import, export, set default) with per-form theme selection or Custom (detached) overrides
+- Enh: Per-field variable name and internal label; unique variables; piping/logic resolve by variable; CSV export header mode (label / variable / both)
+- Enh: Choice and grid options use separate internal code and participant label fields; if any code is set, all options in that list require codes
+- Enh: Grid mobile stacked layout option (single- and multi-select grids)
+- Enh: Fill page max width default 1800px (theme/CSS can override)
+- Enh: Show/hide title, description, progress, and page numbers — global defaults plus per-form inherit/show/hide
+- Enh: Colour pickers support alpha and transparent
+- Change: Wave settings are per form (use waves + wave scope); remove global wave toggles; waves optional for longitudinal and EQ-5D
+- Fix: Admin module configuration “?” guidance toggles now work outside the form studio
+
+## 1.21.13 (September 4, 2026)
+
+- Fix: Server page skip / go-to-end / go-to-page logic now matches coded choice options (labels vs internal codes), so early exits reach the thank-you page instead of failing validation and restarting the survey
+- Fix: Off-path and newly hidden answers are cleared in the fill UI when branching changes; save already dropped unreachable fields once path matching worked
+- Fix: Settings “Form type” value no longer overlaps the label / guidance control
+
+## 1.21.12 (September 4, 2026)
+
+- Change: Remove study-specific SPARCS2 survey definition and import-sparcs2 console command from the module
+- Fix: Fill view scrolls newly shown conditional content into view (helps mobile)
+- Fix: Choice label taps re-run show/hide logic more reliably on mobile
+- Enh: Help docs — variables/functions examples; EQ-5D references removed from Help
+
+## 1.21.11 (September 3, 2026)
+
+- Fix: Serve unattached rich-text editor images on anonymous fills (GUID referenced on the form, not only fileManager attachments)
+
+## 1.21.10 (September 3, 2026)
+
+- Fix: Anonymous rich-text/image images by rewriting both `&` and `&amp;` in core file-download URLs
+
+## 1.21.9 (September 3, 2026)
+
+- Fix: Rich text and image area images now load on anonymous form fills via a public form-file endpoint
+- Enh: Fill view rewrites core file download URLs to the forms module endpoint for guest respondents
+
+## 1.21.8 (September 3, 2026)
+
+- Enh: CAPTCHA settings (submit and open-rate) work independently of integrity scoring toggle
+- Enh: SPARCS2 survey definition with console import command (import-sparcs2)
+- Enh: Internal codes on all choice options (radio, dropdown, checkbox) using `code | Label` format
+- Enh: Internal codes on grid rows/columns using `[code] Label` format, hidden from respondents
+- Enh: Grid fill view strips bracketed code prefixes so respondents see clean labels
+
+## 1.21.7 (September 3, 2026)
+
+- Enh: HumHub Altcha is the default Forms integrity CAPTCHA; Cloudflare Turnstile remains optional via CAPTCHA provider
+- Enh: Optional open-rate CAPTCHA gate before the fill page (global and per-form), with open_rate_count / open_rate_window
+- Enh: CAPTCHA provider selectable globally and per form (inherit/override); Turnstile keys stay administration-only
+
+## 1.21.6 (September 2, 2026)
+
+- Enh: Align form language catalogue and Settings language grid with Thiscovery Translate when that module is enabled
+- Enh: Studio Translations and fill/answer views integrate with Thiscovery Translate for machine translation and response language display
+- Fix: Soft-call Translate from fill, resume, and programme flows without requiring the module
+
+## 1.21.5 (September 1, 2026)
+
+- Enh: Map questions can set a basemap style (street, satellite, and other Stadia styles) instead of always using the site default
+
+## 1.21.4 (September 1, 2026)
+
+- Change: When Thiscovery Navigation is enabled, forms are added to the top bar there instead of from this module
+
+## 1.21.3 (August 30, 2026)
+
+- Fix: Headerless fill pages keep top padding (including iOS safe area) so the title is not cut off
+- Fix: Grid column headings keep equal width and wrap on words instead of hyphenating mid-word
+- Fix: Overflowing grid questions show a scroll hint, edge fade, and arrow so people can see there are more options
+
+## 1.21.2 (August 29, 2026)
+
+- Change: Map question type appears in the builder only when Thiscovery Mapping is installed and enabled
+- Fix: New map questions and CSV/JSON imports are rejected when Mapping is off; existing map fields are kept
+
+## 1.21.1 (August 29, 2026)
+
+- Fix: CAPTCHA “only when suspicious” now challenges on the next attempt and requires a pass before accept
+- Fix: Automatic exclusion writes a system reason and an audit log entry
+- Fix: Form results charts and dashboard totals omit responses excluded from analysis
+- Enh: Straight-lining detects consecutive radio/dropdown Likert sets with the same options
+- Enh: Integrity dashboard lists similar-response groups (clusters)
+- Enh: Free-text quality flags near-identical answers pasted across two questions on the same response
+- Enh: Duplicate detection soft-matches nearby network hashes; invitation links support optional expiry
+- Enh: Audit history shows who made the change; question timings show field labels
+
+## 1.21.0 (August 28, 2026)
+
+- Enh: Response integrity tab — bot protection, quality scoring, review, quarantine, and unique invitation links
+- Enh: On-screen Guidance (?) on each Response integrity setting, plus a Help page for the feature
+- Fix: Integrity ethics pass — one signal cannot mark Suspicious/Excluded; human overrides survive rescore; Hash IP Off stores no IP hashes; exact attention-check matching; technical flags hidden from CSV and non-managers
+- Enh: Each answer shows quality score and Include in analysis on the response itself; Answers list adds Analysis column and sortable scores
+- Change: Integrity checks are off until you tick Enable integrity checks (site admin and per survey). Scores are not recorded when it is off
+
 ## 1.20.8 (August 22, 2026)
 
 - Fix: Back is hidden on the first page. Next and Submit stay on the right

@@ -10,6 +10,7 @@ use humhub\modules\thiscoveryForms\models\SubmitForm;
 use humhub\modules\thiscoveryForms\notifications\FormAnsweredNotification;
 use humhub\modules\thiscoveryForms\services\DashboardService;
 use humhub\modules\thiscoveryForms\services\ExportService;
+use humhub\modules\thiscoveryForms\services\ExportSettings;
 use humhub\modules\thiscoveryForms\services\FolderService;
 use humhub\modules\thiscoveryForms\services\FormListService;
 use Yii;
@@ -24,15 +25,17 @@ class FormController extends ContentContainerController
     use ProgrammeTrait;
     use ApprovalTrait;
     use AnswersListTrait;
+    use IntegrityTrait;
     use FolderTrait;
     use PanelAdminTrait;
     use EmailAdminTrait;
     use HelpTrait;
+    use VersioningTrait;
 
     protected function getAccessRules()
     {
         return [
-            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file']],
+            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file', 'form-file']],
         ];
     }
 
@@ -83,7 +86,13 @@ class FormController extends ContentContainerController
             if (!$form->load($request->post())) {
                 Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Invalid form data.'));
             } elseif (!$form->save()) {
-                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.'));
+                $errors = $form->getFirstErrors();
+                Yii::$app->session->setFlash(
+                    'error',
+                    $errors
+                        ? implode(' ', $errors)
+                        : Yii::t('ThiscoveryFormsModule.base', 'Could not save the form.')
+                );
             } else {
                 $fieldError = null;
                 $fieldRows = $this->postedFieldRows($fieldError);
@@ -92,7 +101,31 @@ class FormController extends ContentContainerController
                 } elseif (!$form->saveFieldsFromPost($fieldRows)) {
                     Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Form saved, but some fields could not be stored.'));
                 } else {
-                    Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
+                    $integrityPost = Yii::$app->request->post('integrity');
+                    if (is_array($integrityPost)) {
+                        \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveForm($form, $integrityPost);
+                    }
+                    try {
+                        (new \humhub\modules\thiscoveryForms\services\FormVersionService())->recordSave($form);
+                    } catch (\Throwable $e) {
+                        Yii::warning('Thiscovery Forms revision save failed: ' . $e->getMessage(), 'thiscovery-forms');
+                    }
+                    if ((string)Yii::$app->request->post('after_save', '') !== 'publish') {
+                        Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
+                    }
+                    if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
+                        \humhub\modules\thiscoveryTranslate\services\FormsHook::queueFormTranslation((int)$form->id);
+                        $pub = \humhub\modules\thiscoveryTranslate\services\FormsHook::checkPublishReady($form);
+                        if (!empty($pub['message'])) {
+                            if (!$pub['ok']) {
+                                $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
+                                $form->save(false, ['status']);
+                                Yii::$app->session->setFlash('error', $pub['message'] . ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form kept as draft until translations are ready.'));
+                            } else {
+                                Yii::$app->session->setFlash('warning', $pub['message']);
+                            }
+                        }
+                    }
                     return $this->redirectAfterStudioSave($form);
                 }
             }
@@ -114,7 +147,7 @@ class FormController extends ContentContainerController
         $submit = new SubmitForm(['form' => $form]);
         $existing = $this->resolveFillExisting($form, $submit);
 
-        if (Yii::$app->request->isPost) {
+        if (Yii::$app->request->isPost && !Yii::$app->request->post('integrity_open_challenge')) {
             return $this->handleSubmit($form, $submit, $existing);
         }
 
@@ -159,6 +192,26 @@ class FormController extends ContentContainerController
         array $extra = []
     ) {
         $this->applyFillLayout($form);
+        $preview = $this->isPreviewMode($form);
+        $this->applyEditionForFill($form, $existing, !empty($extra['editingAnswer']) ? true : null);
+        $submit->form = $form;
+        $openCaptchaError = null;
+        if (!$preview) {
+            $svc = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
+            if (Yii::$app->request->isPost && Yii::$app->request->post('integrity_open_challenge')) {
+                if (!$svc->verifyOpenCaptcha($form, Yii::$app->request->post())) {
+                    $openCaptchaError = Yii::t('ThiscoveryFormsModule.base', 'Please complete the verification check and try again.');
+                }
+            }
+            if ($svc->prepareFillOpen($form, $existing) === 'challenge') {
+                return $this->render('@thiscovery-forms/views/form/_integrity_open_captcha', [
+                    'formModel' => $form,
+                    'integritySettings' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form),
+                    'error' => $openCaptchaError,
+                    'contentContainer' => $this->contentContainer,
+                ]);
+            }
+        }
         return $this->render('view', array_merge([
             'formModel' => $form,
             'submit' => $submit,
@@ -199,6 +252,9 @@ class FormController extends ContentContainerController
             $existing = $draft;
         }
 
+        $this->applyEditionForFill($form, $existing, (bool)$existing);
+        $submit->form = $form;
+
         if (!$this->canContinueDraft($form, $existing)) {
             throw new ForbiddenHttpException();
         }
@@ -207,6 +263,15 @@ class FormController extends ContentContainerController
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
         $isPreview = $this->isPreviewMode($form);
+        if (!$isPreview) {
+            $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx);
+            if ($gate) {
+                Yii::$app->session->setFlash('error', $gate);
+                return $this->renderFillView($form, $submit, $existing, [
+                    'editingAnswer' => $existing && $existing->isComplete(),
+                ]);
+            }
+        }
         $anonymous = $isPreview || $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous, false, $isPreview);
@@ -228,6 +293,9 @@ class FormController extends ContentContainerController
         }
 
         $this->applyFillLayout($form);
+        if (!$isPreview && $form->usesCompletionRedirect()) {
+            return $this->redirect($form->getCompletionRedirectUrl());
+        }
         return $this->render('thankyou', [
             'formModel' => $form,
             'contentContainer' => $this->contentContainer,
@@ -331,8 +399,8 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException();
         }
 
-        $csv = (new ExportService())->toCsv($form);
-        $filename = 'form-' . $form->id . '-' . date('Ymd-His') . '.csv';
+        $csv = (new ExportService())->toCsv($form, Yii::$app->request->queryParams);
+        $filename = ExportSettings::downloadFilename($form);
 
         Yii::$app->response->format = Response::FORMAT_RAW;
         Yii::$app->response->headers->set('Content-Type', 'text/csv; charset=UTF-8');

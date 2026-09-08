@@ -10,9 +10,32 @@ use Yii;
 
 class WaveService
 {
-    public function wavesLiveOnPanel(): bool
+    public function wavesLiveOnPanel(?CustomForm $form = null): bool
     {
+        if ($form) {
+            return $form->wavesLiveOnPanel();
+        }
         return Module::wavesLiveOnPanelStatic();
+    }
+
+    /**
+     * Whether this panel should expose shared wave controls (any linked form uses panel scope, or waves already exist).
+     */
+    public function panelSharesWaves(FormPanel $panel): bool
+    {
+        if (FormWave::find()->where(['panel_id' => (int)$panel->id])->exists()) {
+            return true;
+        }
+        foreach (CustomForm::find()->each(50) as $form) {
+            /** @var CustomForm $form */
+            if ((int)$form->getSetting('panel_id', 0) !== (int)$panel->id) {
+                continue;
+            }
+            if ($form->wavesLiveOnPanel()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public function ensureSetup(CustomForm $form): void
@@ -28,7 +51,7 @@ class WaveService
 
     public function createWave(CustomForm $form, ?string $title = null, ?string $opensAt = null, ?string $closesAt = null): FormWave
     {
-        if ($this->wavesLiveOnPanel()) {
+        if ($this->wavesLiveOnPanel($form)) {
             $panel = (new PanelService())->ensurePanel($form);
             if ($panel) {
                 return $this->createWaveForPanel($panel, $title, $opensAt, $closesAt);
@@ -78,7 +101,7 @@ class WaveService
      */
     public function listWaves(CustomForm $form): array
     {
-        if ($this->wavesLiveOnPanel()) {
+        if ($this->wavesLiveOnPanel($form)) {
             $panel = (new PanelService())->getPanel($form);
             return $panel ? $this->listWavesForPanel($panel) : [];
         }

@@ -33,6 +33,8 @@ class HelpService
                     'creators-builder',
                     'creators-csv-import',
                     'creators-settings',
+                    'creators-versioning',
+                    'creators-response-integrity',
                     'creators-results',
                     'creators-panels',
                     'creators-form-types',
@@ -62,7 +64,7 @@ class HelpService
             'creators-builder' => [
                 'file' => 'creators-builder.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Builder and questions'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Question types, pages, logic, piping, and field actions.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Question types, pages, logic, piping, variables, and field actions.'),
                 'icon' => 'th-list',
             ],
             'creators-csv-import' => [
@@ -74,13 +76,25 @@ class HelpService
             'creators-settings' => [
                 'file' => 'creators-settings.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Form settings'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, emails, languages, and custom functions.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, export CSV columns, emails, languages, and custom functions.'),
                 'icon' => 'wrench',
+            ],
+            'creators-versioning' => [
+                'file' => 'creators-versioning.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Versions and publishing'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Revisions, editions, publish before Open, restore, and open-period history.'),
+                'icon' => 'history',
+            ],
+            'creators-response-integrity' => [
+                'file' => 'creators-response-integrity.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Response integrity'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Bot protection, quality scores, review, exclusion, and access modes.'),
+                'icon' => 'shield',
             ],
             'creators-results' => [
                 'file' => 'creators-results.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Sharing and results'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Share links, preview, dashboards, and CSV export.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Share links, preview, dashboards, CSV columns, and PII scrubbing.'),
                 'icon' => 'bar-chart',
             ],
             'creators-panels' => [
@@ -92,10 +106,36 @@ class HelpService
             'creators-form-types' => [
                 'file' => 'creators-form-types.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Form types'),
-                'summary' => Yii::t('ThiscoveryFormsModule.base', 'When to use a survey, poll, EQ-5D, longitudinal, consensus, or project form.'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'When to use a survey, poll, longitudinal, consensus, or project form.'),
                 'icon' => 'files-o',
             ],
         ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function downloadFiles(): array
+    {
+        return [];
+    }
+
+    /**
+     * @return array<int, array{file:string,label:string}>
+     */
+    public static function downloadsFor(string $slug): array
+    {
+        return [];
+    }
+
+    public static function resolveDownload(string $file): ?string
+    {
+        return null;
+    }
+
+    public static function downloadMime(string $file): string
+    {
+        return 'application/octet-stream';
     }
 
     public static function find(string $slug): ?array

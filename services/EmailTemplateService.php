@@ -362,7 +362,17 @@ class EmailTemplateService
                 ?? $values[FormField::studioKey((int)$field->id)]
                 ?? $values[(string)$field->id]
                 ?? '';
-            $out[] = is_array($raw) ? trim(implode(' ', $raw)) : (string)$raw;
+            if (is_array($raw)) {
+                $parts = [];
+                foreach ($raw as $item) {
+                    if (is_scalar($item) || $item === null) {
+                        $parts[] = (string)$item;
+                    }
+                }
+                $out[] = trim(implode(' ', $parts));
+            } else {
+                $out[] = (string)$raw;
+            }
         }
         if ($answer) {
             if ($includeResumeEmail) {

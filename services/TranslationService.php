@@ -10,19 +10,102 @@ use Yii;
 
 class TranslationService
 {
+    /**
+     * Full catalogue of language codes Forms can understand (labels for display).
+     * Merges Thiscovery Translate LocaleMap when that module is present.
+     *
+     * @return array<string, string>
+     */
     public static function languageLabels(): array
     {
-        return [
+        $labels = [
             'en-GB' => Yii::t('ThiscoveryFormsModule.base', 'English (UK)'),
             'en-US' => Yii::t('ThiscoveryFormsModule.base', 'English (US)'),
             'cy' => Yii::t('ThiscoveryFormsModule.base', 'Welsh'),
             'gd' => Yii::t('ThiscoveryFormsModule.base', 'Scottish Gaelic'),
+            'ga' => Yii::t('ThiscoveryFormsModule.base', 'Irish'),
             'fr' => Yii::t('ThiscoveryFormsModule.base', 'French'),
             'de' => Yii::t('ThiscoveryFormsModule.base', 'German'),
             'es' => Yii::t('ThiscoveryFormsModule.base', 'Spanish'),
+            'it' => Yii::t('ThiscoveryFormsModule.base', 'Italian'),
+            'pt' => Yii::t('ThiscoveryFormsModule.base', 'Portuguese'),
+            'nl' => Yii::t('ThiscoveryFormsModule.base', 'Dutch'),
+            'pl' => Yii::t('ThiscoveryFormsModule.base', 'Polish'),
+            'ro' => Yii::t('ThiscoveryFormsModule.base', 'Romanian'),
             'ar' => Yii::t('ThiscoveryFormsModule.base', 'Arabic'),
             'ur' => Yii::t('ThiscoveryFormsModule.base', 'Urdu'),
+            'zh' => Yii::t('ThiscoveryFormsModule.base', 'Chinese (Simplified)'),
+            'hi' => Yii::t('ThiscoveryFormsModule.base', 'Hindi'),
+            'bn' => Yii::t('ThiscoveryFormsModule.base', 'Bengali'),
+            'pa' => Yii::t('ThiscoveryFormsModule.base', 'Punjabi'),
+            'gu' => Yii::t('ThiscoveryFormsModule.base', 'Gujarati'),
+            'tr' => Yii::t('ThiscoveryFormsModule.base', 'Turkish'),
+            'uk' => Yii::t('ThiscoveryFormsModule.base', 'Ukrainian'),
+            'ru' => Yii::t('ThiscoveryFormsModule.base', 'Russian'),
+            'sv' => Yii::t('ThiscoveryFormsModule.base', 'Swedish'),
+            'da' => Yii::t('ThiscoveryFormsModule.base', 'Danish'),
+            'fi' => Yii::t('ThiscoveryFormsModule.base', 'Finnish'),
+            'el' => Yii::t('ThiscoveryFormsModule.base', 'Greek'),
         ];
+
+        try {
+            if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
+                foreach (\humhub\modules\thiscoveryTranslate\services\LocaleMap::labels() as $code => $label) {
+                    if (!isset($labels[$code])) {
+                        $labels[$code] = $label;
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            // Forms must work without Translate installed.
+        }
+
+        return $labels;
+    }
+
+    /**
+     * Languages offered in form Settings (checkboxes).
+     * When Thiscovery Translate is enabled, mirrors its instance language list
+     * (plus any languages already enabled on this form so nothing disappears).
+     *
+     * @return array<string, string>
+     */
+    public static function selectableLanguageLabels(?CustomForm $form = null): array
+    {
+        $all = self::languageLabels();
+        $codes = null;
+        try {
+            if (Yii::$app->hasModule('thiscovery-translate')) {
+                $module = Yii::$app->getModule('thiscovery-translate');
+                if ($module && method_exists($module, 'getIsEnabled') && $module->getIsEnabled()
+                    && class_exists(\humhub\modules\thiscoveryTranslate\models\ModuleSettings::class)) {
+                    $settings = \humhub\modules\thiscoveryTranslate\models\ModuleSettings::loadSettings();
+                    if ($settings->formsTranslateEnabled && $settings->availableLanguages) {
+                        $codes = array_values(array_unique(array_map('strval', $settings->availableLanguages)));
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            $codes = null;
+        }
+
+        if ($codes === null) {
+            return $all;
+        }
+
+        if ($form !== null) {
+            foreach ($form->getEnabledLanguages() as $code) {
+                if (!in_array($code, $codes, true)) {
+                    $codes[] = $code;
+                }
+            }
+        }
+
+        $out = [];
+        foreach ($codes as $code) {
+            $out[$code] = $all[$code] ?? $code;
+        }
+        return $out;
     }
 
     /**
@@ -30,11 +113,18 @@ class TranslationService
      */
     public static function rtlLanguageBases(): array
     {
-        return ['ar', 'ur', 'fa', 'he', 'pnb'];
+        return ['ar', 'ur', 'fa', 'he', 'pnb', 'ps', 'sd'];
     }
 
     public static function isRtl(string $code): bool
     {
+        try {
+            if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
+                return \humhub\modules\thiscoveryTranslate\services\LocaleMap::isRtl($code);
+            }
+        } catch (\Throwable $e) {
+            // fall through
+        }
         $base = strtolower(explode('-', str_replace('_', '-', trim($code)))[0] ?? '');
         return $base !== '' && in_array($base, self::rtlLanguageBases(), true);
     }
@@ -144,6 +234,17 @@ class TranslationService
             }
             $this->mergeOptions($field, $row);
         }
+
+        // Participant fill must not call Amazon — overlays are pre-generated / manually edited.
+    }
+
+    /**
+     * @deprecated Machine translation at fill time removed; use Thiscovery Translate FormTranslateAdapter jobs.
+     * @param array<int, FormFieldI18n> $rows
+     */
+    private function applyMachineFallback(CustomForm $form, string $source, string $lang, ?FormI18n $formI18n, array $rows): void
+    {
+        // Intentionally empty — AWS must not run during participant fill.
     }
 
     public function completeness(CustomForm $form, string $lang): int

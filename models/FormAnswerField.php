@@ -74,6 +74,7 @@ class FormAnswerField extends ActiveRecord
             FormField::TYPE_MAXDIFF,
             FormField::TYPE_DRILLDOWN,
             FormField::TYPE_IMAGE_AREA,
+            FormField::TYPE_MAP,
         ], true)) {
             return (new \humhub\modules\thiscoveryForms\services\VariableSubstitutor())
                 ->formatAnswer($decoded !== null && json_last_error() === JSON_ERROR_NONE ? $decoded : $this->value, $field, true);
@@ -92,7 +93,13 @@ class FormAnswerField extends ActiveRecord
             if ($field && FormField::isChoiceType($field->type)) {
                 return $field->formatChoiceDisplay($decoded);
             }
-            return implode(', ', $decoded);
+            $parts = [];
+            foreach ($decoded as $item) {
+                if (is_scalar($item) || $item === null) {
+                    $parts[] = (string)$item;
+                }
+            }
+            return implode(', ', $parts);
         }
 
         if ($field && FormField::isChoiceType($field->type)) {

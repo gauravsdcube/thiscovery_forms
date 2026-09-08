@@ -1,10 +1,17 @@
 # Builder and questions
 
-The **Builder** tab is where you add questions, split the form into pages, and attach logic or actions. Changes are not live until you **Save form**. The field list on the left and the canvas on the right scroll separately. There is no limit on how many questions a form can contain.
+**Form builder** is where you add questions, split the form into pages, and attach logic or actions. Changes are not live until you **Save form**. The field list on the left and the canvas on the right scroll separately. There is no limit on how many questions a form can contain.
+
+Everything else (status, share links, integrity, CSS, versions, panels) lives under **Settings** — see [Form settings](creators-settings.md).
 
 ## Adding questions
 
-Use **Add question** (or the equivalent control on the builder) and choose a type. Drag to reorder. Open a question to edit label, help text, required, options, and logic.
+Use **Add fields** (or the equivalent control on the builder) and choose a type. Drag to reorder. Open a question to edit label, help text, required, options, and logic.
+
+Each question can also have:
+
+- **Internal label** — name shown in the studio only
+- **Variable name** — stable id for piping, logic, and CSV export (must be unique; auto-fills from the label)
 
 ### Question types
 
@@ -31,12 +38,17 @@ Use **Add question** (or the equivalent control on the builder) and choose a typ
 | MaxDiff | MaxDiff tasks |
 | Drill-down | Nested choices (for example country then region) |
 | Image area | Click regions on an image |
+| Map | Draw a pin, line, or area as the answer (needs Thiscovery Mapping). Set starting view, drawing types, and basemap style on the question |
 
 **Respondent metadata** (Add fields): drop each item you need — IP address, browser, operating system, device, screen size, browser language, time zone, or user agent. Each is a hidden field and becomes its own column in answers and CSV export. Drop only the ones you will analyse.
 
 **Hidden from respondents:** tick this on any question to store an internal variable. People filling the form never see it. Set a **Stored value** if you want a fixed code on every response. Logic, piping, and export still use the stored value.
 
-**Choice codes:** each option can be `code | Label`. Respondents only see the label. Answers, logic, and CSV export use the code. A line without `|` keeps the same text for both.
+**Contains personal data (PII):** tick this on an answer-collecting question so **Settings → Export → Scrub PII** will omit that column from the answers CSV. Email questions, respondent IP, and panel name/email fields are tagged by default. You can tag any other question (for example a free-text name). This does not change what is stored, only what the CSV includes when scrubbing is on.
+
+**Attention check:** tick this on an instructed-response question (for example “Please select Agree”) and type the expected answer. Pass and fail are stored on the response. They add to the quality score; they do not auto-reject. Turn on **Attention checks** under **Settings → Response integrity**.
+
+**Choices:** in the studio, each option has an optional **Internal code** and a required **Participant label**. Respondents only see the label. Answers, logic, and CSV export use the code when you set one. If you set a code on any choice, every choice on that question needs a code. In CSV import you can still write `code | Label` on one line.
 
 **Other:** if a dropdown, radio, or checkbox option is named exactly `Other` (the label), the fill page shows a text box so the person can type their own answer.
 
@@ -58,7 +70,9 @@ Tick **Required** when the person must answer before they can continue or submit
 
 ## Options and grids
 
-For choice questions, add one option per line. Use `code | Label` when you want an internal code. Grids need row labels and column labels. Ranking and MaxDiff need a complete set of items.
+For choice questions, add rows under **Choices** (internal code + participant label). Grids need row labels and column labels. Ranking and MaxDiff need a complete set of items.
+
+On a **grid**, you can tick **On mobile, show each row as a stacked list of options**. When that is off, mobile keeps the horizontal scroll table.
 
 On a **checkbox** question you can set a **minimum** number of selections, or tick **Require every option to be selected**. Respondents cannot continue or submit until that rule is met. An exclusive option such as “None of these” still counts as a complete answer on its own.
 
@@ -77,6 +91,39 @@ Actions on a question or page often include:
 - Go to the end (submit / thank you)
 
 **Answer piping** (carry-forward) inserts a previous answer into later labels or text using placeholders such as `{{answer:Question label}}`. Match the question label carefully. Preview after you rename a question — piping uses the label you configured.
+
+### Placeholders you can use
+
+| Placeholder | Meaning |
+| --- | --- |
+| `{{user.displayname}}` | Signed-in display name |
+| `{{user.firstname}}` / `{{user.lastname}}` | Profile first / last name |
+| `{{user.email}}` | Account email |
+| `{{form.title}}` | Form title |
+| `{{answer:Question label}}` | Answer to that question (use the label exactly, or the field id) |
+| `{{answer:Question label:label}}` | Same answer shown as the option label when the choice has an internal code |
+| `{{field:Question label}}` | Same idea as answer-as-label |
+| `{{var:name}}` | A variable stored on this response (see Actions below) |
+
+Guests have empty `{{user.*}}` values. Unanswered questions and unset variables insert nothing.
+
+### Worked examples — piping
+
+Rich text on page 1:
+
+```text
+Hello {{user.firstname}}, thank you for starting {{form.title}}.
+```
+
+Signed in as Alex → `Hello Alex, thank you for starting Feedback survey.`
+
+Later question label after “Child's first name”:
+
+```text
+You told us your child is called {{answer:Child's first name}}.
+```
+
+If they typed `Maya` → `You told us your child is called Maya.`
 
 Keep logic simple. Deep trees of skips are hard to test. Prefer a few clear branches over many overlapping rules.
 
@@ -98,19 +145,55 @@ You can add several actions on one field, page, or on submit. They run in the or
 
 Use **Send email** for “email me a copy” or “notify the team when this page is completed” instead of putting a mail button on the form.
 
+### Worked examples — variables and functions
+
+**Set a fixed study code on submit**
+
+| Function | Name | Value |
+| --- | --- | --- |
+| Set variable | `siteCode` | `DEMO-01` |
+
+Email or thank-you text: `Study code: {{var:siteCode}}` → `Study code: DEMO-01`
+
+**Copy an answer into a variable**
+
+| Function | Name | Value |
+| --- | --- | --- |
+| Set variable | `childName` | `{{answer:Child's first name}}` |
+
+Then `{{var:childName}}` is `Maya` after that action has run.
+
+**Reusable custom function (define once on Settings)**
+
+| Name | Formula |
+| --- | --- |
+| `summaryLine` | `Thanks {{user.firstname}} — response for {{var:siteCode}}` |
+
+On submit, run **Custom function** named `summaryLine`, then **Send email** with body `{{var:summaryLine}}`.
+
+**Page complete flow**
+
+When page `eligibility` finishes:
+
+1. Set variable `eligStatus` = `{{answer:Are you eligible?}}`
+2. Send email “Eligibility notify” (template can use `{{var:eligStatus}}`)
+3. Go to page `main_survey` (use field **Logic** separately if “No” should go to end)
+
+Variables belong to **this response**. Custom functions are named formulas you reuse; running one writes into `{{var:thatName}}`.
+
 ## Question library and templates
 
 - Save a question or block to the **library** to reuse it on other forms. Open the **Library** tab, then click the saved item or drag it onto the form. Saving a **question group** stores the group and the questions inside it.
-- **Save as template** (Share tab) stores the whole form as a starting point, labelled by type.
-- **Import / export** questions as JSON or CSV when you need to move a questionnaire between forms or edit options in a spreadsheet. CSV can include every question type, including page breaks. On Share you can **append** or **replace** all questions. See [Import questions from CSV](creators-csv-import.md).
+- **Save as template** (**Settings → Share**) stores the whole form as a starting point, labelled by type.
+- **Import / export** questions as JSON or CSV when you need to move a questionnaire between forms or edit options in a spreadsheet. CSV can include every question type, including page breaks. On **Settings → Share** you can **append** or **replace** all questions. See [Import questions from CSV](creators-csv-import.md).
 
 Templates do not copy live answers. They copy structure.
 
 ## Appearance while building
 
-The builder shows the structure you will get on the fill page. Final colours and spacing are on the **CSS** tab. Leave CSS blank to keep the site theme.
+The builder shows the structure you will get on the fill page. Final colours and spacing are on **Settings → CSS**. Leave theme colours blank to keep the selected theme or site default.
 
-Arabic and Urdu fill pages use right-to-left layout, including a mirrored thermometer. Add those languages on Settings if you need them.
+Arabic and Urdu fill pages use right-to-left layout, including a mirrored thermometer. Enable those languages on **Settings → Languages** and translate them under **Settings → Translations**.
 
 ## Checking your work
 
@@ -124,5 +207,6 @@ Arabic and Urdu fill pages use right-to-left layout, including a mirrored thermo
 
 - [Getting started](creators-getting-started.md)
 - [Form settings](creators-settings.md)
+- [Response integrity](creators-response-integrity.md)
 - [Import questions from CSV](creators-csv-import.md)
 - [Form types](creators-form-types.md)

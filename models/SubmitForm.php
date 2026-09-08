@@ -100,6 +100,16 @@ class SubmitForm extends Model
                 $this->values[$field->id] = $val;
                 continue;
             }
+            if ($field->type === FormField::TYPE_MAP) {
+                $val = $fieldPost[$key] ?? [];
+                if (is_string($val)) {
+                    $decoded = json_decode($val, true);
+                    $val = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $val;
+                }
+                $clean = $field->sanitizeMapAnswer($val);
+                $this->values[$field->id] = !empty($clean['features']) ? $clean : [];
+                continue;
+            }
             if ($field->type === FormField::TYPE_HTML) {
                 $val = $fieldPost[$key] ?? '';
                 if (is_array($val)) {
@@ -408,6 +418,9 @@ class SubmitForm extends Model
                 case FormField::TYPE_IMAGE_AREA:
                     $this->validateImageArea($field, $value);
                     break;
+                case FormField::TYPE_MAP:
+                    $this->validateMap($field, $value);
+                    break;
             }
 
             $justMode = $field->getEffectiveJustification($this->form);
@@ -483,21 +496,35 @@ class SubmitForm extends Model
             return null;
         }
 
+        if (!$isTest && !$answer->edition_id && $this->form->current_edition_id) {
+            $answer->updateAttributes(['edition_id' => (int)$this->form->current_edition_id]);
+            $answer->edition_id = (int)$this->form->current_edition_id;
+        }
+
         $existingFields = [];
         foreach ($answer->answerFields as $af) {
             $existingFields[$af->field_id] = $af;
         }
 
+        $liveFieldIds = array_flip(FormField::find()
+            ->select('id')
+            ->where(['form_id' => (int)$this->form->id])
+            ->column());
+
         foreach ($this->form->fields as $field) {
             if (!$field->collectsAnswer()) {
                 continue;
             }
+            $fieldId = (int)$field->id;
+            if ($fieldId < 1 || !isset($liveFieldIds[$fieldId])) {
+                continue;
+            }
             $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
-            $value = $visible ? ($this->values[$field->id] ?? null) : null;
+            $value = $visible ? ($this->values[$fieldId] ?? null) : null;
 
             if (!$visible || $this->isEmptyValue($value)) {
-                if (isset($existingFields[$field->id])) {
-                    $existingFields[$field->id]->delete();
+                if (isset($existingFields[$fieldId])) {
+                    $existingFields[$fieldId]->delete();
                 }
                 continue;
             }
@@ -506,9 +533,9 @@ class SubmitForm extends Model
                 $value = $this->scoreImageArea($field, is_array($value) ? $value : []);
             }
 
-            $af = $existingFields[$field->id] ?? new FormAnswerField();
+            $af = $existingFields[$fieldId] ?? new FormAnswerField();
             $af->answer_id = $answer->id;
-            $af->field_id = $field->id;
+            $af->field_id = $fieldId;
             $af->value = $this->encodeValue($value);
             $af->justification = $field->supportsJustification()
                 ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)
@@ -650,11 +677,39 @@ class SubmitForm extends Model
         $cfg = $field->getGridConfig();
         $rows = $cfg['rows'];
         $cols = $cfg['columns'];
+        $colValues = [];
+        foreach ($cols as $col) {
+            if (is_array($col)) {
+                foreach ([(string)($col['value'] ?? ''), (string)($col['code'] ?? ''), (string)($col['label'] ?? '')] as $key) {
+                    if ($key !== '') {
+                        $colValues[$key] = true;
+                    }
+                }
+            } else {
+                $colValues[(string)$col] = true;
+            }
+        }
         $multi = $field->type === FormField::TYPE_GRID_MULTI;
-        foreach ($rows as $rowLabel) {
-            $cell = $value[$rowLabel] ?? null;
+        foreach ($rows as $row) {
+            $rowKeys = [];
+            if (is_array($row)) {
+                foreach ([(string)($row['value'] ?? ''), (string)($row['code'] ?? ''), (string)($row['label'] ?? '')] as $key) {
+                    if ($key !== '') {
+                        $rowKeys[] = $key;
+                    }
+                }
+            } else {
+                $rowKeys[] = (string)$row;
+            }
+            $cell = null;
+            foreach ($rowKeys as $rowKey) {
+                if (array_key_exists($rowKey, $value)) {
+                    $cell = $value[$rowKey];
+                    break;
+                }
+            }
             if ($cell === null || $cell === '' || $cell === []) {
-                if ($field->required) {
+                if ($field->required && $this->scenario !== self::SCENARIO_DRAFT) {
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required.', [
                         'label' => $field->label,
                     ]));
@@ -664,7 +719,7 @@ class SubmitForm extends Model
             }
             $picked = $multi ? (is_array($cell) ? $cell : [$cell]) : [$cell];
             foreach ($picked as $col) {
-                if (!in_array((string)$col, $cols, true)) {
+                if (!isset($colValues[(string)$col])) {
                     $this->invalid($field);
                     return;
                 }
@@ -755,6 +810,16 @@ class SubmitForm extends Model
         if (!$cfg['multi'] && count($picked) > 1) {
             $this->invalid($field);
         }
+    }
+
+    private function validateMap(FormField $field, $value): void
+    {
+        $clean = $field->sanitizeMapAnswer($value);
+        if (empty($clean['features'])) {
+            $this->invalid($field);
+            return;
+        }
+        $this->values[$field->id] = $clean;
     }
 
     private function scoreImageArea(FormField $field, array $value): array

@@ -70,6 +70,11 @@ class Events
 
     public static function onTopMenuInit($event): void
     {
+        if (class_exists(\humhub\modules\thiscoveryNavigation\helpers\Navigation::class)
+            && \humhub\modules\thiscoveryNavigation\helpers\Navigation::isActive()) {
+            return;
+        }
+
         /** @var TopMenu $menu */
         $menu = $event->sender;
         $module = Yii::$app->getModule('thiscovery-forms');

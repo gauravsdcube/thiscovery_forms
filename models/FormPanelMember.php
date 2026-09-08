@@ -139,7 +139,17 @@ class FormPanelMember extends ActiveRecord
         $clean = [];
         foreach ($data as $key => $value) {
             $key = trim((string)$key);
-            $value = is_array($value) ? trim(implode(', ', $value)) : trim((string)$value);
+            if (is_array($value)) {
+                $parts = [];
+                foreach ($value as $item) {
+                    if (is_scalar($item) || $item === null) {
+                        $parts[] = (string)$item;
+                    }
+                }
+                $value = trim(implode(', ', $parts));
+            } else {
+                $value = trim((string)$value);
+            }
             if ($key === '' || $value === '') {
                 continue;
             }

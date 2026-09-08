@@ -28,6 +28,7 @@ if (($value === '' || $value === null || $value === []) && $field->getDefaultVal
     $value = $field->getDefaultValue();
 }
 $panelMember = $panelMember ?? null;
+$rewriteFileUrls = $rewriteFileUrls ?? static function (string $html): string { return $html; };
 if (($value === '' || $value === null || $value === []) && $field->type === FormField::TYPE_PANEL_ATTR && $panelMember) {
     $value = \humhub\modules\thiscoveryForms\services\PanelFieldService::memberValue($panelMember, $field->getPanelAttrKey());
 }
@@ -79,6 +80,7 @@ $choiceInputOpts = static function (array $extra = []): array {
 if ($field->type === FormField::TYPE_RICH_TEXT):
     $richHtml = RichHtml::toHtml($field->getRichTextContent());
     $richHtml = $pipe->substitute($richHtml, $user, $formModel, $allValues, $allFields);
+    $richHtml = $rewriteFileUrls($richHtml);
     ?>
     <div class="cf-rich-block richtext-output" data-cf-pipe-html="<?= Html::encode($field->getRichTextContent()) ?>">
         <?= $richHtml ?>
@@ -96,6 +98,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
         $panelMember
     );
     $html = (new HtmlSanitizer())->sanitize($html);
+    $html = $rewriteFileUrls($html);
     ?>
     <?php if ($htmlCfg['collect']): ?>
         <?php if ($htmlCfg['required']): ?>
@@ -588,38 +591,108 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $grid = $field->getGridConfig();
             $multi = $field->type === FormField::TYPE_GRID_MULTI;
             $gridValue = is_array($value) ? $value : [];
+            $mobileStack = ($grid['mobile_layout'] ?? 'scroll') === 'stack';
+            $gridCell = static function (array $gridValue, array $row) {
+                foreach ([$row['value'] ?? '', $row['code'] ?? '', $row['label'] ?? ''] as $key) {
+                    if ($key !== '' && array_key_exists($key, $gridValue)) {
+                        return $gridValue[$key];
+                    }
+                }
+                return null;
+            };
             ?>
-            <div class="cf-grid-wrap" data-cf-grid="<?= $multi ? 'multi' : 'single' ?>">
-                <table class="cf-grid">
-                    <thead>
-                    <tr>
-                        <th></th>
-                        <?php foreach ($grid['columns'] as $col): ?>
-                            <th><?= Html::encode($col) ?></th>
-                        <?php endforeach; ?>
-                    </tr>
-                    </thead>
-                    <tbody>
-                    <?php foreach ($grid['rows'] as $rowLabel): ?>
-                        <?php
-                        $cell = $gridValue[$rowLabel] ?? null;
-                        $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
-                        ?>
-                        <tr>
-                            <th><?= Html::encode($rowLabel) ?></th>
-                            <?php foreach ($grid['columns'] as $col): ?>
-                                <td>
-                                    <?php if ($multi): ?>
-                                        <?= Html::checkbox($inputName . '[' . $rowLabel . '][]', $choiceIsPicked($picked, (string)$col), $choiceInputOpts(['value' => $col])) ?>
-                                    <?php else: ?>
-                                        <?= Html::radio($inputName . '[' . $rowLabel . ']', $choiceIsPicked($picked, (string)$col), $choiceInputOpts(['value' => $col])) ?>
-                                    <?php endif; ?>
-                                </td>
+            <div class="cf-grid-wrap<?= $mobileStack ? ' cf-grid-wrap--stack-mobile' : '' ?>"
+                 data-cf-grid="<?= $multi ? 'multi' : 'single' ?>"
+                 data-cf-mobile-layout="<?= $mobileStack ? 'stack' : 'scroll' ?>">
+                <p class="cf-grid-hint" data-cf-grid-hint hidden>
+                    <span class="cf-grid-hint__icon" aria-hidden="true"></span>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Scroll sideways to see all options') ?>
+                </p>
+                <div class="cf-grid-fade">
+                    <div class="cf-grid-scroll" data-cf-grid-scroll tabindex="0" role="region"
+                         aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Answer grid. Scroll sideways to see all options.')) ?>">
+                        <table class="cf-grid">
+                            <thead>
+                            <tr>
+                                <th></th>
+                                <?php foreach ($grid['columns'] as $col): ?>
+                                    <th><?= Html::encode($col['label']) ?></th>
+                                <?php endforeach; ?>
+                            </tr>
+                            </thead>
+                            <tbody>
+                            <?php foreach ($grid['rows'] as $row): ?>
+                                <?php
+                                $cell = $gridCell($gridValue, $row);
+                                $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
+                                $rowKey = (string)$row['value'];
+                                ?>
+                                <tr>
+                                    <th><?= Html::encode($row['label']) ?></th>
+                                    <?php foreach ($grid['columns'] as $col): ?>
+                                        <td>
+                                            <?php
+                                            $colVal = (string)$col['value'];
+                                            $matchVals = array_filter([(string)$col['value'], (string)$col['code'], (string)$col['label']]);
+                                            $isPicked = false;
+                                            foreach ($matchVals as $mv) {
+                                                if ($choiceIsPicked($picked, (string)$mv)) {
+                                                    $isPicked = true;
+                                                    break;
+                                                }
+                                            }
+                                            ?>
+                                            <?php if ($multi): ?>
+                                                <?= Html::checkbox($inputName . '[' . $rowKey . '][]', $isPicked, $choiceInputOpts(['value' => $colVal])) ?>
+                                            <?php else: ?>
+                                                <?= Html::radio($inputName . '[' . $rowKey . ']', $isPicked, $choiceInputOpts(['value' => $colVal])) ?>
+                                            <?php endif; ?>
+                                        </td>
+                                    <?php endforeach; ?>
+                                </tr>
                             <?php endforeach; ?>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
+                            </tbody>
+                        </table>
+                    </div>
+                    <span class="cf-grid-more" aria-hidden="true"></span>
+                </div>
+                <?php if ($mobileStack): ?>
+                    <div class="cf-grid-stack" data-cf-grid-stack>
+                        <?php foreach ($grid['rows'] as $row): ?>
+                            <?php
+                            $cell = $gridCell($gridValue, $row);
+                            $picked = is_array($cell) ? $cell : (($cell !== null && $cell !== '') ? [(string)$cell] : []);
+                            $rowKey = (string)$row['value'];
+                            ?>
+                            <fieldset class="cf-grid-stack__row">
+                                <legend class="cf-grid-stack__legend"><?= Html::encode($row['label']) ?></legend>
+                                <div class="cf-grid-stack__options">
+                                    <?php foreach ($grid['columns'] as $col): ?>
+                                        <?php
+                                        $colVal = (string)$col['value'];
+                                        $matchVals = array_filter([(string)$col['value'], (string)$col['code'], (string)$col['label']]);
+                                        $isPicked = false;
+                                        foreach ($matchVals as $mv) {
+                                            if ($choiceIsPicked($picked, (string)$mv)) {
+                                                $isPicked = true;
+                                                break;
+                                            }
+                                        }
+                                        ?>
+                                        <label class="cf-grid-stack__option">
+                                            <?php if ($multi): ?>
+                                                <?= Html::checkbox($inputName . '[' . $rowKey . '][]', $isPicked, $choiceInputOpts(['value' => $colVal, 'class' => 'cf-grid-stack__input'])) ?>
+                                            <?php else: ?>
+                                                <?= Html::radio($inputName . '[' . $rowKey . ']', $isPicked, $choiceInputOpts(['value' => $colVal, 'class' => 'cf-grid-stack__input'])) ?>
+                                            <?php endif; ?>
+                                            <span><?= Html::encode($col['label']) ?></span>
+                                        </label>
+                                    <?php endforeach; ?>
+                                </div>
+                            </fieldset>
+                        <?php endforeach; ?>
+                    </div>
+                <?php endif; ?>
             </div>
         <?php elseif ($field->type === FormField::TYPE_BEST_WORST): ?>
             <?php
@@ -703,7 +776,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             <div class="cf-hotspot" data-cf-hotspot data-cf-multi="<?= !empty($img['multi']) ? '1' : '0' ?>">
                 <div class="cf-hotspot-stage">
                     <?php if ($img['src'] !== ''): ?>
-                        <img src="<?= Html::encode($img['src']) ?>" alt="">
+                        <img src="<?= Html::encode($rewriteFileUrls($img['src'])) ?>" alt="">
                     <?php endif; ?>
                     <div class="cf-hotspot-overlay">
                         <?php foreach ($img['regions'] as $region): ?>
@@ -724,6 +797,31 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 <?= Html::hiddenInput($inputName, json_encode(['regions' => $picked], JSON_UNESCAPED_UNICODE), [
                     'data-cf-hotspot-value' => true,
                 ]) ?>
+            </div>
+        <?php elseif ($field->type === FormField::TYPE_MAP): ?>
+            <?php
+            $mapCfg = $field->getMapConfig();
+            $geo = '';
+            if (is_array($value) && ($value['type'] ?? '') === 'FeatureCollection') {
+                $geo = json_encode($value, JSON_UNESCAPED_UNICODE);
+            } elseif (is_string($value) && $value !== '') {
+                $geo = $value;
+            }
+            ?>
+            <div class="cf-map-field">
+                <?= Html::hiddenInput($inputName, $geo, ['data-cf-map-value' => true]) ?>
+                <?php if (class_exists(\humhub\modules\thiscoveryMapping\widgets\MapWidget::class)
+                    && \humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()): ?>
+                    <?= \humhub\modules\thiscoveryMapping\widgets\MapWidget::widget([
+                        'mode' => 'form',
+                        'inputName' => $inputName,
+                        'inputValue' => $geo,
+                        'height' => 360,
+                        'formConfig' => $mapCfg,
+                    ]) ?>
+                <?php else: ?>
+                    <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Thiscovery Mapping must be installed and enabled to answer map questions.') ?></p>
+                <?php endif; ?>
             </div>
         <?php else: ?>
             <?php

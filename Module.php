@@ -29,6 +29,8 @@ class Module extends ContentContainerModule
     public const SETTING_ENABLED_KINDS = 'enabled_kinds';
     public const SETTING_WAVES_FOR_SURVEYS = 'waves_for_surveys';
     public const SETTING_WAVE_SCOPE = 'wave_scope';
+    public const SETTING_INTEGRITY = 'integrity';
+    public const SETTING_DISPLAY = 'display';
 
     public const WAVE_SCOPE_SURVEY = 'survey';
     public const WAVE_SCOPE_PANEL = 'panel';
@@ -59,6 +61,13 @@ class Module extends ContentContainerModule
         if (Yii::$app instanceof ConsoleApplication) {
             $this->controllerNamespace = 'humhub\modules\thiscoveryForms\commands';
         }
+
+        if (Yii::$app->hasModule('thiscovery-versioning')
+            && class_exists(\humhub\modules\thiscoveryVersioning\Module::class)) {
+            \humhub\modules\thiscoveryVersioning\Module::registerAdapter(
+                new \humhub\modules\thiscoveryForms\services\FormVersionAdapter()
+            );
+        }
     }
 
     public function getContentContainerTypes()
@@ -73,22 +82,30 @@ class Module extends ContentContainerModule
 
     public function getPermissions($contentContainer = null)
     {
+        $versionPerms = [];
+        if (Yii::$app->hasModule('thiscovery-versioning')) {
+            $vm = Yii::$app->getModule('thiscovery-versioning');
+            if ($vm instanceof \humhub\modules\thiscoveryVersioning\Module) {
+                $versionPerms = $vm->getBasePermissions();
+            }
+        }
+
         if ($contentContainer instanceof Space) {
-            return [
+            return array_merge([
                 new CreateForm(),
                 new ManageForm(),
                 new AnswerForm(),
                 new ViewAnswers(),
-            ];
+            ], $versionPerms);
         }
 
         if ($contentContainer === null) {
-            return [
+            return array_merge([
                 new CreateGlobalForm(),
                 new ManageGlobalForm(),
                 new AnswerGlobalForm(),
                 new ViewGlobalAnswers(),
-            ];
+            ], $versionPerms);
         }
 
         return [];
@@ -133,16 +150,20 @@ class Module extends ContentContainerModule
 
     public function wavesEnabledForSurveys(): bool
     {
-        $raw = $this->settings->get(self::SETTING_WAVES_FOR_SURVEYS);
-        return $raw === '1' || $raw === 1 || $raw === true;
+        // Legacy site toggle removed — waves are controlled per form.
+        return true;
     }
 
     public function getWaveScope(): string
     {
+        // Legacy fallback when a form has no wave_scope of its own.
         $raw = (string)$this->settings->get(self::SETTING_WAVE_SCOPE, self::WAVE_SCOPE_SURVEY);
         return $raw === self::WAVE_SCOPE_PANEL ? self::WAVE_SCOPE_PANEL : self::WAVE_SCOPE_SURVEY;
     }
 
+    /**
+     * @deprecated Use CustomForm::wavesLiveOnPanel()
+     */
     public function wavesLiveOnPanel(): bool
     {
         return $this->getWaveScope() === self::WAVE_SCOPE_PANEL;
@@ -150,8 +171,7 @@ class Module extends ContentContainerModule
 
     public static function wavesEnabledForSurveysStatic(): bool
     {
-        $module = Yii::$app->getModule('thiscovery-forms');
-        return $module instanceof self && $module->wavesEnabledForSurveys();
+        return true;
     }
 
     public static function waveScope(): string
@@ -163,6 +183,9 @@ class Module extends ContentContainerModule
         return $module->getWaveScope();
     }
 
+    /**
+     * @deprecated Use CustomForm::wavesLiveOnPanel()
+     */
     public static function wavesLiveOnPanelStatic(): bool
     {
         return self::waveScope() === self::WAVE_SCOPE_PANEL;

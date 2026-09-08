@@ -5,6 +5,7 @@ namespace humhub\modules\thiscoveryForms\models;
 use humhub\modules\content\components\ContentActiveRecord;
 use humhub\modules\content\models\Content;
 use humhub\modules\thiscoveryForms\helpers\Url;
+use humhub\modules\thiscoveryForms\Module;
 use humhub\modules\thiscoveryForms\permissions\AnswerForm;
 use humhub\modules\thiscoveryForms\permissions\AnswerGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\CreateForm;
@@ -13,6 +14,7 @@ use humhub\modules\thiscoveryForms\permissions\ManageForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ViewAnswers;
 use humhub\modules\thiscoveryForms\permissions\ViewGlobalAnswers;
+use humhub\modules\thiscoveryForms\services\DisplaySettings;
 use humhub\modules\thiscoveryForms\services\FormStyleService;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
 use humhub\modules\thiscoveryForms\services\PanelService;
@@ -24,6 +26,7 @@ use humhub\modules\user\models\User;
 use humhub\modules\user\components\PermissionManager;
 use Yii;
 use yii\db\ActiveQuery;
+use yii\helpers\Html;
 
 /**
  * @property int $id
@@ -43,6 +46,7 @@ use yii\db\ActiveQuery;
  * @property int $is_template
  * @property int|null $source_template_id
  * @property int|null $folder_id
+ * @property int|null $current_edition_id
  * @property string $answers_visibility
  *
  * @property-read FormField[] $fields
@@ -74,6 +78,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public const ENROL_PANEL_NONE = 'none';
     public const ENROL_PANEL_EXISTING = 'existing';
     public const ENROL_PANEL_CREATE = 'create';
+
+    public const COMPLETION_MESSAGE = 'message';
+    public const COMPLETION_REDIRECT = 'redirect';
 
     public $wallEntryClass = WallEntry::class;
     public $moduleId = 'thiscovery-forms';
@@ -127,8 +134,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
     /** @var int|bool */
     public $log_panel_activity = 0;
 
-    /** @var int|bool Survey-only: use waves when the module allows it */
+    /** @var int|bool Opt in to waves (survey / longitudinal / EQ-5D) */
     public $use_waves = 0;
+
+    /** @var string survey|panel */
+    public $wave_scope = Module::WAVE_SCOPE_SURVEY;
+
+    /** @var int|string|null Linked appearance theme id, or '' for custom */
+    public $theme_id = '';
+
+    /** @var array Display chrome overrides ('' = inherit global) */
+    public $display = [];
 
     /** @var int */
     public $invite_email_template_id = 0;
@@ -151,6 +167,30 @@ class CustomForm extends ContentActiveRecord implements Searchable
     /** @var array */
     public $custom_functions = [];
 
+    /** @var string message|redirect — end of survey behaviour */
+    public $completion_mode = self::COMPLETION_MESSAGE;
+
+    /** @var int|bool Show button under thank-you message */
+    public $completion_button_enabled = 1;
+
+    /** @var string */
+    public $completion_button_label = '';
+
+    /** @var string Empty = reopen this form */
+    public $completion_button_url = '';
+
+    /** @var string Absolute or site-relative URL when completion_mode=redirect */
+    public $completion_redirect_url = '';
+
+    /** @var int|bool Show button under already-submitted message */
+    public $already_submitted_button_enabled = 0;
+
+    /** @var string */
+    public $already_submitted_button_label = '';
+
+    /** @var string Empty = forms list / home as resolved at runtime */
+    public $already_submitted_button_url = '';
+
     public static function tableName()
     {
         return 'custom_form';
@@ -165,7 +205,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['kind'], 'in', 'range' => array_keys(self::getKindLabels())],
             [['description', 'thank_you_content', 'already_submitted_message', 'custom_css', 'settings_json'], 'string'],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
+            [['status'], 'validatePublishedBeforeOpen'],
+            [['current_edition_id'], 'integer'],
             [['allow_multiple', 'show_in_menu', 'allow_anonymous', 'allow_edit', 'allow_resume', 'is_template', 'show_results', 'freeze_on_consensus', 'require_justification', 'public_dashboard_enabled', 'hide_humhub_header', 'keep_partials', 'log_panel_activity', 'use_waves'], 'boolean'],
+            [['wave_scope'], 'in', 'range' => [Module::WAVE_SCOPE_SURVEY, Module::WAVE_SCOPE_PANEL]],
+            [['theme_id'], 'safe'],
+            [['display', 'style', 'submit_actions', 'custom_functions', 'enabled_languages'], 'safe'],
+            [['completion_mode'], 'in', 'range' => [self::COMPLETION_MESSAGE, self::COMPLETION_REDIRECT]],
+            [['completion_button_enabled', 'already_submitted_button_enabled'], 'boolean'],
+            [['completion_button_label', 'already_submitted_button_label'], 'string', 'max' => 120],
+            [['completion_button_url', 'completion_redirect_url', 'already_submitted_button_url'], 'string', 'max' => 2000],
+            [['completion_redirect_url'], 'validateCompletionRedirectUrl'],
             [['allow_edit'], 'default', 'value' => 1],
             [['allow_resume'], 'default', 'value' => 0],
             [['is_template'], 'default', 'value' => 0],
@@ -195,6 +245,14 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'description' => Yii::t('ThiscoveryFormsModule.base', 'Description'),
             'thank_you_content' => Yii::t('ThiscoveryFormsModule.base', 'Thank you message'),
             'already_submitted_message' => Yii::t('ThiscoveryFormsModule.base', 'Already submitted message'),
+            'completion_mode' => Yii::t('ThiscoveryFormsModule.base', 'After submission'),
+            'completion_button_enabled' => Yii::t('ThiscoveryFormsModule.base', 'Show button on thank-you page'),
+            'completion_button_label' => Yii::t('ThiscoveryFormsModule.base', 'Thank-you button label'),
+            'completion_button_url' => Yii::t('ThiscoveryFormsModule.base', 'Thank-you button URL'),
+            'completion_redirect_url' => Yii::t('ThiscoveryFormsModule.base', 'Redirect URL'),
+            'already_submitted_button_enabled' => Yii::t('ThiscoveryFormsModule.base', 'Show button on already-submitted page'),
+            'already_submitted_button_label' => Yii::t('ThiscoveryFormsModule.base', 'Already-submitted button label'),
+            'already_submitted_button_url' => Yii::t('ThiscoveryFormsModule.base', 'Already-submitted button URL'),
             'custom_css' => Yii::t('ThiscoveryFormsModule.base', 'Custom CSS'),
             'status' => Yii::t('ThiscoveryFormsModule.base', 'Status'),
             'allow_multiple' => Yii::t('ThiscoveryFormsModule.base', 'Allow multiple submissions'),
@@ -492,18 +550,28 @@ class CustomForm extends ContentActiveRecord implements Searchable
     }
 
     /**
-     * Repeating waves for this form (EQ-5D, longitudinal, or a survey that opted in).
+     * Repeating waves when the form has Use waves enabled (surveys, longitudinal, EQ-5D).
      */
     public function usesWaves(): bool
     {
-        if ($this->isLongitudinal() || $this->isEq5d()) {
-            return true;
+        if ($this->isPoll() || $this->isConsensus() || $this->isProject() || $this->isFeedback()) {
+            return false;
         }
-        if ($this->isSurvey()) {
-            return \humhub\modules\thiscoveryForms\Module::wavesEnabledForSurveysStatic()
-                && !empty($this->use_waves);
+        if ($this->isSurvey() || $this->isLongitudinal() || $this->isEq5d()) {
+            return !empty($this->use_waves);
         }
         return false;
+    }
+
+    public function getWaveScope(): string
+    {
+        $raw = (string)$this->getSetting('wave_scope', Module::WAVE_SCOPE_SURVEY);
+        return $raw === Module::WAVE_SCOPE_PANEL ? Module::WAVE_SCOPE_PANEL : Module::WAVE_SCOPE_SURVEY;
+    }
+
+    public function wavesLiveOnPanel(): bool
+    {
+        return $this->usesWaves() && $this->getWaveScope() === Module::WAVE_SCOPE_PANEL;
     }
 
     public function isConsensus(): bool
@@ -601,6 +669,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
         } elseif ($this->kind === self::KIND_LONGITUDINAL) {
             $this->allow_multiple = 0;
+            $this->use_waves = 1;
             if ($this->title === '' || $this->title === null) {
                 $this->title = Yii::t('ThiscoveryFormsModule.base', 'Longitudinal survey');
             }
@@ -854,6 +923,15 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function afterFind()
     {
         parent::afterFind();
+        $this->syncSettingsAttributes();
+    }
+
+    /**
+     * Copy settings_json into virtual attributes used by fill/studio.
+     * Safe to call after an in-memory snapshot hydrate.
+     */
+    public function syncSettingsAttributes(): void
+    {
         $this->show_results = $this->showsPollResults() ? 1 : 0;
         $this->source_language = (string)$this->getSetting('source_language', 'en-GB') ?: 'en-GB';
         $langs = $this->getSetting('enabled_languages', [$this->source_language]);
@@ -876,6 +954,20 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->enrol_panel_title = (string)$this->getSetting('enrol_panel_title', '');
         $this->log_panel_activity = $this->getSetting('log_panel_activity', false) ? 1 : 0;
         $this->use_waves = $this->getSetting('use_waves', false) ? 1 : 0;
+        $scope = (string)$this->getSetting('wave_scope', Module::WAVE_SCOPE_SURVEY);
+        $this->wave_scope = $scope === Module::WAVE_SCOPE_PANEL ? Module::WAVE_SCOPE_PANEL : Module::WAVE_SCOPE_SURVEY;
+        $themeId = $this->getSetting('theme_id', null);
+        if ($themeId === null || $themeId === false) {
+            if ($this->isNewRecord) {
+                $defaultTheme = FormTheme::findDefault();
+                $this->theme_id = $defaultTheme ? (string)$defaultTheme->id : '';
+            } else {
+                $this->theme_id = '';
+            }
+        } else {
+            $this->theme_id = (string)$themeId;
+        }
+        $this->display = DisplaySettings::formOverlay($this);
         $this->invite_email_template_id = (int)$this->getSetting('invite_email_template_id', 0);
         $this->wave_email_template_id = (int)$this->getSetting('wave_email_template_id', 0);
         $this->reminder_email_template_id = (int)$this->getSetting('reminder_email_template_id', 0);
@@ -883,9 +975,23 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->completion_email_template_id = (int)$this->getSetting('completion_email_template_id', 0);
         $this->submit_actions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeList($this->getSetting('submit_actions', []));
         $this->custom_functions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeFunctions($this->getSetting('custom_functions', []));
+        $this->loadCompletionSettings();
         if ($this->isTemplate()) {
             $this->silentContentCreation = true;
         }
+    }
+
+    protected function loadCompletionSettings(): void
+    {
+        $mode = (string)$this->getSetting('completion_mode', self::COMPLETION_MESSAGE);
+        $this->completion_mode = $mode === self::COMPLETION_REDIRECT ? self::COMPLETION_REDIRECT : self::COMPLETION_MESSAGE;
+        $this->completion_button_enabled = $this->getSetting('completion_button_enabled', true) ? 1 : 0;
+        $this->completion_button_label = (string)$this->getSetting('completion_button_label', '');
+        $this->completion_button_url = (string)$this->getSetting('completion_button_url', '');
+        $this->completion_redirect_url = (string)$this->getSetting('completion_redirect_url', '');
+        $this->already_submitted_button_enabled = $this->getSetting('already_submitted_button_enabled', false) ? 1 : 0;
+        $this->already_submitted_button_label = (string)$this->getSetting('already_submitted_button_label', '');
+        $this->already_submitted_button_url = (string)$this->getSetting('already_submitted_button_url', '');
     }
 
     public function getUrl($scheme = false): string
@@ -903,6 +1009,14 @@ class CustomForm extends ContentActiveRecord implements Searchable
         parent::afterSave($insert, $changedAttributes);
         $this->syncContentState();
 
+        if ($insert && $this->getSetting('theme_id', null) === null) {
+            $defaultTheme = FormTheme::findDefault();
+            if ($defaultTheme) {
+                $this->setSetting('theme_id', (int)$defaultTheme->id);
+                $this->theme_id = (string)$defaultTheme->id;
+            }
+        }
+
         if (!$this->isTemplate()) {
             try {
                 if ($this->usesWaves()) {
@@ -915,6 +1029,47 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 Yii::warning('Thiscovery Forms programme setup failed: ' . $e->getMessage(), 'thiscovery-forms');
             }
         }
+
+        if (!$insert && array_key_exists('status', $changedAttributes)
+            && class_exists(\humhub\modules\thiscoveryForms\services\FormVersionService::class)
+            && \humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()) {
+            try {
+                (new \humhub\modules\thiscoveryForms\services\FormVersionService())->onAvailabilityChanged(
+                    $this,
+                    (int)$changedAttributes['status'],
+                    (int)$this->status
+                );
+            } catch (\Throwable $e) {
+                Yii::warning('Thiscovery Forms open-period tracking failed: ' . $e->getMessage(), 'thiscovery-forms');
+            }
+        }
+    }
+
+    /**
+     * A1: cannot set Open unless a published edition exists.
+     */
+    public function validatePublishedBeforeOpen($attribute): void
+    {
+        if ((int)$this->$attribute !== self::STATUS_OPEN) {
+            return;
+        }
+        if ($this->isTemplate()) {
+            return;
+        }
+        if (!\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()) {
+            return;
+        }
+        $svc = new \humhub\modules\thiscoveryForms\services\FormVersionService();
+        if ($svc->hasPublishedEdition($this)) {
+            return;
+        }
+        $this->addError(
+            $attribute,
+            Yii::t(
+                'ThiscoveryFormsModule.base',
+                'Publish an edition on the Versions tab before setting status to Open.'
+            )
+        );
     }
 
     public function beforeDelete()
@@ -1135,6 +1290,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     /**
      * Message shown when a second submission is blocked. Uses {formName} as the form title.
+     * May contain rich-text HTML when set via the editor.
      */
     public function getAlreadySubmittedMessage(): string
     {
@@ -1142,9 +1298,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $custom = trim((string)$this->already_submitted_message);
         if ($custom !== '') {
             return strtr($custom, [
-                '{formName}' => $title,
-                '{form name}' => $title,
-                '{title}' => $title,
+                '{formName}' => Html::encode($title),
+                '{form name}' => Html::encode($title),
+                '{title}' => Html::encode($title),
             ]);
         }
 
@@ -1153,6 +1309,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'You have already submitted {formName}. Multiple submissions are not allowed',
             ['formName' => $title]
         );
+    }
+
+    public function hasCustomAlreadySubmittedMessage(): bool
+    {
+        return trim((string)$this->already_submitted_message) !== '';
     }
 
     public function hasGuestAnswered(?int $waveId = null, ?int $roundId = null): bool
@@ -1179,13 +1340,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     /**
      * Sanitize custom CSS before injecting into the fill page.
+     * Merges linked theme tokens/CSS under form overrides.
      */
     public function getSafeCustomCss(): string
     {
-        $compiled = (new FormStyleService())->compile(
-            is_array($this->style) ? $this->style : []
-        );
-        $css = trim($compiled . "\n" . (string)$this->custom_css);
+        $theme = $this->resolveTheme();
+        $baseStyle = $theme ? $theme->getStyle() : [];
+        $formStyle = is_array($this->style) ? $this->style : [];
+        $merged = (new FormStyleService())->mergeStyles($baseStyle, $formStyle);
+        $compiled = (new FormStyleService())->compile($merged);
+        $chunks = [$compiled];
+        if ($theme && trim((string)$theme->custom_css) !== '') {
+            $chunks[] = (string)$theme->custom_css;
+        }
+        $chunks[] = (string)$this->custom_css;
+        $css = trim(implode("\n", array_filter(array_map('trim', $chunks))));
         if ($css === '') {
             return '';
         }
@@ -1197,6 +1366,20 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $css = preg_replace('/behavior\s*:/i', '', $css);
 
         return trim((string)$css);
+    }
+
+    public function resolveTheme(): ?FormTheme
+    {
+        $id = $this->getSetting('theme_id', null);
+        if ($id === null || $id === '' || $id === false) {
+            return null;
+        }
+        return FormTheme::findOne((int)$id);
+    }
+
+    public function getDisplayFlags(): array
+    {
+        return DisplaySettings::resolve($this);
     }
 
     public function hasThankYouContent(): bool
@@ -1281,6 +1464,119 @@ class CustomForm extends ContentActiveRecord implements Searchable
         if (trim((string)$this->getSetting('test_token', '')) === '') {
             $this->setSetting('test_token', self::generateShareToken());
         }
+        $this->persistCompletionSettings();
+        \humhub\modules\thiscoveryForms\services\ExportSettings::persistFromRequest($this);
+    }
+
+    protected function persistCompletionSettings(): void
+    {
+        $mode = (string)$this->completion_mode;
+        if ($mode !== self::COMPLETION_REDIRECT) {
+            $mode = self::COMPLETION_MESSAGE;
+        }
+        $this->completion_mode = $mode;
+        $this->setSetting('completion_mode', $mode);
+        $this->setSetting('completion_button_enabled', !empty($this->completion_button_enabled));
+        $this->setSetting('completion_button_label', trim((string)$this->completion_button_label));
+        $this->setSetting('completion_button_url', trim((string)$this->completion_button_url));
+        $this->setSetting('completion_redirect_url', trim((string)$this->completion_redirect_url));
+        $this->setSetting('already_submitted_button_enabled', !empty($this->already_submitted_button_enabled));
+        $this->setSetting('already_submitted_button_label', trim((string)$this->already_submitted_button_label));
+        $this->setSetting('already_submitted_button_url', trim((string)$this->already_submitted_button_url));
+    }
+
+    public function validateCompletionRedirectUrl($attribute): void
+    {
+        if ($this->completion_mode !== self::COMPLETION_REDIRECT) {
+            return;
+        }
+        $url = trim((string)$this->$attribute);
+        if ($url === '') {
+            $this->addError($attribute, Yii::t('ThiscoveryFormsModule.base', 'Enter a redirect URL.'));
+            return;
+        }
+        if (!$this->isSafeOutboundUrl($url)) {
+            $this->addError($attribute, Yii::t('ThiscoveryFormsModule.base', 'Redirect URL must be http(s) or a path starting with /.'));
+        }
+    }
+
+    public function isSafeOutboundUrl(string $url): bool
+    {
+        $url = trim($url);
+        if ($url === '') {
+            return true;
+        }
+        if (str_starts_with($url, '/') && !str_starts_with($url, '//')) {
+            return true;
+        }
+        if (!preg_match('#^https?://#i', $url)) {
+            return false;
+        }
+        return (bool)filter_var($url, FILTER_VALIDATE_URL);
+    }
+
+    public static function getCompletionModeLabels(): array
+    {
+        return [
+            self::COMPLETION_MESSAGE => Yii::t('ThiscoveryFormsModule.base', 'Show a message'),
+            self::COMPLETION_REDIRECT => Yii::t('ThiscoveryFormsModule.base', 'Redirect to a URL'),
+        ];
+    }
+
+    public function usesCompletionRedirect(): bool
+    {
+        return $this->completion_mode === self::COMPLETION_REDIRECT
+            && trim((string)$this->completion_redirect_url) !== '';
+    }
+
+    public function getCompletionRedirectUrl(): string
+    {
+        return trim((string)$this->completion_redirect_url);
+    }
+
+    public function showsCompletionButton(): bool
+    {
+        return $this->completion_mode !== self::COMPLETION_REDIRECT
+            && !empty($this->completion_button_enabled);
+    }
+
+    public function getCompletionButtonLabel(): string
+    {
+        $label = trim((string)$this->completion_button_label);
+        return $label !== ''
+            ? $label
+            : Yii::t('ThiscoveryFormsModule.base', 'Back to form');
+    }
+
+    public function getCompletionButtonUrl(): string
+    {
+        $url = trim((string)$this->completion_button_url);
+        if ($url !== '' && $this->isSafeOutboundUrl($url)) {
+            return $url;
+        }
+        return Url::toView($this);
+    }
+
+    public function showsAlreadySubmittedButton(): bool
+    {
+        return !empty($this->already_submitted_button_enabled);
+    }
+
+    public function getAlreadySubmittedButtonLabel(): string
+    {
+        $label = trim((string)$this->already_submitted_button_label);
+        return $label !== ''
+            ? $label
+            : Yii::t('ThiscoveryFormsModule.base', 'Continue');
+    }
+
+    public function getAlreadySubmittedButtonUrl(): string
+    {
+        $url = trim((string)$this->already_submitted_button_url);
+        if ($url !== '' && $this->isSafeOutboundUrl($url)) {
+            return $url;
+        }
+        return Url::toManageIndex($this->isGlobal() ? null : ($this->content->container ?? null));
     }
 
     protected function persistEnrolSettings(): void
@@ -1315,13 +1611,28 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->setSetting('enrol_panel_id', $panelId);
         $this->setSetting('enrol_panel_title', $title);
         $this->setSetting('log_panel_activity', !empty($this->log_panel_activity));
-        if ($this->isSurvey()) {
-            $this->setSetting('use_waves', !empty($this->use_waves) && \humhub\modules\thiscoveryForms\Module::wavesEnabledForSurveysStatic());
+        if ($this->isSurvey() || $this->isEq5d() || $this->isLongitudinal()) {
+            $this->setSetting('use_waves', !empty($this->use_waves));
             $this->use_waves = $this->getSetting('use_waves', false) ? 1 : 0;
-        } elseif ($this->isEq5d() || $this->isLongitudinal()) {
-            $this->setSetting('use_waves', true);
-            $this->use_waves = 1;
+            $scope = $this->wave_scope === Module::WAVE_SCOPE_PANEL
+                ? Module::WAVE_SCOPE_PANEL
+                : Module::WAVE_SCOPE_SURVEY;
+            $this->setSetting('wave_scope', $scope);
+            $this->wave_scope = $scope;
+        } else {
+            $this->setSetting('use_waves', false);
+            $this->use_waves = 0;
         }
+        $themeId = trim((string)$this->theme_id);
+        if ($themeId === '') {
+            $this->setSetting('theme_id', null);
+            $this->theme_id = '';
+        } else {
+            $this->setSetting('theme_id', (int)$themeId);
+            $this->theme_id = (string)(int)$themeId;
+        }
+        $this->display = DisplaySettings::normalizeOverlay(is_array($this->display) ? $this->display : []);
+        $this->setSetting('display', $this->display);
         $this->setSetting('invite_email_template_id', (int)$this->invite_email_template_id);
         $this->setSetting('wave_email_template_id', (int)$this->wave_email_template_id);
         $this->setSetting('reminder_email_template_id', (int)$this->reminder_email_template_id);
@@ -1363,6 +1674,27 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         return false;
+    }
+
+    /**
+     * Reviewers who may include or exclude a response from analysis.
+     * Managers always can. People with View Answers permission can.
+     * Respondents who only see answers because they submitted cannot.
+     */
+    public function canDecideAnalysis($user = null): bool
+    {
+        $user = $user ?: Yii::$app->user->getIdentity();
+        if (!$user) {
+            return false;
+        }
+        if ($this->canManage($user)) {
+            return true;
+        }
+        $container = $this->isGlobal() ? null : $this->content->getContainer();
+        if ($container instanceof Space) {
+            return $container->getPermissionManager($user)->can(ViewAnswers::class);
+        }
+        return (new PermissionManager(['subject' => $user]))->can(ViewGlobalAnswers::class);
     }
 
     public function allowsEdit(): bool
@@ -1496,6 +1828,26 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $existing[$field->id] = $field;
         }
 
+        // Guard against accidental wipes (e.g. Settings save when the builder
+        // payload did not reach the server). Intentional clear posts clear_fields_confirmed=1.
+        $hasRows = false;
+        foreach ($rows as $row) {
+            if (is_array($row) && trim((string)($row['type'] ?? '')) !== '') {
+                $hasRows = true;
+                break;
+            }
+        }
+        if (!$hasRows && $existing) {
+            if (!Yii::$app->request->post('clear_fields_confirmed')) {
+                Yii::warning(
+                    'Thiscovery Forms: refused empty field save for form #' . (int)$this->id
+                    . ' (' . count($existing) . ' existing fields kept).',
+                    'thiscovery-forms'
+                );
+                return true;
+            }
+        }
+
         $keptIds = [];
         $sort = 0;
         $createdMap = []; // tempKey => id for condition wiring
@@ -1526,6 +1878,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
         $orderedRows = $this->closeUnclosedQuestionGroups($orderedRows);
 
+        $usedVariables = [];
         foreach ($orderedRows as $item) {
             $tempKey = $item['key'];
             $row = $item['row'];
@@ -1536,6 +1889,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $allowed = $this->getAllowedFieldTypes();
             if ($allowed !== null && !in_array($type, $allowed, true)) {
                 continue;
+            }
+            if ($type === FormField::TYPE_MAP && !\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
+                // Keep existing map questions if Mapping was turned off; reject new ones.
+                $idProbe = isset($row['id']) && $row['id'] !== '' ? (int)$row['id'] : null;
+                if (!$idProbe || !isset($existing[$idProbe])) {
+                    continue;
+                }
             }
 
             $probeType = new FormField(['type' => $type]);
@@ -1556,6 +1916,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field->form_id = $this->id;
             $field->label = $label;
             $field->type = $type;
+            $field->variable = trim((string)($row['variable'] ?? ''));
+            $field->internal_label = trim((string)($row['internal_label'] ?? ''));
             $field->help_text = $row['help_text'] ?? null;
             $field->required = !empty($row['required']);
             if (FormField::isQuestionGroup($type) || FormField::isGroupEnd($type) || $type === FormField::TYPE_PAGE_BREAK || $type === FormField::TYPE_RICH_TEXT || $type === FormField::TYPE_RESPONDENT_META) {
@@ -1566,6 +1928,12 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
             $field->sort_order = $sort++;
 
+            if ($type !== FormField::TYPE_GROUP_END) {
+                $field->ensureVariable($usedVariables);
+                $usedVariables[strtolower((string)$field->variable)] = true;
+            }
+
+            try {
             if ($type === FormField::TYPE_RATING) {
                 $field->setRatingScale([
                     'min' => $row['rating_min'] ?? 1,
@@ -1611,9 +1979,18 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 ]);
                 $field->required = !empty($row['html_collect']) && !empty($row['html_required']);
             } elseif ($type === FormField::TYPE_GRID_SINGLE || $type === FormField::TYPE_GRID_MULTI) {
+                $mobileLayout = 'scroll';
+                if (!empty($row['grid_mobile_stack']) || ($row['grid_mobile_layout'] ?? '') === 'stack') {
+                    $mobileLayout = 'stack';
+                }
                 $field->setGridConfig([
-                    'rows' => $row['grid_rows'] ?? '',
-                    'columns' => $row['grid_columns'] ?? '',
+                    'rows' => (!empty($row['grid_row_items']) && is_array($row['grid_row_items']))
+                        ? $row['grid_row_items']
+                        : ($row['grid_rows'] ?? ''),
+                    'columns' => (!empty($row['grid_column_items']) && is_array($row['grid_column_items']))
+                        ? $row['grid_column_items']
+                        : ($row['grid_columns'] ?? ''),
+                    'mobile_layout' => $mobileLayout,
                 ]);
             } elseif ($type === FormField::TYPE_BEST_WORST || $type === FormField::TYPE_MAXDIFF) {
                 $field->setItemsConfig([
@@ -1643,6 +2020,19 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'multi' => !empty($row['image_multi']),
                     'regions' => is_array($regions) ? $regions : [],
                 ]);
+            } elseif ($type === FormField::TYPE_MAP) {
+                $types = $row['map_types'] ?? ['Point'];
+                if (is_string($types)) {
+                    $types = array_filter(array_map('trim', explode(',', $types)));
+                }
+                $field->setMapConfig([
+                    'lat' => $row['map_lat'] ?? 52.4862,
+                    'lng' => $row['map_lng'] ?? -1.8904,
+                    'zoom' => $row['map_zoom'] ?? 7,
+                    'allowedTypes' => $types,
+                    'maxFeatures' => $row['map_max'] ?? 1,
+                    'style' => $row['map_style'] ?? '',
+                ]);
             } elseif ($type === FormField::TYPE_RESPONDENT_META) {
                 $field->required = false;
                 $field->setRespondentMetaKey((string)($row['meta_key'] ?? ''));
@@ -1661,8 +2051,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 $exclusive = array_key_exists('exclusive_option', $row)
                     ? (string)$row['exclusive_option']
                     : null;
+                $optionSource = !empty($row['option_items']) && is_array($row['option_items'])
+                    ? $row['option_items']
+                    : ($row['options'] ?? '');
                 $field->setOptionsFromText(
-                    $row['options'] ?? '',
+                    $optionSource,
                     !empty($row['randomize']),
                     $maxSelect,
                     $exclusive,
@@ -1677,14 +2070,24 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     ? json_encode(['prefillProfile' => $prefill], JSON_UNESCAPED_UNICODE)
                     : null;
             }
+            } catch (\InvalidArgumentException $e) {
+                Yii::$app->session->setFlash('error', $e->getMessage());
+                return false;
+            }
 
             $field->setHiddenFromRespondent(!empty($row['hidden']) || $type === FormField::TYPE_RESPONDENT_META);
+            if ($field->collectsAnswer()) {
+                $field->setAttentionCheck(!empty($row['attention_check']), (string)($row['attention_expected'] ?? ''));
+            }
             $field->setDefaultValue((string)($row['default_value'] ?? ''));
             if ($type === FormField::TYPE_RESPONDENT_META) {
                 $field->setRespondentMetaKey((string)($row['meta_key'] ?? $field->getRespondentMetaKey()));
             }
             if ($type === FormField::TYPE_PANEL_ATTR) {
                 $field->setPanelAttrKey((string)($row['panel_key'] ?? $field->getPanelAttrKey()));
+            }
+            if ($field->collectsAnswer()) {
+                $field->setContainsPii(array_key_exists('pii', $row) ? !empty($row['pii']) : $field->defaultContainsPii());
             }
             if ($field->isHiddenFromRespondent()) {
                 $field->required = false;
@@ -1696,6 +2099,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field->condition_value = null;
 
             if (!$field->save()) {
+                $first = $field->getFirstErrors();
+                $msg = $first ? (string)reset($first) : Yii::t('ThiscoveryFormsModule.base', 'Validation failed.');
+                Yii::$app->session->setFlash('error', Yii::t(
+                    'ThiscoveryFormsModule.base',
+                    'Could not save question "{label}": {error}',
+                    [
+                        'label' => mb_substr((string)$field->label, 0, 80),
+                        'error' => $msg,
+                    ]
+                ));
+                Yii::warning(
+                    'Thiscovery Forms: field save failed on form #' . (int)$this->id
+                    . ' type=' . $type . ' errors=' . json_encode($field->getErrors()),
+                    'thiscovery-forms'
+                );
                 return false;
             }
 
@@ -1797,12 +2215,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         $imageGuids = [];
-        foreach (FormField::find()->where(['form_id' => $this->id, 'type' => FormField::TYPE_IMAGE_AREA])->all() as $imgField) {
-            $guid = trim((string)($imgField->getImageAreaConfig()['imageGuid'] ?? ''));
-            if ($guid !== '') {
-                $imageGuids[] = $guid;
+        foreach (FormField::find()->where(['form_id' => $this->id])->all() as $imgField) {
+            if ($imgField->type === FormField::TYPE_IMAGE_AREA) {
+                $guid = trim((string)($imgField->getImageAreaConfig()['imageGuid'] ?? ''));
+                if ($guid !== '') {
+                    $imageGuids[] = $guid;
+                }
+            }
+            $blob = (string)$imgField->options_json;
+            if ($blob !== '' && preg_match_all('/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i', $blob, $m)) {
+                foreach ($m[0] as $guid) {
+                    $imageGuids[] = $guid;
+                }
             }
         }
+        $imageGuids = array_values(array_unique($imageGuids));
         if ($imageGuids) {
             try {
                 $this->fileManager->attach($imageGuids);
@@ -1810,6 +2237,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 Yii::warning('Thiscovery Forms image attach failed: ' . $e->getMessage(), 'thiscovery-forms');
             }
         }
+
+        unset($this->fields);
 
         return true;
     }
