@@ -623,7 +623,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     'value' => $field->getRichTextContent(),
                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Write instructions, context, or intro text…'),
                     'height' => 240,
-                    'profile' => 'simple',
+                    'profile' => 'page',
                 ]) ?>
             </div>
         </div>

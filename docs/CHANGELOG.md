@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.25.1 (September 10, 2026)
+
+- Fix: Form rich-text blocks use the full Thiscovery Editor profile so **Upload image** is available (requires Editor 1.4.3)
+
 ## 1.25.0 (September 8, 2026)
 
 - Enh: **Settings → Export** — choose which answers-CSV columns to include; new questions stay included until excluded
