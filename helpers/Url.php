@@ -725,55 +725,6 @@ class Url
         return $form->content->container->createUrl('/thiscovery-forms/form/run-actions', ['id' => $form->id]);
     }
 
-
-    /**
-     * Public UAT tester form (guests allowed). Local-only.
-     */
-    public static function toUat(array $params = []): string
-    {
-        return BaseUrl::to(array_merge(['/thiscovery-forms/global/uat-form'], $params));
-    }
-
-    public static function toUatCsv(): string
-    {
-        return BaseUrl::to(['/thiscovery-forms/global/uat-csv']);
-    }
-
-    public static function toUatCatalog(?string $id = null): string
-    {
-        $params = ['/thiscovery-forms/global/uat-catalog'];
-        if ($id) {
-            $params['id'] = $id;
-        }
-        return BaseUrl::to($params);
-    }
-
-    public static function toUatResults($container = null, array $params = []): string
-    {
-        if ($container === null) {
-            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/uat-results'], $params));
-        }
-        return $container->createUrl('/thiscovery-forms/form/uat-results', $params);
-    }
-
-    public static function toUatView(int $id, $container = null): string
-    {
-        $params = ['id' => $id];
-        if ($container === null) {
-            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/uat-view'], $params));
-        }
-        return $container->createUrl('/thiscovery-forms/form/uat-view', $params);
-    }
-
-    public static function toUatFile(string $guid, $container = null): string
-    {
-        $params = ['guid' => $guid];
-        if ($container === null) {
-            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/uat-file'], $params));
-        }
-        return $container->createUrl('/thiscovery-forms/form/uat-file', $params);
-    }
-
     public static function toHelp($container = null, ?string $page = null): string
     {
         $params = [];

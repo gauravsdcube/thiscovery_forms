@@ -136,26 +136,6 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         <?php ActiveForm::end(); ?>
 
         <hr>
-        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'User acceptance testing') ?></h4>
-        <p class="help-block">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Testers submit pass/fail results (guests allowed). Download the scenario catalog CSV or review submissions.') ?>
-        </p>
-        <p>
-            <a class="btn btn-default" href="<?= Html::encode(FormsUrl::toUatCsv()) ?>" data-pjax="0">
-                <i class="fa fa-download"></i>
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Download scenarios CSV') ?>
-            </a>
-            <a class="btn btn-primary" href="<?= Html::encode(FormsUrl::toUat()) ?>" data-pjax="0">
-                <i class="fa fa-check-square-o"></i>
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Tester form') ?>
-            </a>
-            <a class="btn btn-default" href="<?= Html::encode(FormsUrl::toUatResults()) ?>">
-                <i class="fa fa-list"></i>
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Review submissions') ?>
-            </a>
-        </p>
-
-        <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Appearance themes') ?></h4>
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Named themes can be applied on any form. Updating a theme updates every form that uses it (form-level overrides still win).') ?>

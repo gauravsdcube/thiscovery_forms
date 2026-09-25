@@ -131,14 +131,6 @@ $folderLink = static function (array $params, bool $active, string $icon, string
                     ->link(Url::toHelp($contentContainer))
                     ->icon('question-circle')
                     ->loader(false) ?>
-                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'UAT'))
-                    ->link(Url::toUat())
-                    ->icon('check-square-o')
-                    ->loader(false) ?>
-                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'UAT results'))
-                    ->link(Url::toUatResults($contentContainer))
-                    ->icon('list')
-                    ->loader(false) ?>
             <?php endif; ?>
             <?php if ($canManagePanels): ?>
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Panels'))

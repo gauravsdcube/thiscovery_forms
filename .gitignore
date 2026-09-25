@@ -16,4 +16,12 @@ Thumbs.db
 .env
 .env.*
 
+# Local-only UAT tooling (not published)
+controllers/UatTrait.php
+models/UatSubmission.php
+services/UatCatalogService.php
+migrations/m260905_134600_uat_submissions.php
+views/uat/
+docs/user/uat-scenarios.csv
+docs/user/uat-test-plan.md
 /local/

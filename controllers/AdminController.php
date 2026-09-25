@@ -23,7 +23,6 @@ class AdminController extends Controller
     use EmailAdminTrait;
     use HelpTrait;
     use ThemeAdminTrait;
-    use UatTrait;
 
     /**
      * @inheritdoc

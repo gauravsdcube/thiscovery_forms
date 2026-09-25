@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.2 (September 25, 2026)
+
+- Fix: Remove UAT tester form and UAT results from the published module (routes, buttons, and table)
+
 ## 1.28.1 (September 25, 2026)
 
 - Fix: Publish UAT trait, views, and migration so the module loads (v1.28.0 referenced `UatTrait` but omitted the file)

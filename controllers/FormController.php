@@ -31,7 +31,6 @@ class FormController extends ContentContainerController
     use EmailAdminTrait;
     use HelpTrait;
     use VersioningTrait;
-    use UatTrait;
     use FromBriefTrait;
 
     protected function getAccessRules()
