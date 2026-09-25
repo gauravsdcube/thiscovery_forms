@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.1 (September 25, 2026)
+
+- Fix: Publish UAT trait, views, and migration so the module loads (v1.28.0 referenced `UatTrait` but omitted the file)
+
 ## 1.28.0 (September 25, 2026)
 
 - Fix: JSON question export rewrites skip-logic `fieldKey`s to portable variable/`key` values (same as CSV), so import no longer leaves studio keys such as `id11`
