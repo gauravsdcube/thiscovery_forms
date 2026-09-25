@@ -7,6 +7,7 @@ use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormPanelMember;
 use humhub\modules\thiscoveryForms\services\PanelFieldService;
 use humhub\modules\user\models\User;
+use Yii;
 
 class VariableSubstitutor
 {
@@ -39,6 +40,14 @@ class VariableSubstitutor
             $fieldsById[(int)$field->id] = $field;
             $labelMap[mb_strtolower(trim($field->label))] = (int)$field->id;
             $labelMap[(string)$field->id] = (int)$field->id;
+            $var = trim((string)$field->variable);
+            if ($var !== '') {
+                $labelMap[mb_strtolower($var)] = (int)$field->id;
+            }
+            $internal = trim((string)$field->internal_label);
+            if ($internal !== '') {
+                $labelMap[mb_strtolower($internal)] = (int)$field->id;
+            }
         }
 
         $format = function ($fieldId, $asLabel = false) use ($answers, $fieldsById, $escape) {
@@ -147,9 +156,23 @@ class VariableSubstitutor
             }
             return $text;
         }
+        if ($field && $field->type === FormField::TYPE_MAP && is_array($val)) {
+            $n = count($val['features'] ?? []);
+            if ($n < 1) {
+                return '';
+            }
+            return Yii::t('ThiscoveryFormsModule.base', '{n,plural,=1{1 map drawing} other{# map drawings}}', ['n' => $n]);
+        }
+        if (is_array($val) && ($val['type'] ?? '') === 'FeatureCollection') {
+            $n = count($val['features'] ?? []);
+            if ($n < 1) {
+                return '';
+            }
+            return Yii::t('ThiscoveryFormsModule.base', '{n,plural,=1{1 map drawing} other{# map drawings}}', ['n' => $n]);
+        }
         if (is_array($val)) {
             if (array_is_list($val)) {
-                return implode(', ', array_map('strval', $val));
+                return implode(', ', $this->scalarList($val));
             }
             if (isset($val['best']) || isset($val['worst'])) {
                 $parts = [];
@@ -173,11 +196,29 @@ class VariableSubstitutor
             }
             $parts = [];
             foreach ($val as $k => $v) {
-                $parts[] = $k . ': ' . (is_array($v) ? implode(', ', array_map('strval', $v)) : (string)$v);
+                $parts[] = $k . ': ' . (is_array($v) ? implode(', ', $this->scalarList($v)) : (string)$v);
             }
             return implode('; ', $parts);
         }
         return (string)$val;
+    }
+
+    /**
+     * @param mixed $items
+     * @return string[]
+     */
+    private function scalarList($items): array
+    {
+        if (!is_array($items)) {
+            return [];
+        }
+        $out = [];
+        foreach ($items as $item) {
+            if (is_scalar($item) || $item === null) {
+                $out[] = (string)$item;
+            }
+        }
+        return $out;
     }
 
     private function userFormMap(?User $user, CustomForm $form): array

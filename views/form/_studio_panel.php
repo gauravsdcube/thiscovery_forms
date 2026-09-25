@@ -96,7 +96,7 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
 
         <hr>
         <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Waves') ?></h5>
-        <?php if (\humhub\modules\thiscoveryForms\Module::wavesLiveOnPanelStatic()): ?>
+        <?php if ($formModel->wavesLiveOnPanel()): ?>
             <p class="cf-hint text-muted">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Waves are managed on the panel, so every form that uses this panel shares the same calendar.') ?>
             </p>

@@ -18,6 +18,7 @@ use humhub\modules\thiscoveryForms\services\ResumeService;
 use humhub\modules\thiscoveryForms\services\TranslationService;
 use Yii;
 use yii\web\ForbiddenHttpException;
+use yii\web\NotFoundHttpException;
 use yii\web\Response;
 use yii\web\UploadedFile;
 
@@ -77,6 +78,30 @@ trait FillResumeTrait
         return $form->isValidTestToken($token);
     }
 
+    /**
+     * Hydrate published/historical edition onto the in-memory form for fill & submit.
+     */
+    /**
+     * Hydrate published/historical edition onto the in-memory form for fill & submit.
+     *
+     * In-progress responses keep the edition they started. Completed responses
+     * only keep that edition when explicitly editing. A normal open of the live
+     * URL uses the current published edition.
+     */
+    protected function applyEditionForFill(CustomForm $form, ?FormAnswer $existing = null, ?bool $lockToAnswerEdition = null): void
+    {
+        if ($lockToAnswerEdition === null) {
+            $lockToAnswerEdition = $existing && $existing->isInProgress();
+        }
+        $lock = $lockToAnswerEdition && $existing && $existing->edition_id;
+        try {
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())
+                ->applyFillDefinition($form, $lock ? $existing : null, $this->isPreviewMode($form));
+        } catch (\Throwable $e) {
+            Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
+    }
+
     protected function previewAnswerSessionKey(CustomForm $form): string
     {
         return 'cf_preview_answer_' . (int)$form->id;
@@ -126,6 +151,12 @@ trait FillResumeTrait
 
         if ($form->isDraft() && !$form->canManage()) {
             throw new ForbiddenHttpException(Yii::t('ThiscoveryFormsModule.base', 'This form is still a draft.'));
+        }
+
+        $integrity = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
+        $accessError = $integrity->checkAccess($form, $ctx);
+        if ($accessError && !$form->canManage()) {
+            throw new ForbiddenHttpException($accessError);
         }
     }
 
@@ -403,6 +434,9 @@ trait FillResumeTrait
             $existing = $this->resolveProgressDraft($form) ?: $existing;
         }
 
+        $this->applyEditionForFill($form, $existing, (bool)$existing);
+        $submit->form = $form;
+
         if (!$this->canContinueDraft($form, $existing)) {
             throw new ForbiddenHttpException();
         }
@@ -438,6 +472,9 @@ trait FillResumeTrait
             $answer->save(false, ['vars_json', 'updated_at']);
             $this->rememberProgressDraft($form, $answer);
             $this->pruneUserInProgressDrafts($form, $answer, true);
+            if (!$this->isPreviewMode($form)) {
+                (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onProgress($form, $answer, Yii::$app->request->post());
+            }
         }
 
         if (!$answer) {
@@ -581,6 +618,11 @@ trait FillResumeTrait
             'ownDraft' => $ownDraft,
             'startNew' => $this->isStartNewRequest(),
             'isPreview' => $this->isPreviewMode($form),
+            'accessToken' => trim((string)Yii::$app->request->get('access', Yii::$app->request->post('access_token', ''))),
+            'showCaptcha' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->shouldShowCaptchaWidget($form),
+            'captchaProvider' => (string)((\humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form)['captcha_provider'] ?? 'altcha')),
+            'integrityEnabled' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->isEnabled($form),
+            'integritySettings' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form),
         ];
     }
 
@@ -601,8 +643,22 @@ trait FillResumeTrait
                 $this->forgetProgressDraft($form);
                 $this->pruneUserInProgressDrafts($form, $answer);
             }
+            // Persist participant language for research audit (never overwrite free-text).
+            try {
+                $vars = $answer->getVars();
+                $vars['response_language'] = (string)$ctx->language;
+                $answer->setVars($vars);
+                $answer->save(false, ['vars_json', 'updated_at']);
+            } catch (\Throwable $e) {
+            }
             (new \humhub\modules\thiscoveryForms\services\PanelService())->handleCompletion($form, $answer);
             if (!$isTest) {
+                (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onComplete(
+                    $form,
+                    $answer,
+                    Yii::$app->request->post(),
+                    $ctx
+                );
                 $this->runSubmitActions($form, $ctx, $answer);
             }
         }
@@ -770,6 +826,82 @@ trait FillResumeTrait
                 return true;
             }
         }
+        return false;
+    }
+
+    /**
+     * Serve a file used by a form without requiring login.
+     * Rich-text editor uploads are often unattached (empty object_model);
+     * those are still served when the GUID appears in the form definition.
+     *
+     * URL: /thiscovery-forms/global/form-file?id=<formId>&guid=<fileGuid>
+     */
+    public function actionFormFile($id, $guid)
+    {
+        $form = CustomForm::findOne((int)$id);
+        if (!$form) {
+            throw new NotFoundHttpException('Form not found.');
+        }
+
+        $this->assertFillAccess($form);
+
+        $file = File::findOne(['guid' => $guid]);
+        if (!$file) {
+            throw new NotFoundHttpException('File not found.');
+        }
+
+        if (!$this->formMayServeFile($form, $file)) {
+            throw new ForbiddenHttpException('File does not belong to this form.');
+        }
+
+        if (empty($file->object_model) || empty($file->object_id)) {
+            try {
+                $form->fileManager->attach($file->guid);
+            } catch (\Throwable $e) {
+                Yii::warning('Thiscovery Forms form-file attach failed: ' . $e->getMessage(), 'thiscovery-forms');
+            }
+        }
+
+        $filePath = $file->store->get();
+        if (!$filePath || !is_file($filePath)) {
+            throw new NotFoundHttpException('File not available.');
+        }
+
+        $response = Yii::$app->response;
+        $response->format = Response::FORMAT_RAW;
+        $response->headers->set('Content-Type', $file->mime_type ?: 'application/octet-stream');
+        $response->headers->set('Content-Disposition', 'inline; filename="' . rawurlencode($file->file_name) . '"');
+        $response->headers->set('Cache-Control', 'public, max-age=86400');
+        $response->stream = fopen($filePath, 'rb');
+        return $response;
+    }
+
+    protected function formMayServeFile(CustomForm $form, File $file): bool
+    {
+        $formClass = get_class($form);
+        if ($file->object_model === $formClass && (int)$file->object_id === (int)$form->getPrimaryKey()) {
+            return true;
+        }
+
+        $guid = trim((string)$file->guid);
+        if ($guid === '') {
+            return false;
+        }
+
+        $haystacks = [
+            (string)$form->description,
+            (string)$form->thank_you_content,
+        ];
+        foreach ($form->fields as $field) {
+            $haystacks[] = (string)$field->options_json;
+            $haystacks[] = (string)$field->label;
+        }
+        foreach ($haystacks as $hay) {
+            if ($hay !== '' && str_contains($hay, $guid)) {
+                return true;
+            }
+        }
+
         return false;
     }
 }

@@ -209,7 +209,7 @@ trait PanelAdminTrait
             'latestActivity' => $latestActivity,
             'filters' => ['q' => $q],
             'waves' => (new WaveService())->listWavesForPanel($panel),
-            'wavesOnPanel' => \humhub\modules\thiscoveryForms\Module::wavesLiveOnPanelStatic(),
+            'wavesOnPanel' => (new WaveService())->panelSharesWaves($panel),
         ]);
     }
 
@@ -397,7 +397,7 @@ trait PanelAdminTrait
     public function actionPanelWaveSave($id)
     {
         $panel = $this->findManagedPanel($id);
-        if (!Yii::$app->request->isPost || !\humhub\modules\thiscoveryForms\Module::wavesLiveOnPanelStatic()) {
+        if (!Yii::$app->request->isPost || !(new WaveService())->panelSharesWaves($panel)) {
             return $this->redirect(Url::toPanelView($panel, $this->panelContainer()));
         }
         $waves = new WaveService();
@@ -424,7 +424,7 @@ trait PanelAdminTrait
     public function actionPanelWaveStatus($id)
     {
         $panel = $this->findManagedPanel($id);
-        if (!Yii::$app->request->isPost || !\humhub\modules\thiscoveryForms\Module::wavesLiveOnPanelStatic()) {
+        if (!Yii::$app->request->isPost || !(new WaveService())->panelSharesWaves($panel)) {
             return $this->redirect(Url::toPanelView($panel, $this->panelContainer()));
         }
         $wave = FormWave::findOne(['id' => (int)Yii::$app->request->post('wave_id', 0), 'panel_id' => $panel->id]);

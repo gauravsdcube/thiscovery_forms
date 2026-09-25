@@ -22,6 +22,8 @@ class QuestionImportExportService
         'type',
         'key',
         'label',
+        'variable',
+        'internal_label',
         'help',
         'required',
         'options',
@@ -36,10 +38,12 @@ class QuestionImportExportService
         'rating_display',
         'grid_rows',
         'grid_columns',
+        'grid_mobile_layout',
         'items',
         'maxdiff_set_size',
         'maxdiff_set_count',
         'exclusive_option',
+        'other_specify',
         'max_select',
         'min_select',
         'min_select_all',
@@ -59,19 +63,31 @@ class QuestionImportExportService
         'carry_mode',
         'prefill_profile',
         'hidden',
+        'pii',
         'default_value',
         'meta_key',
         'logic_action',
         'logic_combinator',
         'logic_goto',
         'logic_rules',
+        'number_min',
+        'number_max',
     ];
 
     public function exportJson(CustomForm $form): array
     {
+        $aliases = $this->portableAliasMap($form);
         $fields = [];
         foreach ($form->fields as $field) {
-            $fields[] = $field->toExportArray();
+            $row = $field->toExportArray();
+            $row['key'] = $aliases[(string)$field->id] ?? ('f' . $field->id);
+            $row['carry_from'] = $this->remapAlias((string)($row['carry_from'] ?? ''), $aliases);
+            $row['logic_rules'] = $this->remapRuleFieldKeys($row['logic_rules'] ?? [], $aliases);
+            if (isset($row['logic']) && is_array($row['logic'])) {
+                $row['logic']['rules'] = $this->remapRuleFieldKeys($row['logic']['rules'] ?? [], $aliases);
+            }
+            $row['branches'] = $this->remapRuleFieldKeys($row['branches'] ?? [], $aliases);
+            $fields[] = $row;
         }
 
         return [
@@ -92,7 +108,7 @@ class QuestionImportExportService
     {
         $fh = fopen('php://temp', 'r+');
         fputcsv($fh, self::CSV_COLUMNS);
-        $aliases = $this->csvAliasMap($form);
+        $aliases = $this->portableAliasMap($form);
         foreach ($form->fields as $field) {
             fputcsv($fh, $this->csvRowFromField($field, $aliases));
         }
@@ -188,6 +204,8 @@ class QuestionImportExportService
                 'type' => $type,
                 'key' => (string)($map['key'] ?? ''),
                 'label' => $label,
+                'variable' => trim((string)($map['variable'] ?? '')),
+                'internal_label' => trim((string)($map['internal_label'] ?? '')),
                 'help_text' => (string)($map['help'] ?? $map['help_text'] ?? ''),
                 'required' => $this->cellBool($map['required'] ?? ''),
                 'options' => (string)($map['options'] ?? ''),
@@ -202,6 +220,7 @@ class QuestionImportExportService
                 'rating_display' => (string)($map['rating_display'] ?? FormField::RATING_DISPLAY_PILLS),
                 'grid_rows' => (string)($map['grid_rows'] ?? ''),
                 'grid_columns' => (string)($map['grid_columns'] ?? ''),
+                'grid_mobile_layout' => (string)($map['grid_mobile_layout'] ?? 'scroll'),
                 'items' => (string)($map['items'] ?? ''),
                 'maxdiff_set_size' => $map['maxdiff_set_size'] ?? 4,
                 'maxdiff_set_count' => $map['maxdiff_set_count'] ?? '',
@@ -231,12 +250,18 @@ class QuestionImportExportService
                 'logic_combinator' => (string)($map['logic_combinator'] ?? 'and'),
                 'logic_goto' => (string)($map['logic_goto'] ?? ''),
                 'logic_rules' => $this->decodeJsonCell($map['logic_rules'] ?? ''),
+                'other_specify' => $map['other_specify'] ?? '1',
+                'number_min' => $map['number_min'] ?? '',
+                'number_max' => $map['number_max'] ?? '',
             ];
             if (!is_array($payload['branches'])) {
                 $payload['branches'] = [];
             }
             if (!is_array($payload['logic_rules'])) {
                 $payload['logic_rules'] = [];
+            }
+            if (array_key_exists('pii', $map)) {
+                $payload['pii'] = $this->cellBool($map['pii']);
             }
             $payloads[] = $payload;
         }
@@ -281,10 +306,15 @@ class QuestionImportExportService
             if (isset($payload['type'])) {
                 $payload['type'] = $this->normalizeType((string)$payload['type']);
             }
+            if (($payload['type'] ?? '') === FormField::TYPE_MAP
+                && !\humhub\modules\thiscoveryForms\helpers\MappingAvailability::isEnabled()) {
+                continue;
+            }
             $row = FormField::exportToPostRow($payload);
             if ($row === null) {
                 continue;
             }
+            $row = $this->sanitizeImportRow($row, $payload);
             $importKey = preg_replace('/[^a-zA-Z0-9_]/', '', (string)($payload['key'] ?? '')) ?? '';
             if ($importKey !== '') {
                 $row['import_key'] = $importKey;
@@ -299,10 +329,73 @@ class QuestionImportExportService
         }
 
         if (!$form->saveFieldsFromPost($existing)) {
-            return Yii::t('ThiscoveryFormsModule.base', 'Could not import questions.');
+            $detail = Yii::$app->session->getFlash('error', null, true);
+            if (is_array($detail)) {
+                $detail = implode(' ', array_map('strval', $detail));
+            }
+            $detail = trim((string)$detail);
+            return $detail !== ''
+                ? $detail
+                : Yii::t('ThiscoveryFormsModule.base', 'Could not import questions.');
         }
 
         return null;
+    }
+
+    /**
+     * Clamp / reshape payloads so saveFieldsFromPost does not fail on LLM import quirks.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function sanitizeImportRow(array $row, array $payload): array
+    {
+        $row['label'] = mb_substr(trim((string)($row['label'] ?? '')), 0, 255);
+        $row['internal_label'] = mb_substr(trim((string)($row['internal_label'] ?? '')), 0, 255);
+        $help = (string)($row['help_text'] ?? '');
+        $type = (string)($row['type'] ?? '');
+
+        if ($type === FormField::TYPE_RICH_TEXT) {
+            $rich = trim((string)($row['rich_content'] ?? ''));
+            $labelHtml = '<p>' . htmlspecialchars($row['label'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
+            if ($help !== '' && ($rich === '' || $rich === $labelHtml || mb_strlen($help) > 500)) {
+                $paras = preg_split("/\n\s*\n/u", $help) ?: [$help];
+                $body = '';
+                foreach ($paras as $para) {
+                    $para = trim((string)$para);
+                    if ($para === '') {
+                        continue;
+                    }
+                    $body .= '<p>' . nl2br(htmlspecialchars($para, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')) . '</p>';
+                }
+                if ($rich === '' || $rich === $labelHtml) {
+                    $row['rich_content'] = ($row['label'] !== ''
+                            ? '<p><strong>' . htmlspecialchars($row['label'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>'
+                            : '') . $body;
+                } else {
+                    $row['rich_content'] = $rich . $body;
+                }
+                $row['help_text'] = '';
+                $help = '';
+            }
+        }
+
+        if (($type === FormField::TYPE_GRID_SINGLE || $type === FormField::TYPE_GRID_MULTI)
+            && trim((string)($row['grid_rows'] ?? '')) === ''
+            && trim((string)($row['options'] ?? '')) !== '') {
+            $row['grid_rows'] = (string)$row['options'];
+        }
+        if (($type === FormField::TYPE_GRID_SINGLE || $type === FormField::TYPE_GRID_MULTI)
+            && trim((string)($row['grid_columns'] ?? '')) === '') {
+            $row['grid_columns'] = "Not at all\nA little\nSomewhat\nQuite a bit\nVery much\nN/A";
+        }
+
+        if (mb_strlen($help) > 500) {
+            $row['help_text'] = mb_substr($help, 0, 500);
+        }
+
+        return $row;
     }
 
     /**
@@ -324,15 +417,36 @@ class QuestionImportExportService
     }
 
     /**
+     * Portable keys for skip logic: variable name when unique, otherwise f{id}.
+     * Also maps stored numeric ids and studio keys (id123) onto those aliases.
+     *
+     * @return array<string,string>
+     */
+    private function portableAliasMap(CustomForm $form): array
+    {
+        $used = [];
+        $idToKey = [];
+        foreach ($form->fields as $field) {
+            $id = (string)$field->id;
+            $var = trim((string)$field->variable);
+            $alias = ($var !== '' && !isset($used[strtolower($var)])) ? $var : ('f' . $id);
+            $used[strtolower($alias)] = true;
+            $idToKey[$id] = $alias;
+        }
+        $map = [];
+        foreach ($idToKey as $id => $alias) {
+            $map[$id] = $alias;
+            $map['id' . $id] = $alias;
+        }
+        return $map;
+    }
+
+    /**
      * @return array<string,string>
      */
     private function csvAliasMap(CustomForm $form): array
     {
-        $map = [];
-        foreach ($form->fields as $field) {
-            $map[(string)$field->id] = 'f' . $field->id;
-        }
-        return $map;
+        return $this->portableAliasMap($form);
     }
 
     /**
@@ -349,6 +463,12 @@ class QuestionImportExportService
         foreach ($rules as $rule) {
             if (!is_array($rule)) {
                 continue;
+            }
+            if (!empty($rule['all']) && is_array($rule['all'])) {
+                $rule['all'] = $this->remapRuleFieldKeys($rule['all'], $aliases);
+            }
+            if (!empty($rule['any']) && is_array($rule['any'])) {
+                $rule['any'] = $this->remapRuleFieldKeys($rule['any'], $aliases);
             }
             if (isset($rule['fieldKey'])) {
                 $rule['fieldKey'] = $this->remapAlias((string)$rule['fieldKey'], $aliases);
@@ -378,12 +498,18 @@ class QuestionImportExportService
                 return (string)($row['key'] ?? '');
             case 'label':
                 return (string)$field->label;
+            case 'variable':
+                return (string)($field->variable ?? $row['variable'] ?? '');
+            case 'internal_label':
+                return (string)($field->internal_label ?? $row['internal_label'] ?? '');
             case 'help':
                 return (string)$field->help_text;
             case 'required':
                 return !empty($row['required']) ? '1' : '0';
             case 'options':
                 return (string)($row['options'] ?? '');
+            case 'grid_mobile_layout':
+                return (string)($row['grid_mobile_layout'] ?? 'scroll');
             case 'branches':
             case 'logic_rules':
             case 'image_regions':
@@ -489,6 +615,7 @@ class QuestionImportExportService
             'drill_down' => FormField::TYPE_DRILLDOWN,
             'image' => FormField::TYPE_IMAGE_AREA,
             'hotspot' => FormField::TYPE_IMAGE_AREA,
+            'map' => FormField::TYPE_MAP,
             'respondent_meta' => FormField::TYPE_RESPONDENT_META,
             'metadata' => FormField::TYPE_RESPONDENT_META,
             'ip' => FormField::TYPE_RESPONDENT_META,

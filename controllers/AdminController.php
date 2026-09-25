@@ -22,6 +22,8 @@ class AdminController extends Controller
     use PanelAdminTrait;
     use EmailAdminTrait;
     use HelpTrait;
+    use ThemeAdminTrait;
+    use UatTrait;
 
     /**
      * @inheritdoc
@@ -46,7 +48,7 @@ class AdminController extends Controller
         }
 
         $action = Yii::$app->controller->action->id ?? '';
-        if ($action === 'settings') {
+        if (in_array($action, ['settings', 'theme-edit', 'theme-delete', 'theme-export', 'theme-import', 'ai-usage'], true)) {
             return Yii::$app->user->isAdmin() || Yii::$app->user->can(ManageModules::class);
         }
 
@@ -103,7 +105,12 @@ class AdminController extends Controller
             if (!isset(Yii::$app->request->post('ModuleSettings')['enabledKinds'])) {
                 $model->enabledKinds = [];
             }
-            if ($model->save()) {
+            $integrityPost = Yii::$app->request->post('integrity');
+            $ok = $model->save();
+            if ($ok && is_array($integrityPost)) {
+                \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::saveGlobal($integrityPost);
+            }
+            if ($ok) {
                 $this->view->saved();
                 return $this->redirect(['settings']);
             }
@@ -111,6 +118,24 @@ class AdminController extends Controller
 
         return $this->render('settings', [
             'model' => $model,
+            'integrity' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::global(),
+            'themes' => \humhub\modules\thiscoveryForms\models\FormTheme::find()
+                ->orderBy(['is_default' => SORT_DESC, 'name' => SORT_ASC])
+                ->all(),
+        ]);
+    }
+
+    public function actionAiUsage()
+    {
+        $summary = (new \humhub\modules\thiscoveryForms\services\LlmUsageLogger())->monthSummary();
+        $rows = \humhub\modules\thiscoveryForms\models\FormLlmUsage::find()
+            ->orderBy(['created_at' => SORT_DESC])
+            ->limit(100)
+            ->all();
+
+        return $this->render('ai_usage', [
+            'summary' => $summary,
+            'rows' => $rows,
         ]);
     }
 }

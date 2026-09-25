@@ -102,14 +102,18 @@ class FormPager
      * @param array $pageKeyIndex
      * @param array $values fieldId => value
      */
-    public function resolveNextPage(array $pages, array $pageKeyIndex, int $fromIndex, array $values): ?int
+    public function resolveNextPage(array $pages, array $pageKeyIndex, int $fromIndex, array $values, array $allFields = []): ?int
     {
         if (!isset($pages[$fromIndex])) {
             return null;
         }
 
+        if (!$allFields) {
+            $allFields = $this->fieldsFromPages($pages);
+        }
+
         $engine = new LogicEngine();
-        $nav = $engine->pageNavigation(self::navigationFields($pages[$fromIndex]), $values);
+        $nav = $engine->pageNavigation(self::navigationFields($pages[$fromIndex]), $values, $allFields);
         if ($nav) {
             if ($nav['action'] === LogicEngine::ACTION_GOTO_END) {
                 return null;
@@ -126,7 +130,7 @@ class FormPager
         if ($break instanceof FormField) {
             $cfg = $break->getPageBreakConfig();
             foreach ($cfg['branches'] as $branch) {
-                if (FormField::evaluateBranch($branch, $values)) {
+                if (FormField::evaluateBranch($branch, $values, [], $allFields)) {
                     $goto = (string)($branch['gotoPageKey'] ?? '');
                     if ($goto !== '' && isset($pageKeyIndex[$goto])) {
                         return (int)$pageKeyIndex[$goto];
@@ -135,7 +139,7 @@ class FormPager
             }
         }
 
-        return $this->skipForward($pages, $fromIndex + 1, $values, $engine);
+        return $this->skipForward($pages, $fromIndex + 1, $values, $engine, $allFields);
     }
 
     /**
@@ -159,7 +163,7 @@ class FormPager
                 break;
             }
             $visited[$idx] = true;
-            $next = $this->resolveNextPage($pages, $pageKeyIndex, $idx, $values);
+            $next = $this->resolveNextPage($pages, $pageKeyIndex, $idx, $values, $fields);
             if ($next === null) {
                 break;
             }
@@ -174,12 +178,33 @@ class FormPager
         return $ids;
     }
 
-    private function skipForward(array $pages, int $idx, array $values, LogicEngine $engine): ?int
+    /**
+     * @param array $pages from buildPages
+     * @return FormField[]
+     */
+    private function fieldsFromPages(array $pages): array
+    {
+        $out = [];
+        foreach ($pages as $page) {
+            foreach ($page['items'] ?? [] as $field) {
+                if ($field instanceof FormField) {
+                    $out[] = $field;
+                }
+            }
+            $break = $page['break'] ?? null;
+            if ($break instanceof FormField) {
+                $out[] = $break;
+            }
+        }
+        return $out;
+    }
+
+    private function skipForward(array $pages, int $idx, array $values, LogicEngine $engine, array $allFields = []): ?int
     {
         $guard = 0;
         while (isset($pages[$idx]) && $guard++ < 80) {
             $items = $pages[$idx]['items'] ?? [];
-            if (!$engine->shouldSkipPage($items, $values)) {
+            if (!$engine->shouldSkipPage($items, $values, $allFields)) {
                 return $idx;
             }
             $idx++;

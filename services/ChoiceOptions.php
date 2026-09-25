@@ -112,23 +112,60 @@ class ChoiceOptions
     }
 
     /**
+     * If any option has a code, every option must have a non-empty code.
+     *
+     * @param array<int, array{code:string,label:string}> $items
+     * @throws \yii\base\InvalidArgumentException
+     */
+    public static function assertCodeConsistency(array $items): void
+    {
+        if (!$items) {
+            return;
+        }
+        $withCode = 0;
+        $without = 0;
+        foreach ($items as $item) {
+            $code = trim((string)($item['code'] ?? ''));
+            $label = trim((string)($item['label'] ?? ''));
+            if ($label === '' && $code === '') {
+                continue;
+            }
+            // Distinct code, or code present while allowing code===label
+            if ($code !== '') {
+                $withCode++;
+            } else {
+                $without++;
+            }
+        }
+        if ($withCode > 0 && $without > 0) {
+            throw new \InvalidArgumentException(\Yii::t(
+                'ThiscoveryFormsModule.base',
+                'If you set an internal code on one choice, every choice in this question needs an internal code.'
+            ));
+        }
+    }
+
+    /**
      * @param array<int, array{code:string,label:string}> $items
      */
     public static function toStorage(array $items): array
     {
-        $hasDistinct = false;
+        $hasCode = false;
         foreach ($items as $item) {
-            if ((string)($item['code'] ?? '') !== (string)($item['label'] ?? '')) {
-                $hasDistinct = true;
+            if (trim((string)($item['code'] ?? '')) !== '') {
+                $hasCode = true;
                 break;
             }
         }
-        if (!$hasDistinct) {
-            return array_values(array_map(static fn($item) => (string)$item['label'], $items));
+        if (!$hasCode) {
+            return array_values(array_map(static function ($item) {
+                $label = (string)($item['label'] ?? '');
+                return $label !== '' ? $label : (string)($item['code'] ?? '');
+            }, $items));
         }
         return array_values(array_map(static fn($item) => [
             'code' => (string)$item['code'],
-            'label' => (string)$item['label'],
+            'label' => (string)($item['label'] !== '' ? $item['label'] : $item['code']),
         ], $items));
     }
 
@@ -141,10 +178,14 @@ class ChoiceOptions
         foreach ($items as $item) {
             $code = (string)($item['code'] ?? '');
             $label = (string)($item['label'] ?? $code);
-            if ($code === '') {
+            if ($label === '' && $code === '') {
                 continue;
             }
-            $lines[] = ($code !== $label) ? ($code . ' | ' . $label) : $label;
+            if ($code === '' || $code === $label) {
+                $lines[] = $label !== '' ? $label : $code;
+            } else {
+                $lines[] = $code . ' | ' . $label;
+            }
         }
         return implode("\n", $lines);
     }

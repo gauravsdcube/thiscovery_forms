@@ -427,8 +427,20 @@ class PanelService
         $last = '';
         $attrs = [];
         foreach ($form->fields as $field) {
+            if ($field->isDisplayOnly() || in_array($field->type, [
+                FormField::TYPE_MAP,
+                FormField::TYPE_IMAGE_AREA,
+                FormField::TYPE_GRID_SINGLE,
+                FormField::TYPE_GRID_MULTI,
+                FormField::TYPE_BEST_WORST,
+                FormField::TYPE_MAXDIFF,
+                FormField::TYPE_DRILLDOWN,
+                FormField::TYPE_FILE,
+            ], true)) {
+                continue;
+            }
             $raw = $values[$field->id] ?? '';
-            $text = is_array($raw) ? trim(implode(' ', $raw)) : trim((string)$raw);
+            $text = $this->scalarText($raw);
             if ($text === '') {
                 continue;
             }
@@ -691,6 +703,23 @@ class PanelService
             }
         }
         return ['sent' => $sent, 'failed' => $failed];
+    }
+
+    /**
+     * Flatten a form answer into a single line of text. Nested arrays (e.g. map GeoJSON) are skipped.
+     */
+    private function scalarText($raw): string
+    {
+        if (!is_array($raw)) {
+            return trim((string)$raw);
+        }
+        $parts = [];
+        foreach ($raw as $item) {
+            if (is_scalar($item) || $item === null) {
+                $parts[] = (string)$item;
+            }
+        }
+        return trim(implode(' ', $parts));
     }
 
     /**

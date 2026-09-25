@@ -17,6 +17,8 @@ use yii\db\ActiveQuery;
  * @property int $form_id
  * @property string $type
  * @property string $label
+ * @property string|null $variable
+ * @property string|null $internal_label
  * @property string|null $help_text
  * @property int $required
  * @property int $sort_order
@@ -56,6 +58,7 @@ class FormField extends ActiveRecord
     public const TYPE_MAXDIFF = 'maxdiff';
     public const TYPE_DRILLDOWN = 'drilldown';
     public const TYPE_IMAGE_AREA = 'image_area';
+    public const TYPE_MAP = 'map';
     public const TYPE_RESPONDENT_META = 'respondent_meta';
     public const TYPE_PANEL_ATTR = 'panel_attr';
 
@@ -71,6 +74,10 @@ class FormField extends ActiveRecord
     public const OP_NOT_EQUALS = 'not_equals';
     public const OP_CONTAINS = 'contains';
     public const OP_CHECKED = 'checked';
+    public const OP_GT = 'gt';
+    public const OP_GTE = 'gte';
+    public const OP_LT = 'lt';
+    public const OP_LTE = 'lte';
 
     public static function tableName()
     {
@@ -83,7 +90,10 @@ class FormField extends ActiveRecord
             [['form_id', 'type', 'label'], 'required'],
             [['form_id', 'sort_order', 'condition_field_id'], 'integer'],
             [['required'], 'boolean'],
-            [['label'], 'string', 'max' => 255],
+            [['label', 'internal_label'], 'string', 'max' => 255],
+            [['variable'], 'string', 'max' => 120],
+            [['variable'], 'match', 'pattern' => '/^[A-Za-z][A-Za-z0-9_]*$/', 'skipOnEmpty' => true,
+                'message' => Yii::t('ThiscoveryFormsModule.base', 'Variable must start with a letter and use only letters, numbers, and underscores.')],
             [['help_text', 'condition_value'], 'string', 'max' => 500],
             [['options_json', 'logic_json', 'actions_json'], 'string'],
             [['type'], 'in', 'range' => array_keys(self::getTypeLabels())],
@@ -96,10 +106,50 @@ class FormField extends ActiveRecord
         return [
             'type' => Yii::t('ThiscoveryFormsModule.base', 'Type'),
             'label' => Yii::t('ThiscoveryFormsModule.base', 'Label'),
+            'variable' => Yii::t('ThiscoveryFormsModule.base', 'Variable name'),
+            'internal_label' => Yii::t('ThiscoveryFormsModule.base', 'Internal label'),
             'help_text' => Yii::t('ThiscoveryFormsModule.base', 'Help text'),
             'required' => Yii::t('ThiscoveryFormsModule.base', 'Required'),
             'options_json' => Yii::t('ThiscoveryFormsModule.base', 'Options'),
         ];
+    }
+
+    public static function slugVariable(string $label, string $type = 'field'): string
+    {
+        $s = strtolower(trim($label));
+        $s = preg_replace('/[^a-z0-9]+/i', '_', $s) ?: '';
+        $s = trim((string)$s, '_');
+        if ($s === '') {
+            $s = $type !== '' ? preg_replace('/[^a-z0-9]+/i', '_', $type) : 'field';
+        }
+        if (!preg_match('/^[a-z]/i', $s)) {
+            $s = 'f_' . $s;
+        }
+        if (strlen($s) > 100) {
+            $s = rtrim(substr($s, 0, 100), '_');
+        }
+        return $s;
+    }
+
+    public function ensureVariable(?array $used = null): string
+    {
+        $var = trim((string)$this->variable);
+        if ($var === '') {
+            $var = self::slugVariable((string)$this->label, (string)$this->type);
+        }
+        if ($used !== null) {
+            $base = $var;
+            $n = 2;
+            while (isset($used[strtolower($var)])) {
+                $var = $base . '_' . $n;
+                $n++;
+            }
+        }
+        $this->variable = $var;
+        if (trim((string)$this->internal_label) === '') {
+            $this->internal_label = (string)$this->label;
+        }
+        return $var;
     }
 
     public static function getTypeLabels(): array
@@ -127,6 +177,7 @@ class FormField extends ActiveRecord
             self::TYPE_MAXDIFF => Yii::t('ThiscoveryFormsModule.base', 'MaxDiff'),
             self::TYPE_DRILLDOWN => Yii::t('ThiscoveryFormsModule.base', 'Drill-down'),
             self::TYPE_IMAGE_AREA => Yii::t('ThiscoveryFormsModule.base', 'Image area'),
+            self::TYPE_MAP => Yii::t('ThiscoveryFormsModule.base', 'Map'),
             self::TYPE_RESPONDENT_META => Yii::t('ThiscoveryFormsModule.base', 'Respondent metadata'),
             self::TYPE_PANEL_ATTR => Yii::t('ThiscoveryFormsModule.base', 'Panel member field'),
         ];
@@ -139,6 +190,10 @@ class FormField extends ActiveRecord
             self::OP_NOT_EQUALS => Yii::t('ThiscoveryFormsModule.base', 'Does not equal'),
             self::OP_CONTAINS => Yii::t('ThiscoveryFormsModule.base', 'Contains'),
             self::OP_CHECKED => Yii::t('ThiscoveryFormsModule.base', 'Is checked / selected'),
+            self::OP_GT => Yii::t('ThiscoveryFormsModule.base', 'Greater than'),
+            self::OP_GTE => Yii::t('ThiscoveryFormsModule.base', 'Greater than or equal'),
+            self::OP_LT => Yii::t('ThiscoveryFormsModule.base', 'Less than'),
+            self::OP_LTE => Yii::t('ThiscoveryFormsModule.base', 'Less than or equal'),
         ];
     }
 
@@ -206,6 +261,7 @@ class FormField extends ActiveRecord
             self::TYPE_MAXDIFF,
             self::TYPE_DRILLDOWN,
             self::TYPE_IMAGE_AREA,
+            self::TYPE_MAP,
             self::TYPE_RANKING,
             self::TYPE_CHECKBOX,
         ], true);
@@ -339,6 +395,81 @@ class FormField extends ActiveRecord
         } else {
             unset($decoded['hidden']);
         }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    public function isAttentionCheck(): bool
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            return false;
+        }
+        return !empty($decoded['attentionCheck']);
+    }
+
+    public function getAttentionExpected(): string
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            return '';
+        }
+        return trim((string)($decoded['attentionExpected'] ?? ''));
+    }
+
+    public function setAttentionCheck(bool $enabled, string $expected = ''): void
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => array_values($decoded)];
+        }
+        if ($enabled) {
+            $decoded['attentionCheck'] = true;
+            $decoded['attentionExpected'] = trim($expected);
+        } else {
+            unset($decoded['attentionCheck'], $decoded['attentionExpected']);
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    /**
+     * Whether this question is treated as personal data for CSV export.
+     * Defaults on for email, respondent IP, and panel name/email attributes.
+     */
+    public function isContainsPii(): bool
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && !array_is_list($decoded) && array_key_exists('pii', $decoded)) {
+            return !empty($decoded['pii']);
+        }
+        return $this->defaultContainsPii();
+    }
+
+    public function defaultContainsPii(): bool
+    {
+        if ($this->type === self::TYPE_EMAIL) {
+            return true;
+        }
+        if ($this->type === self::TYPE_RESPONDENT_META) {
+            return $this->getRespondentMetaKey() === RespondentMetaService::KEY_IP;
+        }
+        if ($this->type === self::TYPE_PANEL_ATTR) {
+            return in_array($this->getPanelAttrKey(), [
+                PanelFieldService::KEY_FIRST,
+                PanelFieldService::KEY_LAST,
+                PanelFieldService::KEY_EMAIL,
+                PanelFieldService::KEY_DISPLAY,
+            ], true);
+        }
+        return false;
+    }
+
+    public function setContainsPii(bool $pii): void
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => array_values($decoded)];
+        }
+        $decoded['pii'] = $pii;
         $this->writeDecodedOptions($decoded);
     }
 
@@ -498,6 +629,9 @@ class FormField extends ActiveRecord
 
     public function findOtherOption(?array $options = null): ?string
     {
+        if (!$this->allowsOtherSpecify()) {
+            return null;
+        }
         $pairs = $this->getChoicePairs();
         if ($options !== null) {
             $wanted = [];
@@ -773,6 +907,83 @@ class FormField extends ActiveRecord
         return array_values(array_filter(array_map('trim', explode('|', $exclusive)), 'strlen'));
     }
 
+    /**
+     * Whether an Other choice should show the inline "Please specify" box.
+     */
+    public function allowsOtherSpecify(): bool
+    {
+        if (!self::isChoiceType($this->type)) {
+            return false;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && !array_is_list($decoded) && array_key_exists('otherSpecify', $decoded)) {
+            return !empty($decoded['otherSpecify']);
+        }
+        return true;
+    }
+
+    public function setAllowsOtherSpecify(bool $allow): void
+    {
+        if (!self::isChoiceType($this->type)) {
+            return;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => $decoded];
+        }
+        if ($allow) {
+            unset($decoded['otherSpecify']);
+        } else {
+            $decoded['otherSpecify'] = false;
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    public function getNumberMin(): ?float
+    {
+        return $this->numericBound('min');
+    }
+
+    public function getNumberMax(): ?float
+    {
+        return $this->numericBound('max');
+    }
+
+    public function setNumberRange($min, $max): void
+    {
+        if ($this->type !== self::TYPE_NUMBER) {
+            return;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => $decoded];
+        }
+        foreach (['min' => $min, 'max' => $max] as $key => $raw) {
+            if ($raw === '' || $raw === null) {
+                unset($decoded[$key]);
+                continue;
+            }
+            if (!is_numeric($raw)) {
+                continue;
+            }
+            $decoded[$key] = 0 + $raw;
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    private function numericBound(string $key): ?float
+    {
+        if ($this->type !== self::TYPE_NUMBER) {
+            return null;
+        }
+        $decoded = $this->decodedOptions();
+        if (!is_array($decoded) || !array_key_exists($key, $decoded)) {
+            return null;
+        }
+        $raw = $decoded[$key];
+        return is_numeric($raw) ? (float)$raw : null;
+    }
+
     public function getPrefillProfileAttribute(): ?string
     {
         if (!$this->options_json) {
@@ -802,16 +1013,39 @@ class FormField extends ActiveRecord
 
     public function setOptionsFromText($text, bool $randomize = false, ?int $maxSelect = null, ?string $exclusiveOption = null, ?int $minSelect = null, ?bool $minSelectAll = null): void
     {
-        $lines = preg_split('/\r\n|\r|\n/', (string)$text) ?: [];
-        $pairs = [];
-        foreach ($lines as $line) {
-            $line = trim((string)$line);
-            if ($line === '') {
-                continue;
+        if (is_array($text)) {
+            $items = ChoiceOptions::itemsFromDecoded(array_values($text));
+            // Also accept already-normalized [{code,label}]
+            if (!$items) {
+                $items = [];
+                foreach ($text as $item) {
+                    if (!is_array($item)) {
+                        continue;
+                    }
+                    $code = trim((string)($item['code'] ?? ''));
+                    $label = trim((string)($item['label'] ?? ''));
+                    if ($label === '' && $code === '') {
+                        continue;
+                    }
+                    if ($label === '') {
+                        $label = $code;
+                    }
+                    $items[] = ['code' => $code, 'label' => $label];
+                }
             }
-            $pairs[] = $line;
+        } else {
+            $lines = preg_split('/\r\n|\r|\n/', (string)$text) ?: [];
+            $pairs = [];
+            foreach ($lines as $line) {
+                $line = trim((string)$line);
+                if ($line === '') {
+                    continue;
+                }
+                $pairs[] = $line;
+            }
+            $items = ChoiceOptions::parseText(implode("\n", $pairs));
         }
-        $items = ChoiceOptions::parseText(implode("\n", $pairs));
+        ChoiceOptions::assertCodeConsistency($items);
         $options = ChoiceOptions::toStorage($items);
 
         $prev = json_decode((string)$this->options_json, true);
@@ -838,12 +1072,18 @@ class FormField extends ActiveRecord
         $exclusiveOption = trim((string)$exclusiveOption);
         $exclusiveOption = $exclusiveOption !== '' ? $exclusiveOption : null;
         if ($exclusiveOption !== null) {
-            foreach ($items as $item) {
-                if ($exclusiveOption === $item['code'] || $exclusiveOption === $item['label']) {
-                    $exclusiveOption = $item['code'];
-                    break;
+            $resolved = [];
+            foreach (array_filter(array_map('trim', explode('|', $exclusiveOption)), 'strlen') as $part) {
+                $code = $part;
+                foreach ($items as $item) {
+                    if ($part === $item['code'] || $part === $item['label']) {
+                        $code = $item['code'];
+                        break;
+                    }
                 }
+                $resolved[] = $code;
             }
+            $exclusiveOption = $resolved ? implode('|', array_unique($resolved)) : null;
         }
 
         $carryFrom = trim((string)($prev['carryFrom'] ?? ''));
@@ -858,13 +1098,14 @@ class FormField extends ActiveRecord
         $instrumentRole = trim((string)($prev['instrument_role'] ?? ''));
         $hidden = !empty($prev['hidden']);
         $defaultValue = trim((string)($prev['defaultValue'] ?? ''));
+        $otherSpecify = array_key_exists('otherSpecify', $prev) ? !empty($prev['otherSpecify']) : true;
 
-        if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '') {
+        if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '' && $otherSpecify) {
             $this->options_json = null;
             return;
         }
 
-        if ($randomize || $maxSelect !== null || $minSelect !== null || $minSelectAll || $exclusiveOption !== null || $carryFrom !== '' || $justification !== '' || $instrumentRole !== '' || $hidden || $defaultValue !== '' || (isset($options[0]) && is_array($options[0]))) {
+        if ($randomize || $maxSelect !== null || $minSelect !== null || $minSelectAll || $exclusiveOption !== null || $carryFrom !== '' || $justification !== '' || $instrumentRole !== '' || $hidden || $defaultValue !== '' || !$otherSpecify || (isset($options[0]) && is_array($options[0]))) {
             $payload = ['options' => $options];
             if ($randomize) {
                 $payload['randomize'] = true;
@@ -896,6 +1137,9 @@ class FormField extends ActiveRecord
             }
             if ($defaultValue !== '') {
                 $payload['defaultValue'] = $defaultValue;
+            }
+            if (!$otherSpecify) {
+                $payload['otherSpecify'] = false;
             }
             $this->options_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
         } else {
@@ -1302,12 +1546,37 @@ class FormField extends ActiveRecord
 
     public function setGridConfig(array $config): void
     {
-        $rows = $this->linesToList($config['rows'] ?? []);
-        $columns = $this->linesToList($config['columns'] ?? []);
+        $rows = $this->normalizeGridPairs($config['rows'] ?? []);
+        $columns = $this->normalizeGridPairs($config['columns'] ?? []);
+        ChoiceOptions::assertCodeConsistency(array_map(static fn($p) => [
+            'code' => (string)($p['code'] ?? ''),
+            'label' => (string)($p['label'] ?? ''),
+        ], $rows));
+        ChoiceOptions::assertCodeConsistency(array_map(static fn($p) => [
+            'code' => (string)($p['code'] ?? ''),
+            'label' => (string)($p['label'] ?? ''),
+        ], $columns));
+        $layout = (string)($config['mobile_layout'] ?? $config['mobileLayout'] ?? 'scroll');
+        if ($layout !== 'stack') {
+            $layout = 'scroll';
+        }
+        $storeRows = array_map(static function (array $p) {
+            if (($p['code'] ?? '') === '') {
+                return (string)$p['label'];
+            }
+            return ['code' => (string)$p['code'], 'label' => (string)$p['label']];
+        }, $rows);
+        $storeCols = array_map(static function (array $p) {
+            if (($p['code'] ?? '') === '') {
+                return (string)$p['label'];
+            }
+            return ['code' => (string)$p['code'], 'label' => (string)$p['label']];
+        }, $columns);
         $this->options_json = json_encode([
             '__type' => $this->type === self::TYPE_GRID_MULTI ? self::TYPE_GRID_MULTI : self::TYPE_GRID_SINGLE,
-            'rows' => $rows,
-            'columns' => $columns,
+            'rows' => $storeRows,
+            'columns' => $storeCols,
+            'mobile_layout' => $layout,
         ], JSON_UNESCAPED_UNICODE);
     }
 
@@ -1315,9 +1584,65 @@ class FormField extends ActiveRecord
     {
         $decoded = $this->decodedOptions();
         return [
-            'rows' => $this->linesToList($decoded['rows'] ?? []),
-            'columns' => $this->linesToList($decoded['columns'] ?? []),
+            'rows' => $this->normalizeGridPairs($decoded['rows'] ?? []),
+            'columns' => $this->normalizeGridPairs($decoded['columns'] ?? []),
+            'mobile_layout' => (($decoded['mobile_layout'] ?? 'scroll') === 'stack') ? 'stack' : 'scroll',
         ];
+    }
+
+    /**
+     * @return array<int, array{code:string,label:string,value:string}>
+     */
+    private function normalizeGridPairs($source): array
+    {
+        if (is_string($source)) {
+            $source = preg_split('/\r\n|\r|\n/', $source) ?: [];
+        }
+        if (!is_array($source)) {
+            return [];
+        }
+        $out = [];
+        $anyCode = false;
+        $pairs = [];
+        foreach ($source as $item) {
+            if (is_array($item)) {
+                $code = trim((string)($item['code'] ?? ''));
+                $label = trim((string)($item['label'] ?? ''));
+            } else {
+                $line = trim((string)$item);
+                if ($line === '') {
+                    continue;
+                }
+                if (preg_match('/^\[([^\]]*)\]\s*(.+)$/u', $line, $m)) {
+                    $code = trim($m[1]);
+                    $label = trim($m[2]);
+                } elseif (preg_match('/^(.+?)\s+\|\s+(.+)$/u', $line, $m)) {
+                    $code = trim($m[1]);
+                    $label = trim($m[2]);
+                } else {
+                    $code = '';
+                    $label = $line;
+                }
+            }
+            if ($label === '' && $code === '') {
+                continue;
+            }
+            if ($label === '') {
+                $label = $code;
+            }
+            if ($code !== '') {
+                $anyCode = true;
+            }
+            $pairs[] = ['code' => $code, 'label' => $label];
+        }
+        foreach ($pairs as $pair) {
+            if ($anyCode && $pair['code'] === '') {
+                // leave empty for studio validation
+            }
+            $value = $pair['code'] !== '' ? $pair['code'] : $pair['label'];
+            $out[] = ['code' => $pair['code'], 'label' => $pair['label'], 'value' => $value];
+        }
+        return $out;
     }
 
     public function setItemsConfig(array $config): void
@@ -1452,6 +1777,93 @@ class FormField extends ActiveRecord
         return $url;
     }
 
+    public function setMapConfig(array $config): void
+    {
+        $types = [];
+        foreach ((array)($config['allowedTypes'] ?? ['Point']) as $type) {
+            $type = (string)$type;
+            if (in_array($type, ['Point', 'LineString', 'Polygon'], true) && !in_array($type, $types, true)) {
+                $types[] = $type;
+            }
+        }
+        $max = (int)($config['maxFeatures'] ?? 1);
+        if ($max < 1) {
+            $max = 1;
+        }
+        if ($max > 50) {
+            $max = 50;
+        }
+        $lat = (float)($config['lat'] ?? 52.4862);
+        $lng = (float)($config['lng'] ?? -1.8904);
+        $zoom = (int)($config['zoom'] ?? 7);
+        $this->options_json = json_encode([
+            '__type' => self::TYPE_MAP,
+            'lat' => max(-90.0, min(90.0, $lat)),
+            'lng' => max(-180.0, min(180.0, $lng)),
+            'zoom' => max(1, min(20, $zoom)),
+            'allowedTypes' => $types ?: ['Point'],
+            'maxFeatures' => $max,
+            'style' => $this->normalizeMapStyle((string)($config['style'] ?? '')),
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    public function getMapConfig(): array
+    {
+        $decoded = $this->decodedOptions();
+        $module = Yii::$app->getModule('thiscovery-mapping');
+        $lat = isset($decoded['lat']) ? (float)$decoded['lat'] : (float)($module && method_exists($module, 'getDefaultCenterLat') ? $module->getDefaultCenterLat() : 52.4862);
+        $lng = isset($decoded['lng']) ? (float)$decoded['lng'] : (float)($module && method_exists($module, 'getDefaultCenterLng') ? $module->getDefaultCenterLng() : -1.8904);
+        $zoom = isset($decoded['zoom']) ? (int)$decoded['zoom'] : (int)($module && method_exists($module, 'getDefaultZoom') ? $module->getDefaultZoom() : 7);
+        $types = [];
+        foreach ((array)($decoded['allowedTypes'] ?? ['Point']) as $type) {
+            $type = (string)$type;
+            if (in_array($type, ['Point', 'LineString', 'Polygon'], true) && !in_array($type, $types, true)) {
+                $types[] = $type;
+            }
+        }
+        $max = (int)($decoded['maxFeatures'] ?? 1);
+        if ($max < 1) {
+            $max = 1;
+        }
+        if ($max > 50) {
+            $max = 50;
+        }
+        return [
+            'lat' => max(-90.0, min(90.0, $lat)),
+            'lng' => max(-180.0, min(180.0, $lng)),
+            'zoom' => max(1, min(20, $zoom)),
+            'allowedTypes' => $types ?: ['Point'],
+            'maxFeatures' => $max,
+            'style' => $this->normalizeMapStyle((string)($decoded['style'] ?? '')),
+        ];
+    }
+
+    private function normalizeMapStyle(string $style): string
+    {
+        $style = trim($style);
+        if ($style !== '' && class_exists(\humhub\modules\thiscoveryMapping\models\ModuleSettings::class)
+            && isset(\humhub\modules\thiscoveryMapping\models\ModuleSettings::styleLabels()[$style])) {
+            return $style;
+        }
+        $module = Yii::$app->getModule('thiscovery-mapping');
+        if ($module && method_exists($module, 'getBasemapStyle')) {
+            return (string)$module->getBasemapStyle();
+        }
+        return 'alidade_smooth';
+    }
+
+    public function sanitizeMapAnswer($value): array
+    {
+        $cfg = $this->getMapConfig();
+        $empty = ['type' => 'FeatureCollection', 'features' => []];
+        if (class_exists(\humhub\modules\thiscoveryMapping\services\GeoJsonValidator::class)) {
+            $clean = (new \humhub\modules\thiscoveryMapping\services\GeoJsonValidator())
+                ->sanitizeCollection($value, $cfg['allowedTypes'], $cfg['maxFeatures']);
+            return is_array($clean) ? $clean : $empty;
+        }
+        return $empty;
+    }
+
     public function getLogic(): array
     {
         $decoded = json_decode((string)$this->logic_json, true);
@@ -1479,10 +1891,12 @@ class FormField extends ActiveRecord
             return;
         }
         $this->logic_json = json_encode($logic, JSON_UNESCAPED_UNICODE);
-        $first = $logic['rules'][0];
-        $this->condition_field_id = ctype_digit((string)$first['fieldKey']) ? (int)$first['fieldKey'] : null;
-        $this->condition_operator = $first['operator'];
-        $this->condition_value = $first['value'];
+        $first = LogicEngine::firstLeafRule($logic['rules']);
+        $this->condition_field_id = $first && ctype_digit((string)($first['fieldKey'] ?? ''))
+            ? (int)$first['fieldKey']
+            : null;
+        $this->condition_operator = $first['operator'] ?? null;
+        $this->condition_value = $first['value'] ?? null;
     }
 
     public function getActions(): array
@@ -1527,13 +1941,13 @@ class FormField extends ActiveRecord
      * @param array $values fieldId => value
      * @param array $keyToId tempKey/id map for fieldKey resolution
      */
-    public static function evaluateBranch(array $branch, array $values, array $keyToId = []): bool
+    public static function evaluateBranch(array $branch, array $values, array $keyToId = [], array $fields = []): bool
     {
         $fieldKey = (string)($branch['fieldKey'] ?? '');
         if (isset($keyToId[$fieldKey])) {
             $branch['fieldKey'] = (string)$keyToId[$fieldKey];
         }
-        return (new LogicEngine())->evaluateRule($branch, $values);
+        return (new LogicEngine())->evaluateRule($branch, $values, $fields);
     }
 
     public function toPostRow(): array
@@ -1541,10 +1955,14 @@ class FormField extends ActiveRecord
         $row = [
             'type' => $this->type,
             'label' => $this->label,
+            'variable' => $this->variable,
+            'internal_label' => $this->internal_label,
             'help_text' => $this->help_text,
             'required' => $this->required ? '1' : '',
             'options' => $this->getOptionsAsText(),
+            'option_items' => self::isChoiceType($this->type) ? $this->getChoicePairs() : [],
             'hidden' => $this->isHiddenFromRespondent() ? '1' : '',
+            'pii' => $this->isContainsPii() ? '1' : '',
             'default_value' => $this->getDefaultValue(),
             'meta_key' => $this->getRespondentMetaKey(),
             'panel_key' => $this->getPanelAttrKey(),
@@ -1553,6 +1971,9 @@ class FormField extends ActiveRecord
             'min_select' => $this->getMinSelect(),
             'min_select_all' => $this->isMinSelectAll() ? '1' : '',
             'exclusive_option' => implode('|', $this->getExclusiveOptions()),
+            'other_specify' => $this->allowsOtherSpecify() ? '1' : '0',
+            'number_min' => $this->getNumberMin(),
+            'number_max' => $this->getNumberMax(),
             'prefill_profile' => $this->getPrefillProfileAttribute() ?: '',
             'condition_field' => $this->condition_field_id,
             'condition_operator' => $this->condition_operator,
@@ -1591,8 +2012,15 @@ class FormField extends ActiveRecord
             $row['html_required'] = !empty($html['required']) ? '1' : '';
         } elseif ($this->type === self::TYPE_GRID_SINGLE || $this->type === self::TYPE_GRID_MULTI) {
             $grid = $this->getGridConfig();
-            $row['grid_rows'] = implode("\n", $grid['rows']);
-            $row['grid_columns'] = implode("\n", $grid['columns']);
+            $row['grid_rows'] = implode("\n", array_map(static function ($p) {
+                return $p['code'] !== '' ? ($p['code'] . ' | ' . $p['label']) : $p['label'];
+            }, $grid['rows']));
+            $row['grid_columns'] = implode("\n", array_map(static function ($p) {
+                return $p['code'] !== '' ? ($p['code'] . ' | ' . $p['label']) : $p['label'];
+            }, $grid['columns']));
+            $row['grid_row_items'] = $grid['rows'];
+            $row['grid_column_items'] = $grid['columns'];
+            $row['grid_mobile_layout'] = $grid['mobile_layout'];
         } elseif ($this->type === self::TYPE_BEST_WORST || $this->type === self::TYPE_MAXDIFF) {
             $items = $this->getItemsConfig();
             $row['items'] = implode("\n", $items['items']);
@@ -1607,6 +2035,14 @@ class FormField extends ActiveRecord
             $row['image_mode'] = $img['mode'];
             $row['image_multi'] = !empty($img['multi']) ? '1' : '';
             $row['image_regions'] = json_encode($img['regions'], JSON_UNESCAPED_UNICODE);
+        } elseif ($this->type === self::TYPE_MAP) {
+            $map = $this->getMapConfig();
+            $row['map_lat'] = $map['lat'];
+            $row['map_lng'] = $map['lng'];
+            $row['map_zoom'] = $map['zoom'];
+            $row['map_types'] = implode(',', $map['allowedTypes']);
+            $row['map_max'] = $map['maxFeatures'];
+            $row['map_style'] = $map['style'] ?? '';
         }
 
         return $row;
@@ -1643,14 +2079,22 @@ class FormField extends ActiveRecord
         $row = [
             'type' => $type,
             'label' => $label,
+            'variable' => trim((string)($payload['variable'] ?? '')),
+            'internal_label' => trim((string)($payload['internal_label'] ?? '')),
             'help_text' => (string)($payload['help_text'] ?? ''),
             'required' => !empty($payload['required']) ? '1' : '',
             'options' => (string)$options,
+            'option_items' => is_array($payload['option_items'] ?? null) ? $payload['option_items'] : [],
             'randomize' => !empty($payload['randomize']) ? '1' : '',
             'max_select' => $payload['max_select'] ?? ($payload['maxSelect'] ?? ''),
             'min_select' => $payload['min_select'] ?? ($payload['minSelect'] ?? ''),
             'min_select_all' => !empty($payload['min_select_all']) || !empty($payload['minSelectAll']) ? '1' : '',
             'exclusive_option' => (string)($payload['exclusive_option'] ?? $payload['exclusiveOption'] ?? ''),
+            'other_specify' => array_key_exists('other_specify', $payload) || array_key_exists('otherSpecify', $payload)
+                ? $payload['other_specify'] ?? $payload['otherSpecify']
+                : '1',
+            'number_min' => $payload['number_min'] ?? $payload['min'] ?? '',
+            'number_max' => $payload['number_max'] ?? $payload['max'] ?? '',
             'prefill_profile' => (string)($payload['prefill_profile'] ?? $payload['prefillProfile'] ?? ''),
             'hidden' => !empty($payload['hidden']) ? '1' : '',
             'default_value' => (string)($payload['default_value'] ?? $payload['defaultValue'] ?? ''),
@@ -1673,6 +2117,9 @@ class FormField extends ActiveRecord
             'actions' => is_array($payload['actions'] ?? null) ? $payload['actions'] : [],
             'grid_rows' => is_array($payload['grid_rows'] ?? null) ? implode("\n", $payload['grid_rows']) : (string)($payload['grid_rows'] ?? ''),
             'grid_columns' => is_array($payload['grid_columns'] ?? null) ? implode("\n", $payload['grid_columns']) : (string)($payload['grid_columns'] ?? ''),
+            'grid_row_items' => is_array($payload['grid_row_items'] ?? null) ? $payload['grid_row_items'] : [],
+            'grid_column_items' => is_array($payload['grid_column_items'] ?? null) ? $payload['grid_column_items'] : [],
+            'grid_mobile_layout' => (($payload['grid_mobile_layout'] ?? '') === 'stack') ? 'stack' : 'scroll',
             'items' => is_array($payload['items'] ?? null) ? implode("\n", $payload['items']) : (string)($payload['items'] ?? $options),
             'maxdiff_set_size' => $payload['maxdiff_set_size'] ?? ($payload['setSize'] ?? 4),
             'maxdiff_set_count' => $payload['maxdiff_set_count'] ?? ($payload['setCount'] ?? ''),
@@ -1686,6 +2133,14 @@ class FormField extends ActiveRecord
             'image_regions' => is_array($payload['image_regions'] ?? null)
                 ? json_encode($payload['image_regions'], JSON_UNESCAPED_UNICODE)
                 : (string)($payload['image_regions'] ?? ''),
+            'map_lat' => $payload['map_lat'] ?? '',
+            'map_lng' => $payload['map_lng'] ?? '',
+            'map_zoom' => $payload['map_zoom'] ?? '',
+            'map_types' => is_array($payload['map_types'] ?? null)
+                ? implode(',', $payload['map_types'])
+                : (string)($payload['map_types'] ?? ''),
+            'map_max' => $payload['map_max'] ?? '',
+            'map_style' => $payload['map_style'] ?? '',
             'logic_action' => $payload['logic_action'] ?? ($payload['logic']['action'] ?? 'show'),
             'logic_combinator' => $payload['logic_combinator'] ?? ($payload['logic']['combinator'] ?? 'and'),
             'logic_goto' => $payload['logic_goto'] ?? ($payload['logic']['gotoPageKey'] ?? ''),
@@ -1699,6 +2154,10 @@ class FormField extends ActiveRecord
             'condition_value' => $payload['condition_value'] ?? '',
         ];
 
+        if (array_key_exists('pii', $payload)) {
+            $row['pii'] = !empty($payload['pii']) ? '1' : '';
+        }
+
         return $row;
     }
 
@@ -1707,6 +2166,8 @@ class FormField extends ActiveRecord
         $field = new self();
         $field->type = (string)($row['type'] ?? self::TYPE_TEXT);
         $field->label = (string)($row['label'] ?? '');
+        $field->variable = trim((string)($row['variable'] ?? ''));
+        $field->internal_label = trim((string)($row['internal_label'] ?? ''));
         $field->help_text = $row['help_text'] ?? null;
         $field->required = !empty($row['required']);
         if ($field->type === self::TYPE_RATING) {
@@ -1736,8 +2197,9 @@ class FormField extends ActiveRecord
             ]);
         } elseif ($field->type === self::TYPE_GRID_SINGLE || $field->type === self::TYPE_GRID_MULTI) {
             $field->setGridConfig([
-                'rows' => $row['grid_rows'] ?? '',
-                'columns' => $row['grid_columns'] ?? '',
+                'rows' => $row['grid_row_items'] ?? ($row['grid_rows'] ?? ''),
+                'columns' => $row['grid_column_items'] ?? ($row['grid_columns'] ?? ''),
+                'mobile_layout' => $row['grid_mobile_layout'] ?? 'scroll',
             ]);
         } elseif ($field->type === self::TYPE_BEST_WORST || $field->type === self::TYPE_MAXDIFF) {
             $field->setItemsConfig([
@@ -1760,6 +2222,19 @@ class FormField extends ActiveRecord
                 'multi' => !empty($row['image_multi']),
                 'regions' => $regions,
             ]);
+        } elseif ($field->type === self::TYPE_MAP) {
+            $types = $row['map_types'] ?? ['Point'];
+            if (is_string($types)) {
+                $types = array_filter(array_map('trim', explode(',', $types)));
+            }
+            $field->setMapConfig([
+                'lat' => $row['map_lat'] ?? 52.4862,
+                'lng' => $row['map_lng'] ?? -1.8904,
+                'zoom' => $row['map_zoom'] ?? 7,
+                'allowedTypes' => $types,
+                'maxFeatures' => $row['map_max'] ?? 1,
+                'style' => $row['map_style'] ?? '',
+            ]);
         } elseif (self::isChoiceType($field->type)) {
             $maxSelect = null;
             if (($row['max_select'] ?? '') !== '' && $row['max_select'] !== null) {
@@ -1775,14 +2250,22 @@ class FormField extends ActiveRecord
                 $minSelectAll = !empty($row['min_select_all']) || !empty($row['minSelectAll']);
             }
             $field->setOptionsFromText(
-                $row['options'] ?? '',
+                !empty($row['option_items']) && is_array($row['option_items'])
+                    ? $row['option_items']
+                    : ($row['options'] ?? ''),
                 !empty($row['randomize']),
                 $maxSelect,
                 (string)($row['exclusive_option'] ?? ''),
                 $minSelect,
                 $minSelectAll
             );
+            if (array_key_exists('other_specify', $row) || array_key_exists('otherSpecify', $row)) {
+                $rawOther = $row['other_specify'] ?? $row['otherSpecify'];
+                $field->setAllowsOtherSpecify(!in_array($rawOther, [0, '0', false, 'false', ''], true));
+            }
             $field->setCarryForward((string)($row['carry_from'] ?? ''), (string)($row['carry_mode'] ?? self::CARRY_SELECTED));
+        } elseif ($field->type === self::TYPE_NUMBER) {
+            $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
         }
         $field->setActions($row['actions'] ?? []);
         $role = trim((string)($row['instrument_role'] ?? ''));
@@ -1796,6 +2279,9 @@ class FormField extends ActiveRecord
         }
         if ($field->type === self::TYPE_PANEL_ATTR) {
             $field->setPanelAttrKey((string)($row['panel_key'] ?? ''));
+        }
+        if ($field->collectsAnswer()) {
+            $field->setContainsPii(array_key_exists('pii', $row) ? !empty($row['pii']) : $field->defaultContainsPii());
         }
         return $field;
     }
