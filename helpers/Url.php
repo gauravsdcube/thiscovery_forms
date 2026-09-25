@@ -149,6 +149,65 @@ class Url
         return $container->createUrl('/thiscovery-forms/form/create', $params);
     }
 
+    public static function toCreateFromBrief($container = null, array $params = []): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/create-from-brief'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/create-from-brief', $params);
+    }
+
+    public static function toFromBriefWorkspace($container, string $sessionId): string
+    {
+        $params = ['session' => $sessionId];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/from-brief-workspace'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/from-brief-workspace', $params);
+    }
+
+    public static function toFromBriefChat($container, string $sessionId): string
+    {
+        $params = ['session' => $sessionId];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/from-brief-chat'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/from-brief-chat', $params);
+    }
+
+    public static function toFromBriefGenerate($container, string $sessionId): string
+    {
+        $params = ['session' => $sessionId];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/from-brief-generate'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/from-brief-generate', $params);
+    }
+
+    public static function toFromBriefStatus($container, string $sessionId): string
+    {
+        $params = ['session' => $sessionId];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/from-brief-status'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/from-brief-status', $params);
+    }
+
+    public static function toFromBriefApply($container, string $sessionId): string
+    {
+        $params = ['session' => $sessionId];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/from-brief-apply'], $params));
+        }
+
+        return $container->createUrl('/thiscovery-forms/form/from-brief-apply', $params);
+    }
+
     public static function toIndex($container = null, array $params = []): string
     {
         if ($container === null) {
@@ -664,6 +723,55 @@ class Url
             return BaseUrl::to(['/thiscovery-forms/global/run-actions', 'id' => $form->id]);
         }
         return $form->content->container->createUrl('/thiscovery-forms/form/run-actions', ['id' => $form->id]);
+    }
+
+
+    /**
+     * Public UAT tester form (guests allowed). Local-only.
+     */
+    public static function toUat(array $params = []): string
+    {
+        return BaseUrl::to(array_merge(['/thiscovery-forms/global/uat-form'], $params));
+    }
+
+    public static function toUatCsv(): string
+    {
+        return BaseUrl::to(['/thiscovery-forms/global/uat-csv']);
+    }
+
+    public static function toUatCatalog(?string $id = null): string
+    {
+        $params = ['/thiscovery-forms/global/uat-catalog'];
+        if ($id) {
+            $params['id'] = $id;
+        }
+        return BaseUrl::to($params);
+    }
+
+    public static function toUatResults($container = null, array $params = []): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/uat-results'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/uat-results', $params);
+    }
+
+    public static function toUatView(int $id, $container = null): string
+    {
+        $params = ['id' => $id];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/uat-view'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/uat-view', $params);
+    }
+
+    public static function toUatFile(string $guid, $container = null): string
+    {
+        $params = ['guid' => $guid];
+        if ($container === null) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/admin/uat-file'], $params));
+        }
+        return $container->createUrl('/thiscovery-forms/form/uat-file', $params);
     }
 
     public static function toHelp($container = null, ?string $page = null): string

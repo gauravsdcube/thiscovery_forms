@@ -74,6 +74,10 @@ class FormField extends ActiveRecord
     public const OP_NOT_EQUALS = 'not_equals';
     public const OP_CONTAINS = 'contains';
     public const OP_CHECKED = 'checked';
+    public const OP_GT = 'gt';
+    public const OP_GTE = 'gte';
+    public const OP_LT = 'lt';
+    public const OP_LTE = 'lte';
 
     public static function tableName()
     {
@@ -186,6 +190,10 @@ class FormField extends ActiveRecord
             self::OP_NOT_EQUALS => Yii::t('ThiscoveryFormsModule.base', 'Does not equal'),
             self::OP_CONTAINS => Yii::t('ThiscoveryFormsModule.base', 'Contains'),
             self::OP_CHECKED => Yii::t('ThiscoveryFormsModule.base', 'Is checked / selected'),
+            self::OP_GT => Yii::t('ThiscoveryFormsModule.base', 'Greater than'),
+            self::OP_GTE => Yii::t('ThiscoveryFormsModule.base', 'Greater than or equal'),
+            self::OP_LT => Yii::t('ThiscoveryFormsModule.base', 'Less than'),
+            self::OP_LTE => Yii::t('ThiscoveryFormsModule.base', 'Less than or equal'),
         ];
     }
 
@@ -621,6 +629,9 @@ class FormField extends ActiveRecord
 
     public function findOtherOption(?array $options = null): ?string
     {
+        if (!$this->allowsOtherSpecify()) {
+            return null;
+        }
         $pairs = $this->getChoicePairs();
         if ($options !== null) {
             $wanted = [];
@@ -896,6 +907,83 @@ class FormField extends ActiveRecord
         return array_values(array_filter(array_map('trim', explode('|', $exclusive)), 'strlen'));
     }
 
+    /**
+     * Whether an Other choice should show the inline "Please specify" box.
+     */
+    public function allowsOtherSpecify(): bool
+    {
+        if (!self::isChoiceType($this->type)) {
+            return false;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && !array_is_list($decoded) && array_key_exists('otherSpecify', $decoded)) {
+            return !empty($decoded['otherSpecify']);
+        }
+        return true;
+    }
+
+    public function setAllowsOtherSpecify(bool $allow): void
+    {
+        if (!self::isChoiceType($this->type)) {
+            return;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => $decoded];
+        }
+        if ($allow) {
+            unset($decoded['otherSpecify']);
+        } else {
+            $decoded['otherSpecify'] = false;
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    public function getNumberMin(): ?float
+    {
+        return $this->numericBound('min');
+    }
+
+    public function getNumberMax(): ?float
+    {
+        return $this->numericBound('max');
+    }
+
+    public function setNumberRange($min, $max): void
+    {
+        if ($this->type !== self::TYPE_NUMBER) {
+            return;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => $decoded];
+        }
+        foreach (['min' => $min, 'max' => $max] as $key => $raw) {
+            if ($raw === '' || $raw === null) {
+                unset($decoded[$key]);
+                continue;
+            }
+            if (!is_numeric($raw)) {
+                continue;
+            }
+            $decoded[$key] = 0 + $raw;
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    private function numericBound(string $key): ?float
+    {
+        if ($this->type !== self::TYPE_NUMBER) {
+            return null;
+        }
+        $decoded = $this->decodedOptions();
+        if (!is_array($decoded) || !array_key_exists($key, $decoded)) {
+            return null;
+        }
+        $raw = $decoded[$key];
+        return is_numeric($raw) ? (float)$raw : null;
+    }
+
     public function getPrefillProfileAttribute(): ?string
     {
         if (!$this->options_json) {
@@ -984,12 +1072,18 @@ class FormField extends ActiveRecord
         $exclusiveOption = trim((string)$exclusiveOption);
         $exclusiveOption = $exclusiveOption !== '' ? $exclusiveOption : null;
         if ($exclusiveOption !== null) {
-            foreach ($items as $item) {
-                if ($exclusiveOption === $item['code'] || $exclusiveOption === $item['label']) {
-                    $exclusiveOption = $item['code'];
-                    break;
+            $resolved = [];
+            foreach (array_filter(array_map('trim', explode('|', $exclusiveOption)), 'strlen') as $part) {
+                $code = $part;
+                foreach ($items as $item) {
+                    if ($part === $item['code'] || $part === $item['label']) {
+                        $code = $item['code'];
+                        break;
+                    }
                 }
+                $resolved[] = $code;
             }
+            $exclusiveOption = $resolved ? implode('|', array_unique($resolved)) : null;
         }
 
         $carryFrom = trim((string)($prev['carryFrom'] ?? ''));
@@ -1004,13 +1098,14 @@ class FormField extends ActiveRecord
         $instrumentRole = trim((string)($prev['instrument_role'] ?? ''));
         $hidden = !empty($prev['hidden']);
         $defaultValue = trim((string)($prev['defaultValue'] ?? ''));
+        $otherSpecify = array_key_exists('otherSpecify', $prev) ? !empty($prev['otherSpecify']) : true;
 
-        if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '') {
+        if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '' && $otherSpecify) {
             $this->options_json = null;
             return;
         }
 
-        if ($randomize || $maxSelect !== null || $minSelect !== null || $minSelectAll || $exclusiveOption !== null || $carryFrom !== '' || $justification !== '' || $instrumentRole !== '' || $hidden || $defaultValue !== '' || (isset($options[0]) && is_array($options[0]))) {
+        if ($randomize || $maxSelect !== null || $minSelect !== null || $minSelectAll || $exclusiveOption !== null || $carryFrom !== '' || $justification !== '' || $instrumentRole !== '' || $hidden || $defaultValue !== '' || !$otherSpecify || (isset($options[0]) && is_array($options[0]))) {
             $payload = ['options' => $options];
             if ($randomize) {
                 $payload['randomize'] = true;
@@ -1042,6 +1137,9 @@ class FormField extends ActiveRecord
             }
             if ($defaultValue !== '') {
                 $payload['defaultValue'] = $defaultValue;
+            }
+            if (!$otherSpecify) {
+                $payload['otherSpecify'] = false;
             }
             $this->options_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
         } else {
@@ -1793,10 +1891,12 @@ class FormField extends ActiveRecord
             return;
         }
         $this->logic_json = json_encode($logic, JSON_UNESCAPED_UNICODE);
-        $first = $logic['rules'][0];
-        $this->condition_field_id = ctype_digit((string)$first['fieldKey']) ? (int)$first['fieldKey'] : null;
-        $this->condition_operator = $first['operator'];
-        $this->condition_value = $first['value'];
+        $first = LogicEngine::firstLeafRule($logic['rules']);
+        $this->condition_field_id = $first && ctype_digit((string)($first['fieldKey'] ?? ''))
+            ? (int)$first['fieldKey']
+            : null;
+        $this->condition_operator = $first['operator'] ?? null;
+        $this->condition_value = $first['value'] ?? null;
     }
 
     public function getActions(): array
@@ -1871,6 +1971,9 @@ class FormField extends ActiveRecord
             'min_select' => $this->getMinSelect(),
             'min_select_all' => $this->isMinSelectAll() ? '1' : '',
             'exclusive_option' => implode('|', $this->getExclusiveOptions()),
+            'other_specify' => $this->allowsOtherSpecify() ? '1' : '0',
+            'number_min' => $this->getNumberMin(),
+            'number_max' => $this->getNumberMax(),
             'prefill_profile' => $this->getPrefillProfileAttribute() ?: '',
             'condition_field' => $this->condition_field_id,
             'condition_operator' => $this->condition_operator,
@@ -1987,6 +2090,11 @@ class FormField extends ActiveRecord
             'min_select' => $payload['min_select'] ?? ($payload['minSelect'] ?? ''),
             'min_select_all' => !empty($payload['min_select_all']) || !empty($payload['minSelectAll']) ? '1' : '',
             'exclusive_option' => (string)($payload['exclusive_option'] ?? $payload['exclusiveOption'] ?? ''),
+            'other_specify' => array_key_exists('other_specify', $payload) || array_key_exists('otherSpecify', $payload)
+                ? $payload['other_specify'] ?? $payload['otherSpecify']
+                : '1',
+            'number_min' => $payload['number_min'] ?? $payload['min'] ?? '',
+            'number_max' => $payload['number_max'] ?? $payload['max'] ?? '',
             'prefill_profile' => (string)($payload['prefill_profile'] ?? $payload['prefillProfile'] ?? ''),
             'hidden' => !empty($payload['hidden']) ? '1' : '',
             'default_value' => (string)($payload['default_value'] ?? $payload['defaultValue'] ?? ''),
@@ -2151,7 +2259,13 @@ class FormField extends ActiveRecord
                 $minSelect,
                 $minSelectAll
             );
+            if (array_key_exists('other_specify', $row) || array_key_exists('otherSpecify', $row)) {
+                $rawOther = $row['other_specify'] ?? $row['otherSpecify'];
+                $field->setAllowsOtherSpecify(!in_array($rawOther, [0, '0', false, 'false', ''], true));
+            }
             $field->setCarryForward((string)($row['carry_from'] ?? ''), (string)($row['carry_mode'] ?? self::CARRY_SELECTED));
+        } elseif ($field->type === self::TYPE_NUMBER) {
+            $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
         }
         $field->setActions($row['actions'] ?? []);
         $role = trim((string)($row['instrument_role'] ?? ''));

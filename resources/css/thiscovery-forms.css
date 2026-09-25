@@ -2641,6 +2641,95 @@ body.cf-fill-standalone #topbar-second {
     gap: .5rem;
 }
 
+.cf-cms {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    gap: 0;
+    min-height: 520px;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 14px;
+    overflow: hidden;
+}
+.cf-cms-rail {
+    background: #fff;
+    border-right: 1px solid #e5e7eb;
+    padding: .75rem .65rem 1.25rem;
+    overflow: auto;
+}
+.cf-cms-rail__label {
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: #94a3b8;
+    margin: .85rem .5rem .35rem;
+}
+.cf-cms-rail__label:first-child { margin-top: .2rem; }
+.cf-cms-folder {
+    display: flex;
+    align-items: flex-start;
+    gap: .65rem;
+    padding: .55rem .6rem;
+    border-radius: 8px;
+    color: inherit;
+    text-decoration: none;
+    border: 1px solid transparent;
+}
+.cf-cms-folder--nested {
+    padding-left: calc(.6rem + var(--cf-depth, 0) * 1rem);
+}
+.cf-cms-folder:hover { background: #f8fafc; color: inherit; text-decoration: none; }
+.cf-cms-folder.is-active {
+    background: #eff6ff;
+    border-color: #dbeafe;
+}
+.cf-cms-folder__icon {
+    width: 1.7rem;
+    height: 1.7rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+    flex-shrink: 0;
+    margin-top: .1rem;
+}
+.cf-cms-folder.is-active .cf-cms-folder__icon { color: #2563eb; }
+.cf-cms-folder__body { min-width: 0; display: flex; flex-direction: column; gap: .1rem; }
+.cf-cms-folder__name {
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.25;
+}
+.cf-cms-folder__count { font-size: .75rem; color: #64748b; }
+.cf-cms-main {
+    min-width: 0;
+    padding: 1rem 1.15rem 1.35rem;
+    background: #f8fafc;
+}
+.cf-cms-main__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: .75rem;
+    margin-bottom: .85rem;
+}
+.cf-cms-main__title {
+    margin: 0;
+    font-size: 1.15rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+.cf-cms-main__meta { margin: .2rem 0 0; color: #64748b; }
+.cf-cms-main .cf-list-filters { margin-bottom: .85rem; }
+.cf-cms-main .cf-list-empty { border-radius: 12px; }
+.cf-cms-main .cf-folder-crumbs { margin: .35rem 0 0; }
+.cf-cms-main .cf-folder-toolbar { margin: 0; align-items: center; }
+@media (max-width: 991px) {
+    .cf-cms { grid-template-columns: 1fr; }
+    .cf-cms-rail { border-right: 0; border-bottom: 1px solid #e5e7eb; max-height: 240px; }
+}
+
 .cf-list-empty {
     text-align: center;
     padding: 3rem 1.5rem;

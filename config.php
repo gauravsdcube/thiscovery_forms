@@ -34,5 +34,12 @@ return [
         'thiscovery-forms/admin/help' => 'thiscovery-forms/admin/help',
         'thiscovery-forms/admin/help/<page:[\\w\\-]+>' => 'thiscovery-forms/admin/help',
         'thiscovery-forms/admin/help-download' => 'thiscovery-forms/admin/help-download',
+        'thiscovery-forms/admin/uat-results' => 'thiscovery-forms/admin/uat-results',
+        'thiscovery-forms/admin/uat-view' => 'thiscovery-forms/admin/uat-view',
+        'thiscovery-forms/admin/uat-file' => 'thiscovery-forms/admin/uat-file',
+        'thiscovery-forms/global/uat' => 'thiscovery-forms/global/uat-form',
+        'thiscovery-forms/global/uat-form' => 'thiscovery-forms/global/uat-form',
+        'thiscovery-forms/global/uat-csv' => 'thiscovery-forms/global/uat-csv',
+        'thiscovery-forms/global/uat-catalog' => 'thiscovery-forms/global/uat-catalog',
     ],
 ];

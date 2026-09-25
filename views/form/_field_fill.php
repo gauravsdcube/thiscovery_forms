@@ -193,10 +193,22 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Your answer'),
             ]) ?>
         <?php elseif ($field->type === FormField::TYPE_NUMBER): ?>
-            <?= Html::input('number', $inputName, is_array($value) ? '' : $value, [
+            <?php
+            $numberAttrs = [
                 'class' => 'form-control cf-input',
                 'id' => $inputId,
-            ]) ?>
+                'step' => 'any',
+            ];
+            $numberMin = $field->getNumberMin();
+            $numberMax = $field->getNumberMax();
+            if ($numberMin !== null) {
+                $numberAttrs['min'] = $numberMin;
+            }
+            if ($numberMax !== null) {
+                $numberAttrs['max'] = $numberMax;
+            }
+            ?>
+            <?= Html::input('number', $inputName, is_array($value) ? '' : $value, $numberAttrs) ?>
         <?php elseif ($field->type === FormField::TYPE_EMAIL): ?>
             <?= Html::input('email', $inputName, is_array($value) ? '' : $value, [
                 'class' => 'form-control cf-input',

@@ -13,11 +13,12 @@ Suggested page tree:
    1. [Getting started](creators-getting-started.md)
    2. [Builder and questions](creators-builder.md)
    3. [Import questions from CSV](creators-csv-import.md)
-   4. [Form settings](creators-settings.md)
-   5. [Versions and publishing](creators-versioning.md)
-   6. [Response integrity](creators-response-integrity.md)
-   7. [Sharing and results](creators-results.md)
-   8. [Panels, waves, and email](creators-panels.md)
-   9. [Form types](creators-form-types.md)
+   4. [Create from brief or document](creators-from-brief.md)
+   5. [Form settings](creators-settings.md)
+   6. [Versions and publishing](creators-versioning.md)
+   7. [Response integrity](creators-response-integrity.md)
+   8. [Sharing and results](creators-results.md)
+   9. [Panels, waves, and email](creators-panels.md)
+   10. [Form types](creators-form-types.md)
 
-Written for Thiscovery Forms **1.25.0**.
+Written for Thiscovery Forms **1.28.0**.

@@ -13,10 +13,10 @@ You need **Create forms** (space) or **Create global forms** (network) to start 
 
 1. Open **Forms** in the space (or the global Forms list).
 2. Choose **Create**.
-3. Pick a **type**, or start from a saved **template**.
-4. You land in the **studio** (the form editor).
+3. Pick a **type**, start from a saved **template**, or — if enabled — **Brief or Word / PDF** under **From a brief**.
+4. You land in the **studio** (the form editor). From-brief creates a **Draft survey** after you review proposed questions.
 
-Type cannot be changed later in a meaningful way — pick the closest match. See [Form types](creators-form-types.md) for when to use each one.
+Type cannot be changed later in a meaningful way — pick the closest match. See [Form types](creators-form-types.md) for when to use each one. Creating from a brief is covered in [Create from brief or document](creators-from-brief.md).
 
 If a type is missing, an administrator has switched it off in module configuration.
 
@@ -69,6 +69,8 @@ Set status to **Open** when you are ready to share the live link. Close it when 
 **Settings → Share** has both links. Copy the live link only after the form is Open and you have tried Preview.
 
 ## Folders
+
+The forms list matches Page Builder. On the left: **Top-level forms** (unfiled), then **Folders**, then **Templates**. Open a folder to see its forms on the right. Nested folders appear as cards inside the folder. **New folder** creates a folder (nested if you are already in one).
 
 On **Settings → Basics** you can file the form in a folder, or leave it **Unfiled**. Folders help teams find work; they do not replace who is allowed to manage the form.
 

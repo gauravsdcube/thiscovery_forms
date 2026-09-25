@@ -303,6 +303,22 @@ class SubmitForm extends Model
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a number.', [
                             'label' => $field->label,
                         ]));
+                        break;
+                    }
+                    $number = (float)$value;
+                    $min = $field->getNumberMin();
+                    $max = $field->getNumberMax();
+                    if ($min !== null && $number < $min) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be at least {min}.', [
+                            'label' => $field->label,
+                            'min' => $min,
+                        ]));
+                    }
+                    if ($max !== null && $number > $max) {
+                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be at most {max}.', [
+                            'label' => $field->label,
+                            'max' => $max,
+                        ]));
                     }
                     break;
                 case FormField::TYPE_DROPDOWN:
@@ -558,6 +574,13 @@ class SubmitForm extends Model
         }
 
         unset($answer->answerFields);
+
+        if (!$asDraft && !$isTest && Yii::$app->hasModule('thiscovery-dashboard')) {
+            $dash = Yii::$app->getModule('thiscovery-dashboard');
+            if ($dash instanceof \humhub\modules\thiscoveryDashboard\Module) {
+                $dash->enqueueIncrement('forms', (string)$this->form->id, (int)$answer->id);
+            }
+        }
 
         return $answer;
     }

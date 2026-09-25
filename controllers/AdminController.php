@@ -23,6 +23,7 @@ class AdminController extends Controller
     use EmailAdminTrait;
     use HelpTrait;
     use ThemeAdminTrait;
+    use UatTrait;
 
     /**
      * @inheritdoc
@@ -47,7 +48,7 @@ class AdminController extends Controller
         }
 
         $action = Yii::$app->controller->action->id ?? '';
-        if (in_array($action, ['settings', 'theme-edit', 'theme-delete', 'theme-export', 'theme-import'], true)) {
+        if (in_array($action, ['settings', 'theme-edit', 'theme-delete', 'theme-export', 'theme-import', 'ai-usage'], true)) {
             return Yii::$app->user->isAdmin() || Yii::$app->user->can(ManageModules::class);
         }
 
@@ -121,6 +122,20 @@ class AdminController extends Controller
             'themes' => \humhub\modules\thiscoveryForms\models\FormTheme::find()
                 ->orderBy(['is_default' => SORT_DESC, 'name' => SORT_ASC])
                 ->all(),
+        ]);
+    }
+
+    public function actionAiUsage()
+    {
+        $summary = (new \humhub\modules\thiscoveryForms\services\LlmUsageLogger())->monthSummary();
+        $rows = \humhub\modules\thiscoveryForms\models\FormLlmUsage::find()
+            ->orderBy(['created_at' => SORT_DESC])
+            ->limit(100)
+            ->all();
+
+        return $this->render('ai_usage', [
+            'summary' => $summary,
+            'rows' => $rows,
         ]);
     }
 }

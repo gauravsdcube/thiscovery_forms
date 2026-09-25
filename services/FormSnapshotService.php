@@ -299,17 +299,29 @@ class FormSnapshotService
             return $key;
         };
 
-        foreach ($fields as $field) {
-            $logic = $field->getLogic();
-            $changed = false;
-            foreach ($logic['rules'] as $i => $rule) {
-                $next = $mapKey((string)($rule['fieldKey'] ?? ''));
-                if ($next !== (string)($rule['fieldKey'] ?? '')) {
-                    $logic['rules'][$i]['fieldKey'] = $next;
-                    $changed = true;
+        $mapRules = static function (array $rules) use (&$mapRules, $mapKey): array {
+            foreach ($rules as $i => $rule) {
+                if (!is_array($rule)) {
+                    continue;
+                }
+                if (!empty($rule['all']) && is_array($rule['all'])) {
+                    $rules[$i]['all'] = $mapRules($rule['all']);
+                }
+                if (!empty($rule['any']) && is_array($rule['any'])) {
+                    $rules[$i]['any'] = $mapRules($rule['any']);
+                }
+                if (isset($rule['fieldKey'])) {
+                    $rules[$i]['fieldKey'] = $mapKey((string)$rule['fieldKey']);
                 }
             }
-            if ($changed) {
+            return $rules;
+        };
+
+        foreach ($fields as $field) {
+            $logic = $field->getLogic();
+            $mapped = $mapRules($logic['rules'] ?? []);
+            if ($mapped !== ($logic['rules'] ?? [])) {
+                $logic['rules'] = $mapped;
                 $field->setLogic($logic);
             }
 

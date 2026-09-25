@@ -31,6 +31,17 @@ class Module extends ContentContainerModule
     public const SETTING_WAVE_SCOPE = 'wave_scope';
     public const SETTING_INTEGRITY = 'integrity';
     public const SETTING_DISPLAY = 'display';
+    public const SETTING_FROM_BRIEF_ENABLED = 'from_brief_enabled';
+    public const SETTING_FROM_BRIEF_LLM_ENABLED = 'from_brief_llm_enabled';
+    public const SETTING_LLM_PROVIDER = 'llm_provider';
+    public const SETTING_LLM_API_BASE = 'llm_api_base';
+    public const SETTING_LLM_API_KEY = 'llm_api_key';
+    public const SETTING_LLM_MODEL = 'llm_model';
+    public const SETTING_FROM_BRIEF_MAX_UPLOAD_MB = 'from_brief_max_upload_mb';
+    public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
+    public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
+    public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
+    public const SETTING_LLM_WARN_MONTHLY_COST = 'llm_warn_monthly_cost';
 
     public const WAVE_SCOPE_SURVEY = 'survey';
     public const WAVE_SCOPE_PANEL = 'panel';
@@ -67,6 +78,18 @@ class Module extends ContentContainerModule
             \humhub\modules\thiscoveryVersioning\Module::registerAdapter(
                 new \humhub\modules\thiscoveryForms\services\FormVersionAdapter()
             );
+        }
+
+        if (Yii::$app->hasModule('thiscovery-dashboard')
+            && class_exists(\humhub\modules\thiscoveryDashboard\Module::class)
+            && class_exists(\humhub\modules\thiscoveryDashboard\interfaces\DataProviderInterface::class)) {
+            try {
+                \humhub\modules\thiscoveryDashboard\Module::registerProvider(
+                    new \humhub\modules\thiscoveryForms\services\dashboard\FormsDataProvider()
+                );
+            } catch (\Throwable $e) {
+                Yii::warning('Forms dashboard provider not registered: ' . $e->getMessage(), 'thiscovery-forms');
+            }
         }
     }
 
@@ -201,6 +224,33 @@ class Module extends ContentContainerModule
             return array_keys(CustomForm::getKindLabels());
         }
         return $module->getEnabledKinds();
+    }
+
+    public static function isFromBriefEnabled(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        return $module instanceof self && !empty((int)$module->settings->get(self::SETTING_FROM_BRIEF_ENABLED, 0));
+    }
+
+    public static function isFromBriefLlmEnabled(): bool
+    {
+        if (!self::isFromBriefEnabled()) {
+            return false;
+        }
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self || empty((int)$module->settings->get(self::SETTING_FROM_BRIEF_LLM_ENABLED, 0))) {
+            return false;
+        }
+        return trim((string)$module->settings->get(self::SETTING_LLM_API_KEY, '')) !== '';
+    }
+
+    public static function fromBriefMaxUploadBytes(): int
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        $mb = $module instanceof self
+            ? (int)$module->settings->get(self::SETTING_FROM_BRIEF_MAX_UPLOAD_MB, 8)
+            : 8;
+        return max(1, $mb) * 1024 * 1024;
     }
 
     public function disable()

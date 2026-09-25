@@ -243,6 +243,29 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             </div>
         </div>
 
+        <div class="row g-3 mt-1<?= $type === FormField::TYPE_NUMBER ? '' : ' d-none' ?>" data-cf-number-panel>
+            <div class="col-md-4">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Minimum') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                </label>
+                <?= Html::input('number', $namePrefix . '[number_min]', $field->getNumberMin(), [
+                    'class' => 'form-control',
+                    'step' => 'any',
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'No minimum'),
+                ]) ?>
+            </div>
+            <div class="col-md-4">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Maximum') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                </label>
+                <?= Html::input('number', $namePrefix . '[number_max]', $field->getNumberMax(), [
+                    'class' => 'form-control',
+                    'step' => 'any',
+                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'No maximum'),
+                ]) ?>
+            </div>
+        </div>
+
         <div class="row g-3 mt-1<?= $type === FormField::TYPE_RESPONDENT_META ? '' : ' d-none' ?>" data-cf-meta-key-wrap>
             <div class="col-md-6">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Records') ?></label>
@@ -392,7 +415,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Exclusive option') ?>
                         <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                     </label>
-                    <?= Html::textInput($namePrefix . '[exclusive_option]', $field->getExclusiveOption(), [
+                    <?= Html::textInput($namePrefix . '[exclusive_option]', implode('|', $field->getExclusiveOptions()), [
                         'class' => 'form-control',
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. None of these'),
                         'data-cf-exclusive-option' => true,
@@ -411,6 +434,21 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     </div>
                     <p class="cf-hint text-muted mb-0">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Use a minimum to require some ticks, or require every option. An exclusive choice such as “None of these” still counts as a complete answer on its own.') ?>
+                    </p>
+                </div>
+                <div class="col-12">
+                    <div class="cf-switch">
+                        <label>
+                            <?= Html::hiddenInput($namePrefix . '[other_specify]', '0') ?>
+                            <?= Html::checkbox($namePrefix . '[other_specify]', $field->allowsOtherSpecify(), [
+                                'value' => '1',
+                                'uncheck' => null,
+                            ]) ?>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Ask for extra text when Other is ticked') ?>
+                        </label>
+                    </div>
+                    <p class="cf-hint text-muted mb-0">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Turn this off if a later question already collects the detail, so Other does not block Next.') ?>
                     </p>
                 </div>
             </div>
@@ -959,6 +997,17 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <div class="mt-3" data-cf-logic-rules>
                 <div data-cf-logic-rule-list>
                     <?php foreach ($logicRules as $ri => $rule): ?>
+                        <?php if (!empty($rule['all']) || !empty($rule['any'])): ?>
+                            <div class="cf-branch-row mb-2" data-cf-logic-rule-row data-cf-logic-compound-row>
+                                <?= Html::hiddenInput($namePrefix . '[logic_rules][' . $ri . '][compound]', json_encode($rule, JSON_UNESCAPED_UNICODE), [
+                                    'data-cf-logic-compound' => true,
+                                ]) ?>
+                                <div class="cf-field-help mb-0">
+                                    <?= Yii::t('ThiscoveryFormsModule.base', 'Compound age/grid rule from import. Saved with the form; edit the nested conditions in code if you need to change them.') ?>
+                                </div>
+                            </div>
+                            <?php continue; ?>
+                        <?php endif; ?>
                         <div class="cf-branch-row row g-2 mb-2" data-cf-logic-rule-row>
                             <div class="col-md-4">
                                 <?= Html::dropDownList($namePrefix . '[logic_rules][' . $ri . '][fieldKey]', FormField::toStudioKey((string)($rule['fieldKey'] ?? '')), $conditionOptions, [

@@ -10,10 +10,12 @@ use humhub\modules\thiscoveryForms\permissions\CreateForm;
 use humhub\modules\thiscoveryForms\permissions\CreateGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ManageForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
+use humhub\modules\content\models\Content;
 use humhub\modules\space\models\Space;
 use humhub\modules\user\models\Group;
 use humhub\modules\user\models\User;
 use Yii;
+use yii\db\Expression;
 
 class FolderService
 {
@@ -175,6 +177,52 @@ class FolderService
     }
 
     /**
+     * @return array<int, array{folder: FormFolder, depth: int}>
+     */
+    public static function walkVisible($container = null, ?User $user = null, $parentId = null, int $depth = 0): array
+    {
+        $out = [];
+        foreach (self::visibleChildren($container, $parentId, $user) as $folder) {
+            $out[] = ['folder' => $folder, 'depth' => $depth];
+            $out = array_merge($out, self::walkVisible($container, $user, (int) $folder->id, $depth + 1));
+        }
+        return $out;
+    }
+
+    /**
+     * Live form counts keyed by folder id (0 = unfiled).
+     * @return array<int, int>
+     */
+    public static function liveCountsByFolder($container = null): array
+    {
+        $query = (new \yii\db\Query())
+            ->from(['custom_form' => CustomForm::tableName()])
+            ->innerJoin(
+                ['content' => Content::tableName()],
+                'content.object_id = custom_form.id AND content.object_model = :model',
+                [':model' => CustomForm::class]
+            )
+            ->andWhere(['custom_form.is_template' => 0])
+            ->andWhere(['<>', 'content.state', Content::STATE_DELETED])
+            ->select(['custom_form.folder_id', 'cnt' => new Expression('COUNT(*)')])
+            ->groupBy(['custom_form.folder_id']);
+        if ($container) {
+            $query->andWhere(['content.contentcontainer_id' => $container->contentcontainer_id]);
+        } else {
+            $query->andWhere(['content.contentcontainer_id' => null]);
+        }
+        $out = [];
+        try {
+            foreach ($query->all() as $row) {
+                $out[(int) ($row['folder_id'] ?? 0)] = (int) $row['cnt'];
+            }
+        } catch (\Throwable $e) {
+            Yii::error($e->getMessage(), 'thiscovery-forms');
+        }
+        return $out;
+    }
+
+    /**
      * Nested options for <select>: id => "Parent / Child"
      * @return array<int,string>
      */
@@ -269,14 +317,11 @@ class FolderService
             ]);
         }
 
-        $searching = ($filters['q'] ?? '') !== '';
         $folderId = (int)($filters['folder'] ?? 0);
-        if (!$searching) {
-            if ($folderId > 0) {
-                $query->andWhere(['custom_form.folder_id' => $folderId]);
-            } else {
-                $query->andWhere(['custom_form.folder_id' => null]);
-            }
+        if ($folderId > 0) {
+            $query->andWhere(['custom_form.folder_id' => $folderId]);
+        } else {
+            $query->andWhere(['custom_form.folder_id' => null]);
         }
 
         return $query;

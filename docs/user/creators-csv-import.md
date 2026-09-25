@@ -179,7 +179,7 @@ You can add show/hide and jumps in the builder after import. To include them in 
 [{"fieldKey":"hear_about","operator":"equals","value":"Other"}]
 ```
 
-`fieldKey` must match another row’s `key`. Export CSV from an existing form fills `key` and these columns for you.
+`fieldKey` must match another row’s `key` (or `variable`). Export CSV or JSON from an existing form fills `key` and rewrites skip-logic `fieldKey`s to those portable names so import on another site still binds.
 
 Complex actions, field emails, and image hotspots are easier in the builder, or import **JSON** from Share.
 

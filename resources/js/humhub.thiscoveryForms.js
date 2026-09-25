@@ -278,6 +278,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $row.toggleClass('is-group-end d-none', type === 'group_end');
             $row.children('[data-cf-group-shell]').toggleClass('d-none', type !== 'question_group');
             $own.find('[data-cf-options-panel]').toggleClass('d-none', !needsOptions);
+            $own.find('[data-cf-number-panel]').toggleClass('d-none', type !== 'number');
             $own.find('[data-cf-rating-panel]').toggleClass('d-none', !isRating);
             $own.find('[data-cf-page-panel]').toggleClass('d-none', !isPage);
             $own.find('[data-cf-rich-panel]').toggleClass('d-none', !isRich);
@@ -491,7 +492,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             var rules = [];
-            $own.find('[data-cf-logic-rule-row]').each(function () {
+            $own.find('[data-cf-logic-compound]').each(function () {
+                try {
+                    var compound = JSON.parse(String($(this).val() || ''));
+                    if (compound && typeof compound === 'object') {
+                        rules.push(compound);
+                    }
+                } catch (e) {}
+            });
+            $own.find('[data-cf-logic-rule-row]').not('[data-cf-logic-compound-row]').each(function () {
                 var $rule = $(this);
                 var $field = $rule.find('[data-cf-condition-field]');
                 var fk = rememberedSelectKey($field);
@@ -2832,6 +2841,33 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (emailInvalid($field)) {
                 return module.config.invalidEmail || 'Enter a valid email address, for example name@example.com.';
             }
+            var type = String($field.data('cf-field-type') || '');
+            if (type === 'number') {
+                var $num = $field.find('input[type="number"]').first();
+                var raw = String($num.val() || '');
+                if (raw !== '') {
+                    var n = parseFloat(raw);
+                    var minAttr = $num.attr('min');
+                    var maxAttr = $num.attr('max');
+                    if (minAttr !== undefined && minAttr !== '' && isFinite(n) && n < parseFloat(minAttr)) {
+                        return (module.config.numberMin || 'Enter a number of at least {min}.').replace('{min}', minAttr);
+                    }
+                    if (maxAttr !== undefined && maxAttr !== '' && isFinite(n) && n > parseFloat(maxAttr)) {
+                        return (module.config.numberMax || 'Enter a number of at most {max}.').replace('{max}', maxAttr);
+                    }
+                    if ($num.attr('min') === '0' && n < 0) {
+                        return module.config.numberMin || 'Enter a number of at least 0.';
+                    }
+                }
+            }
+            var $list = $field.find('.cf-choice-list').first();
+            if ($list.length) {
+                var maxSel = parseInt($list.attr('data-cf-max-select') || '0', 10);
+                var checkedCount = $list.find('input[type="checkbox"]:checked').length;
+                if (maxSel > 0 && checkedCount > maxSel) {
+                    return (module.config.checkboxMax || 'Select at most {max} options.').replace('{max}', String(maxSel));
+                }
+            }
             return '';
         };
 
@@ -3769,6 +3805,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             if (logic.rules && logic.rules.length) {
                 logic.rules = logic.rules.filter(function (rule) {
+                    if (rule && (rule.all || rule.any || rule.compound)) {
+                        return true;
+                    }
                     return String((rule && rule.fieldKey) || '') !== '';
                 });
             }
@@ -3780,12 +3819,36 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return true;
             }
             var results = logic.rules.map(function (rule) {
-                return branchMatches(rule, values);
+                return ruleMatches(rule, values);
             });
             if (String(logic.combinator || 'and') === 'or') {
                 return results.indexOf(true) !== -1;
             }
             return results.indexOf(false) === -1;
+        };
+
+        var ruleMatches = function (rule, values) {
+            if (!rule) {
+                return false;
+            }
+            if (rule.compound) {
+                try {
+                    rule = typeof rule.compound === 'string' ? JSON.parse(rule.compound) : rule.compound;
+                } catch (e) {
+                    return false;
+                }
+            }
+            if (rule && Array.isArray(rule.all)) {
+                return rule.all.length > 0 && rule.all.every(function (sub) {
+                    return ruleMatches(sub, values);
+                });
+            }
+            if (rule && Array.isArray(rule.any)) {
+                return rule.any.some(function (sub) {
+                    return ruleMatches(sub, values);
+                });
+            }
+            return branchMatches(rule, values);
         };
 
         var isLogicVisible = function (logic, values) {
@@ -3871,6 +3934,23 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             if (op === 'checked') {
                 return val !== '' && val !== '0';
+            }
+            if (op === 'gt' || op === 'gte' || op === 'lt' || op === 'lte') {
+                var left = parseFloat(val);
+                var right = parseFloat(expected);
+                if (!isFinite(left) || !isFinite(right)) {
+                    return false;
+                }
+                if (op === 'gt') {
+                    return left > right;
+                }
+                if (op === 'gte') {
+                    return left >= right;
+                }
+                if (op === 'lt') {
+                    return left < right;
+                }
+                return left <= right;
             }
             return false;
         };
@@ -4039,11 +4119,26 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
             var nav = nextVisiblePage(idx);
             var isLast = nav.index === null || nav.end === true;
+            var screenedOut = !!(nav.end && nav.explicit);
 
             var canGoBack = pageHistory.length > 1;
             $root.find('[data-cf-page-back]').toggle(canGoBack);
             $root.find('[data-cf-page-next]').toggle(multiPage && !isLast);
             $root.find('[data-cf-submit-wrap]').toggle(!multiPage || isLast);
+            var $submitBtn = $root.find('[data-cf-submit-wrap] button[type="submit"], [data-cf-submit-wrap] input[type="submit"]');
+            var defaultSubmit = module.config.submitLabel || 'Submit';
+            var finishLabel = module.config.finishLabel || 'Finish';
+            $submitBtn.each(function () {
+                var $btn = $(this);
+                if (!$btn.data('cfDefaultSubmit')) {
+                    $btn.data('cfDefaultSubmit', $.trim($btn.text()) || defaultSubmit);
+                }
+                if (this.tagName === 'INPUT') {
+                    this.value = screenedOut ? finishLabel : $btn.data('cfDefaultSubmit');
+                } else {
+                    $btn.text(screenedOut ? finishLabel : $btn.data('cfDefaultSubmit'));
+                }
+            });
             $root.find('[data-cf-current-page]').val(String(idx));
             if (pageChanged && idx > 0) {
                 scheduleAutosave();
@@ -4370,6 +4465,31 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         };
 
+        var enforceCheckboxRules = function ($list, $changed) {
+            if (!$list || !$list.length) {
+                return;
+            }
+            var exclusiveList = parseExclusive($list);
+            var max = parseInt($list.attr('data-cf-max-select') || '0', 10);
+            if ($changed && $changed.length && $changed.prop('checked')) {
+                var val = String($changed.val());
+                if (exclusiveList.indexOf(val) !== -1) {
+                    $list.find('input[type="checkbox"]').not($changed).prop('checked', false);
+                } else if (exclusiveList.length) {
+                    $list.find('input[type="checkbox"]').filter(function () {
+                        return exclusiveList.indexOf(String(this.value)) !== -1;
+                    }).prop('checked', false);
+                }
+                if (max > 0) {
+                    var checked = $list.find('input[type="checkbox"]:checked');
+                    if (checked.length > max) {
+                        $changed.prop('checked', false);
+                    }
+                }
+            }
+            applyCheckboxLimits($list);
+        };
+
         $root.find('.cf-choice-list[data-cf-max-select], .cf-choice-list[data-cf-exclusive]').each(function () {
             applyCheckboxLimits($(this));
         });
@@ -4400,7 +4520,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
 
         $root.on('change', '.cf-choice-list[data-cf-max-select] input[type="checkbox"], .cf-choice-list[data-cf-exclusive] input[type="checkbox"]', function () {
-            applyCheckboxLimits($(this).closest('.cf-choice-list'));
+            enforceCheckboxRules($(this).closest('.cf-choice-list'), $(this));
         });
 
         if (multiPage) {
@@ -4410,11 +4530,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (!validateCurrentPage()) {
                     return false;
                 }
-                var goNext = function () {
+                    var goNext = function () {
                     var nav = nextVisiblePage(currentPage);
                     if (nav.end || nav.index === null) {
-                        $root.find('[data-cf-page-next]').hide();
-                        $root.find('[data-cf-submit-wrap]').show();
+                        showPage(currentPage, {scroll: false});
                         return;
                     }
                     pageHistory.push(nav.index);

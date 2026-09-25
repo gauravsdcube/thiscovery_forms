@@ -65,22 +65,10 @@ class LogicEngine
         }
         $rules = [];
         foreach (($logic['rules'] ?? []) as $rule) {
-            if (!is_array($rule)) {
-                continue;
+            $normalized = self::normalizeRule($rule);
+            if ($normalized !== null) {
+                $rules[] = $normalized;
             }
-            $fieldKey = trim((string)($rule['fieldKey'] ?? ''));
-            if ($fieldKey === '') {
-                continue;
-            }
-            $operator = (string)($rule['operator'] ?? FormField::OP_EQUALS);
-            if (!isset(FormField::getOperatorLabels()[$operator])) {
-                $operator = FormField::OP_EQUALS;
-            }
-            $rules[] = [
-                'fieldKey' => $fieldKey,
-                'operator' => $operator,
-                'value' => self::normalizeRuleValue($rule['value'] ?? ''),
-            ];
         }
 
         return [
@@ -89,6 +77,87 @@ class LogicEngine
             'gotoPageKey' => trim((string)($logic['gotoPageKey'] ?? '')),
             'rules' => $rules,
         ];
+    }
+
+    /**
+     * @param mixed $rule
+     * @return array<string,mixed>|null
+     */
+    public static function normalizeRule($rule): ?array
+    {
+        if (!is_array($rule)) {
+            return null;
+        }
+        if (isset($rule['compound']) && (is_array($rule['compound']) || is_string($rule['compound']))) {
+            $decoded = is_array($rule['compound']) ? $rule['compound'] : json_decode((string)$rule['compound'], true);
+            return is_array($decoded) ? self::normalizeRule($decoded) : null;
+        }
+        if (!empty($rule['all']) && is_array($rule['all'])) {
+            $inner = [];
+            foreach ($rule['all'] as $sub) {
+                $normalized = self::normalizeRule($sub);
+                if ($normalized !== null) {
+                    $inner[] = $normalized;
+                }
+            }
+            return $inner ? ['all' => $inner] : null;
+        }
+        if (!empty($rule['any']) && is_array($rule['any'])) {
+            $inner = [];
+            foreach ($rule['any'] as $sub) {
+                $normalized = self::normalizeRule($sub);
+                if ($normalized !== null) {
+                    $inner[] = $normalized;
+                }
+            }
+            return $inner ? ['any' => $inner] : null;
+        }
+        $fieldKey = trim((string)($rule['fieldKey'] ?? ''));
+        if ($fieldKey === '') {
+            return null;
+        }
+        $operator = (string)($rule['operator'] ?? FormField::OP_EQUALS);
+        if (!isset(FormField::getOperatorLabels()[$operator])) {
+            $operator = FormField::OP_EQUALS;
+        }
+        return [
+            'fieldKey' => $fieldKey,
+            'operator' => $operator,
+            'value' => self::normalizeRuleValue($rule['value'] ?? ''),
+        ];
+    }
+
+    /**
+     * First fieldKey/operator/value rule inside nested all/any groups.
+     *
+     * @param list<array<string,mixed>> $rules
+     * @return array{fieldKey?:string,operator?:string,value?:string}|null
+     */
+    public static function firstLeafRule(array $rules): ?array
+    {
+        foreach ($rules as $rule) {
+            if (!is_array($rule)) {
+                continue;
+            }
+            if (!empty($rule['all']) && is_array($rule['all'])) {
+                $found = self::firstLeafRule($rule['all']);
+                if ($found) {
+                    return $found;
+                }
+                continue;
+            }
+            if (!empty($rule['any']) && is_array($rule['any'])) {
+                $found = self::firstLeafRule($rule['any']);
+                if ($found) {
+                    return $found;
+                }
+                continue;
+            }
+            if (trim((string)($rule['fieldKey'] ?? '')) !== '') {
+                return $rule;
+            }
+        }
+        return null;
     }
 
     /**
@@ -123,6 +192,25 @@ class LogicEngine
 
     public function evaluateRule(array $rule, array $values, array $fields = []): bool
     {
+        if (!empty($rule['all']) && is_array($rule['all'])) {
+            if ($rule['all'] === []) {
+                return false;
+            }
+            foreach ($rule['all'] as $sub) {
+                if (!is_array($sub) || !$this->evaluateRule($sub, $values, $fields)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (!empty($rule['any']) && is_array($rule['any'])) {
+            foreach ($rule['any'] as $sub) {
+                if (is_array($sub) && $this->evaluateRule($sub, $values, $fields)) {
+                    return true;
+                }
+            }
+            return false;
+        }
         $fieldKey = (string)($rule['fieldKey'] ?? '');
         if ($fieldKey === '') {
             return false;
@@ -336,6 +424,14 @@ class LogicEngine
                 }
                 return false;
             }
+            if (in_array($op, [FormField::OP_GT, FormField::OP_GTE, FormField::OP_LT, FormField::OP_LTE], true)) {
+                foreach ($list as $item) {
+                    if ($this->compareNumeric($item, $op, $expected)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
             return false;
         }
 
@@ -349,9 +445,30 @@ class LogicEngine
                 return $expected !== '' && mb_stripos($value, $expected) !== false;
             case FormField::OP_CHECKED:
                 return $value !== '' && $value !== '0';
+            case FormField::OP_GT:
+            case FormField::OP_GTE:
+            case FormField::OP_LT:
+            case FormField::OP_LTE:
+                return $this->compareNumeric($value, $op, $expected);
             default:
                 return false;
         }
+    }
+
+    private function compareNumeric(string $value, string $op, string $expected): bool
+    {
+        if ($value === '' || $expected === '' || !is_numeric($value) || !is_numeric($expected)) {
+            return false;
+        }
+        $left = (float)$value;
+        $right = (float)$expected;
+        return match ($op) {
+            FormField::OP_GT => $left > $right,
+            FormField::OP_GTE => $left >= $right,
+            FormField::OP_LT => $left < $right,
+            FormField::OP_LTE => $left <= $right,
+            default => false,
+        };
     }
 
     /**

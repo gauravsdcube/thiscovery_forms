@@ -2,6 +2,24 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.0 (September 25, 2026)
+
+- Fix: JSON question export rewrites skip-logic `fieldKey`s to portable variable/`key` values (same as CSV), so import no longer leaves studio keys such as `id11`
+- Fix: Checkbox exclusive options and “select up to N” are enforced when the box is ticked, not only on the click event
+- Enh: Number questions support optional min/max (shown on the input and validated on Next/submit)
+- Enh: Choice questions can turn off the inline Other “Please specify” box when a later question already collects the detail
+- Enh: Screen-out “go to end” uses a **Finish** button instead of **Submit**
+- Fix: SPARCS2 110926 — A1 multi-child message when more than one child; A1/A6 cannot be negative; B7–B10 need A5 = Yes plus age ≥ 2 / ≥ 5 years; C2/C4 Other no longer blocks on inline specify
+
+## 1.27.0 (September 12, 2026)
+
+- Enh: Forms list uses the same folder sidebar as Page Builder: top-level (unfiled) forms, then folders, then templates
+
+## 1.26.0 (September 8, 2026)
+
+- Enh: Registers as a **Thiscovery Dashboard** data provider (question-type contract, snapshot ingest)
+- Enh: Form submit enqueues dashboard incremental aggregation only (`queue->push`) so live fill is not slowed by dashboarding
+
 ## 1.25.1 (September 10, 2026)
 
 - Fix: Form rich-text blocks use the full Thiscovery Editor profile so **Upload image** is available (requires Editor 1.4.3)

@@ -32,6 +32,7 @@ class HelpService
                     'creators-getting-started',
                     'creators-builder',
                     'creators-csv-import',
+                    'creators-from-brief',
                     'creators-settings',
                     'creators-versioning',
                     'creators-response-integrity',
@@ -72,6 +73,12 @@ class HelpService
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Import questions from CSV'),
                 'summary' => Yii::t('ThiscoveryFormsModule.base', 'Field types, columns, page breaks, and whether to replace or append.'),
                 'icon' => 'file-excel-o',
+            ],
+            'creators-from-brief' => [
+                'file' => 'creators-from-brief.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Create from brief or document'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Paste a brief or upload Word/PDF, review proposed questions, then create a Draft survey.'),
+                'icon' => 'magic',
             ],
             'creators-settings' => [
                 'file' => 'creators-settings.md',

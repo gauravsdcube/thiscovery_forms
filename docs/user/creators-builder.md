@@ -19,7 +19,7 @@ Each question can also have:
 | --- | --- |
 | Text | Short free text |
 | Textarea | Longer free text |
-| Number | Numeric values |
+| Number | Numeric values. Optional min and max reject e.g. negatives. |
 | Email | An email address |
 | Date | A calendar date |
 | Dropdown | One choice from a list |
@@ -50,11 +50,13 @@ Each question can also have:
 
 **Choices:** in the studio, each option has an optional **Internal code** and a required **Participant label**. Respondents only see the label. Answers, logic, and CSV export use the code when you set one. If you set a code on any choice, every choice on that question needs a code. In CSV import you can still write `code | Label` on one line.
 
-**Other:** if a dropdown, radio, or checkbox option is named exactly `Other` (the label), the fill page shows a text box so the person can type their own answer.
+**Other:** if a dropdown, radio, or checkbox option is named exactly `Other` (the label), the fill page shows a text box so the person can type their own answer. Untick **Ask for extra text when Other is ticked** if a later question already collects that detail — otherwise Next is blocked until they fill the inline box.
+
+**Checkboxes:** set **Maximum selections** (for example 3) and an **Exclusive option** such as `None of these`. Exclusive choices clear the others when ticked.
 
 **Page breaks** split the fill experience. Give each page a clear title. The **page key** is used by skip logic and “go to page” actions — keep keys stable once people have started filling. Logic or branch rules on a page break run when the person clicks **Next** on the page before that break.
 
-Show or hide a later page with **Go to page if**. That still shows **Next** so the respondent can open that page. **Go to end if** is the action that replaces Next with **Submit**.
+Show or hide a later page with **Go to page if**. That still shows **Next** so the respondent can open that page. **Go to end if** is the action that replaces Next with **Finish**.
 
 A later page with nothing visible is skipped, so respondents are not shown a blank page after the last page that still has something to show. Questions on pages they never visit are not required and do not block Submit.
 
@@ -88,7 +90,7 @@ Actions on a question or page often include:
 
 - Skip this question or page
 - Go to a named page
-- Go to the end (submit / thank you)
+- Go to the end (thank you). Screen-out pages show **Finish** rather than **Submit**.
 
 **Answer piping** (carry-forward) inserts a previous answer into later labels or text using placeholders such as `{{answer:Question label}}`. Match the question label carefully. Preview after you rename a question — piping uses the label you configured.
 
@@ -185,7 +187,7 @@ Variables belong to **this response**. Custom functions are named formulas you r
 
 - Save a question or block to the **library** to reuse it on other forms. Open the **Library** tab, then click the saved item or drag it onto the form. Saving a **question group** stores the group and the questions inside it.
 - **Save as template** (**Settings → Share**) stores the whole form as a starting point, labelled by type.
-- **Import / export** questions as JSON or CSV when you need to move a questionnaire between forms or edit options in a spreadsheet. CSV can include every question type, including page breaks. On **Settings → Share** you can **append** or **replace** all questions. See [Import questions from CSV](creators-csv-import.md).
+- **Import / export** questions as JSON or CSV when you need to move a questionnaire between forms or edit options in a spreadsheet. CSV can include every question type, including page breaks. JSON skip logic now uses the same portable `key` / variable names as CSV. On **Settings → Share** you can **append** or **replace** all questions. See [Import questions from CSV](creators-csv-import.md).
 
 Templates do not copy live answers. They copy structure.
 

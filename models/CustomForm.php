@@ -2062,6 +2062,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     $minSelect,
                     $minSelectAll
                 );
+                if (array_key_exists('other_specify', $row)) {
+                    $field->setAllowsOtherSpecify(!in_array($row['other_specify'], [0, '0', false, 'false', ''], true));
+                }
+            } elseif ($type === FormField::TYPE_NUMBER) {
+                $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
             } else {
                 $prefill = array_key_exists('prefill_profile', $row)
                     ? trim((string)$row['prefill_profile'])
@@ -2121,10 +2126,16 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $createdMap[(string)$tempKey] = $field->id;
             if ($id) {
                 $createdMap[(string)$id] = $field->id;
+                $createdMap[FormField::studioKey((int)$id)] = $field->id;
             }
+            $createdMap[FormField::studioKey((int)$field->id)] = $field->id;
             $importKey = trim((string)($row['import_key'] ?? ''));
             if ($importKey !== '' && !isset($createdMap[$importKey])) {
                 $createdMap[$importKey] = $field->id;
+            }
+            $variable = trim((string)$field->variable);
+            if ($variable !== '') {
+                $createdMap[$variable] = $field->id;
             }
         }
 
@@ -2304,29 +2315,61 @@ class CustomForm extends ContentActiveRecord implements Searchable
     /**
      * @param array $rawRules
      * @param array<string,int> $createdMap
-     * @return list<array{fieldKey:string,operator:string,value:string}>
+     * @return list<array<string,mixed>>
      */
     private function remapPostedLogicRules(array $rawRules, array $createdMap): array
     {
         $logicRules = [];
         foreach ($rawRules as $rule) {
-            if (!is_array($rule)) {
-                continue;
+            $mapped = $this->remapPostedLogicRule($rule, $createdMap);
+            if ($mapped !== null) {
+                $logicRules[] = $mapped;
             }
-            $fk = (string)($rule['fieldKey'] ?? '');
-            if ($fk === '') {
-                continue;
-            }
-            if (isset($createdMap[$fk])) {
-                $fk = (string)$createdMap[$fk];
-            }
-            $logicRules[] = [
-                'fieldKey' => $fk,
-                'operator' => $rule['operator'] ?? FormField::OP_EQUALS,
-                'value' => LogicEngine::normalizeRuleValue($rule['value'] ?? ''),
-            ];
         }
         return $logicRules;
+    }
+
+    /**
+     * @param mixed $rule
+     * @param array<string,int> $createdMap
+     * @return array<string,mixed>|null
+     */
+    private function remapPostedLogicRule($rule, array $createdMap): ?array
+    {
+        if (!is_array($rule)) {
+            return null;
+        }
+        if (isset($rule['compound'])) {
+            $decoded = is_array($rule['compound']) ? $rule['compound'] : json_decode((string)$rule['compound'], true);
+            return is_array($decoded) ? $this->remapPostedLogicRule($decoded, $createdMap) : null;
+        }
+        if (!empty($rule['all']) && is_array($rule['all'])) {
+            $inner = $this->remapPostedLogicRules($rule['all'], $createdMap);
+            return $inner ? ['all' => $inner] : null;
+        }
+        if (!empty($rule['any']) && is_array($rule['any'])) {
+            $inner = $this->remapPostedLogicRules($rule['any'], $createdMap);
+            return $inner ? ['any' => $inner] : null;
+        }
+        $fk = (string)($rule['fieldKey'] ?? '');
+        if ($fk === '') {
+            return null;
+        }
+        if (isset($createdMap[$fk])) {
+            $fk = (string)$createdMap[$fk];
+        } elseif (preg_match('/^id(\d+)$/i', $fk, $m)) {
+            $n = $m[1];
+            if (isset($createdMap[$n])) {
+                $fk = (string)$createdMap[$n];
+            } elseif (isset($createdMap['id' . $n])) {
+                $fk = (string)$createdMap['id' . $n];
+            }
+        }
+        return [
+            'fieldKey' => $fk,
+            'operator' => $rule['operator'] ?? FormField::OP_EQUALS,
+            'value' => LogicEngine::normalizeRuleValue($rule['value'] ?? ''),
+        ];
     }
 
     /**

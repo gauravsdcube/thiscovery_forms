@@ -43,6 +43,7 @@ class QuestionImportExportService
         'maxdiff_set_size',
         'maxdiff_set_count',
         'exclusive_option',
+        'other_specify',
         'max_select',
         'min_select',
         'min_select_all',
@@ -69,13 +70,24 @@ class QuestionImportExportService
         'logic_combinator',
         'logic_goto',
         'logic_rules',
+        'number_min',
+        'number_max',
     ];
 
     public function exportJson(CustomForm $form): array
     {
+        $aliases = $this->portableAliasMap($form);
         $fields = [];
         foreach ($form->fields as $field) {
-            $fields[] = $field->toExportArray();
+            $row = $field->toExportArray();
+            $row['key'] = $aliases[(string)$field->id] ?? ('f' . $field->id);
+            $row['carry_from'] = $this->remapAlias((string)($row['carry_from'] ?? ''), $aliases);
+            $row['logic_rules'] = $this->remapRuleFieldKeys($row['logic_rules'] ?? [], $aliases);
+            if (isset($row['logic']) && is_array($row['logic'])) {
+                $row['logic']['rules'] = $this->remapRuleFieldKeys($row['logic']['rules'] ?? [], $aliases);
+            }
+            $row['branches'] = $this->remapRuleFieldKeys($row['branches'] ?? [], $aliases);
+            $fields[] = $row;
         }
 
         return [
@@ -96,7 +108,7 @@ class QuestionImportExportService
     {
         $fh = fopen('php://temp', 'r+');
         fputcsv($fh, self::CSV_COLUMNS);
-        $aliases = $this->csvAliasMap($form);
+        $aliases = $this->portableAliasMap($form);
         foreach ($form->fields as $field) {
             fputcsv($fh, $this->csvRowFromField($field, $aliases));
         }
@@ -238,6 +250,9 @@ class QuestionImportExportService
                 'logic_combinator' => (string)($map['logic_combinator'] ?? 'and'),
                 'logic_goto' => (string)($map['logic_goto'] ?? ''),
                 'logic_rules' => $this->decodeJsonCell($map['logic_rules'] ?? ''),
+                'other_specify' => $map['other_specify'] ?? '1',
+                'number_min' => $map['number_min'] ?? '',
+                'number_max' => $map['number_max'] ?? '',
             ];
             if (!is_array($payload['branches'])) {
                 $payload['branches'] = [];
@@ -299,6 +314,7 @@ class QuestionImportExportService
             if ($row === null) {
                 continue;
             }
+            $row = $this->sanitizeImportRow($row, $payload);
             $importKey = preg_replace('/[^a-zA-Z0-9_]/', '', (string)($payload['key'] ?? '')) ?? '';
             if ($importKey !== '') {
                 $row['import_key'] = $importKey;
@@ -327,6 +343,62 @@ class QuestionImportExportService
     }
 
     /**
+     * Clamp / reshape payloads so saveFieldsFromPost does not fail on LLM import quirks.
+     *
+     * @param array<string, mixed> $row
+     * @param array<string, mixed> $payload
+     * @return array<string, mixed>
+     */
+    private function sanitizeImportRow(array $row, array $payload): array
+    {
+        $row['label'] = mb_substr(trim((string)($row['label'] ?? '')), 0, 255);
+        $row['internal_label'] = mb_substr(trim((string)($row['internal_label'] ?? '')), 0, 255);
+        $help = (string)($row['help_text'] ?? '');
+        $type = (string)($row['type'] ?? '');
+
+        if ($type === FormField::TYPE_RICH_TEXT) {
+            $rich = trim((string)($row['rich_content'] ?? ''));
+            $labelHtml = '<p>' . htmlspecialchars($row['label'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
+            if ($help !== '' && ($rich === '' || $rich === $labelHtml || mb_strlen($help) > 500)) {
+                $paras = preg_split("/\n\s*\n/u", $help) ?: [$help];
+                $body = '';
+                foreach ($paras as $para) {
+                    $para = trim((string)$para);
+                    if ($para === '') {
+                        continue;
+                    }
+                    $body .= '<p>' . nl2br(htmlspecialchars($para, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')) . '</p>';
+                }
+                if ($rich === '' || $rich === $labelHtml) {
+                    $row['rich_content'] = ($row['label'] !== ''
+                            ? '<p><strong>' . htmlspecialchars($row['label'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</strong></p>'
+                            : '') . $body;
+                } else {
+                    $row['rich_content'] = $rich . $body;
+                }
+                $row['help_text'] = '';
+                $help = '';
+            }
+        }
+
+        if (($type === FormField::TYPE_GRID_SINGLE || $type === FormField::TYPE_GRID_MULTI)
+            && trim((string)($row['grid_rows'] ?? '')) === ''
+            && trim((string)($row['options'] ?? '')) !== '') {
+            $row['grid_rows'] = (string)$row['options'];
+        }
+        if (($type === FormField::TYPE_GRID_SINGLE || $type === FormField::TYPE_GRID_MULTI)
+            && trim((string)($row['grid_columns'] ?? '')) === '') {
+            $row['grid_columns'] = "Not at all\nA little\nSomewhat\nQuite a bit\nVery much\nN/A";
+        }
+
+        if (mb_strlen($help) > 500) {
+            $row['help_text'] = mb_substr($help, 0, 500);
+        }
+
+        return $row;
+    }
+
+    /**
      * @param array<string,string> $aliases field id => csv key
      * @return list<string>
      */
@@ -345,15 +417,36 @@ class QuestionImportExportService
     }
 
     /**
+     * Portable keys for skip logic: variable name when unique, otherwise f{id}.
+     * Also maps stored numeric ids and studio keys (id123) onto those aliases.
+     *
+     * @return array<string,string>
+     */
+    private function portableAliasMap(CustomForm $form): array
+    {
+        $used = [];
+        $idToKey = [];
+        foreach ($form->fields as $field) {
+            $id = (string)$field->id;
+            $var = trim((string)$field->variable);
+            $alias = ($var !== '' && !isset($used[strtolower($var)])) ? $var : ('f' . $id);
+            $used[strtolower($alias)] = true;
+            $idToKey[$id] = $alias;
+        }
+        $map = [];
+        foreach ($idToKey as $id => $alias) {
+            $map[$id] = $alias;
+            $map['id' . $id] = $alias;
+        }
+        return $map;
+    }
+
+    /**
      * @return array<string,string>
      */
     private function csvAliasMap(CustomForm $form): array
     {
-        $map = [];
-        foreach ($form->fields as $field) {
-            $map[(string)$field->id] = 'f' . $field->id;
-        }
-        return $map;
+        return $this->portableAliasMap($form);
     }
 
     /**
@@ -370,6 +463,12 @@ class QuestionImportExportService
         foreach ($rules as $rule) {
             if (!is_array($rule)) {
                 continue;
+            }
+            if (!empty($rule['all']) && is_array($rule['all'])) {
+                $rule['all'] = $this->remapRuleFieldKeys($rule['all'], $aliases);
+            }
+            if (!empty($rule['any']) && is_array($rule['any'])) {
+                $rule['any'] = $this->remapRuleFieldKeys($rule['any'], $aliases);
             }
             if (isset($rule['fieldKey'])) {
                 $rule['fieldKey'] = $this->remapAlias((string)$rule['fieldKey'], $aliases);

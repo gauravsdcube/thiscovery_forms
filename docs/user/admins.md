@@ -36,6 +36,17 @@ Available types:
 
 If a type is missing on the Create screen, it is almost always switched off here.
 
+### Create from brief / document
+
+Optional utility so creators can paste a research brief or upload Word/PDF and get a **Draft survey** after review. Off by default.
+
+1. Tick **Enable “Create from brief / document”**.
+2. Optionally tick **Allow LLM assist**, then choose **LLM provider** (**OpenAI** or **Anthropic (Claude)**), set API key, model (e.g. `gpt-4o-mini` or `claude-sonnet-4-5`), upload size, and estimated cost rates. Leave **API base URL** blank unless you use Azure or another compatible gateway.
+3. Creators see **From a brief** on Create when Survey is enabled.
+4. Open **AI usage and estimated cost** from this configuration page to review calls and estimated spend (informational only — no hard spend cap yet).
+
+When LLM assist is on, brief and document text may leave the site to the configured provider. Agree that with your organisation before enabling it. Creators’ guide: [Create from brief or document](creators-from-brief.md).
+
 ### Waves
 
 Longitudinal surveys **always** use waves. On Survey and related types, creators tick **Use waves** on **Settings → Who can take part**, then configure the panel and schedule under **Settings → Panel & waves**.
@@ -122,7 +133,7 @@ Under **Appearance themes**, create, import, export, and set a default fill-page
 
 ## Folders
 
-Creators can file forms in folders (Unfiled, or a folder they may use). Folder access follows who can create or manage in that container. Folders are for organisation; they do not replace permissions.
+The forms list uses a left sidebar like Page Builder: **Top-level forms** (unfiled), then **Folders**, then **Templates**. Creators can file forms in a folder, or leave them Unfiled. Folder access follows who can create or manage in that container. Folders are for organisation; they do not replace permissions.
 
 ## What managers can delete
 

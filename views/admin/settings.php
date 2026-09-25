@@ -69,8 +69,91 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         ]) ?>
         </div>
 
+        <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Create from brief / document') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Lets creators start a Draft survey from a pasted brief or a Word/PDF questionnaire. LLM assist is optional; when enabled, brief text may be sent to the configured provider. Usage is logged with estimated cost (warnings only — no hard spend caps yet).') ?>
+        </p>
+        <div class="checkbox">
+            <label>
+                <?= Html::checkbox('ModuleSettings[fromBriefEnabled]', !empty($model->fromBriefEnabled), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('fromBriefEnabled')) ?>
+            </label>
+        </div>
+        <div class="checkbox">
+            <label>
+                <?= Html::checkbox('ModuleSettings[fromBriefLlmEnabled]', !empty($model->fromBriefLlmEnabled), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('fromBriefLlmEnabled')) ?>
+            </label>
+        </div>
+        <div class="row">
+            <div class="col-md-4">
+                <?= $form->field($model, 'llmProvider')->dropDownList(ModuleSettings::llmProviderLabels()) ?>
+            </div>
+            <div class="col-md-4">
+                <?= $form->field($model, 'llmModel')->hint(Yii::t('ThiscoveryFormsModule.base', 'Examples: gpt-4o-mini, claude-sonnet-4-5')) ?>
+            </div>
+            <div class="col-md-4">
+                <?= $form->field($model, 'fromBriefMaxUploadMb')->input('number', ['min' => 1, 'max' => 50]) ?>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4">
+                <?= $form->field($model, 'llmMaxBriefChars')->input('number', ['min' => 2000]) ?>
+            </div>
+            <div class="col-md-8">
+                <?= $form->field($model, 'llmApiBase')->hint(Yii::t('ThiscoveryFormsModule.base', 'Leave blank for the provider default (OpenAI or Anthropic). Use a custom base for Azure or compatible gateways.')) ?>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-8">
+                <?= $form->field($model, 'llmApiKey')->passwordInput([
+                    'value' => $model->llmApiKey !== '' ? '********' : '',
+                    'autocomplete' => 'new-password',
+                    'placeholder' => $model->llmApiKey !== '' ? '********' : '',
+                ])->hint(Yii::t('ThiscoveryFormsModule.base', 'Leave unchanged to keep the current key. Paste your OpenAI or Anthropic API key.')) ?>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-4">
+                <?= $form->field($model, 'llmCostPer1kInput')->input('number', ['step' => '0.0001', 'min' => 0]) ?>
+            </div>
+            <div class="col-md-4">
+                <?= $form->field($model, 'llmCostPer1kOutput')->input('number', ['step' => '0.0001', 'min' => 0]) ?>
+            </div>
+            <div class="col-md-4">
+                <?= $form->field($model, 'llmWarnMonthlyCost')->input('number', ['step' => '0.01', 'min' => 0])->hint(Yii::t('ThiscoveryFormsModule.base', 'Optional. Shows a warning banner only; does not block LLM use.')) ?>
+            </div>
+        </div>
+        <p>
+            <a class="btn btn-default" href="<?= Html::encode(Url::to(['/thiscovery-forms/admin/ai-usage'])) ?>">
+                <i class="fa fa-bar-chart" aria-hidden="true"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'AI usage and estimated cost') ?>
+            </a>
+        </p>
+
         <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Save'), ['class' => 'btn btn-primary']) ?>
         <?php ActiveForm::end(); ?>
+
+        <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'User acceptance testing') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Testers submit pass/fail results (guests allowed). Download the scenario catalog CSV or review submissions.') ?>
+        </p>
+        <p>
+            <a class="btn btn-default" href="<?= Html::encode(FormsUrl::toUatCsv()) ?>" data-pjax="0">
+                <i class="fa fa-download"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Download scenarios CSV') ?>
+            </a>
+            <a class="btn btn-primary" href="<?= Html::encode(FormsUrl::toUat()) ?>" data-pjax="0">
+                <i class="fa fa-check-square-o"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Tester form') ?>
+            </a>
+            <a class="btn btn-default" href="<?= Html::encode(FormsUrl::toUatResults()) ?>">
+                <i class="fa fa-list"></i>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Review submissions') ?>
+            </a>
+        </p>
 
         <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Appearance themes') ?></h4>

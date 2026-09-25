@@ -3,6 +3,7 @@
 use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
+use humhub\modules\thiscoveryForms\Module;
 use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
 
@@ -55,6 +56,17 @@ $icons = [
             <?php endforeach; ?>
         <?php endif; ?>
     </div>
+
+    <?php if (Module::isFromBriefEnabled() && isset($kinds[CustomForm::KIND_SURVEY])): ?>
+        <h2 class="cf-create-wizard__h"><?= Yii::t('ThiscoveryFormsModule.base', 'From a brief') ?></h2>
+        <div class="cf-kind-grid">
+            <a class="cf-kind-card" href="<?= Html::encode(Url::toCreateFromBrief($contentContainer, $createExtra)) ?>">
+                <span class="cf-kind-card__icon"><i class="fa fa-magic"></i></span>
+                <h3 class="cf-kind-card__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Brief or Word / PDF') ?></h3>
+                <p class="cf-kind-card__desc"><?= Yii::t('ThiscoveryFormsModule.base', 'Paste a research brief or upload a questionnaire. Review proposed questions, then create a Draft survey.') ?></p>
+            </a>
+        </div>
+    <?php endif; ?>
 
     <?php if (isset($kinds[CustomForm::KIND_SURVEY]) && !isset($kinds[CustomForm::KIND_EQ5D])): ?>
         <h2 class="cf-create-wizard__h"><?= Yii::t('ThiscoveryFormsModule.base', 'Starters') ?></h2>

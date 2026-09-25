@@ -35,6 +35,8 @@ class GlobalController extends Controller
     use EmailAdminTrait;
     use HelpTrait;
     use VersioningTrait;
+    use UatTrait;
+    use FromBriefTrait;
 
     public $subLayout = '@thiscovery-forms/views/layouts/default';
 
@@ -68,6 +70,7 @@ class GlobalController extends Controller
                 'email-templates', 'email-template-edit', 'email-template-delete',
                 'regenerate-preview', 'regenerate-dashboard-share',
                 'help', 'help-download',
+                'uat-results', 'uat-view', 'uat-file',
                 'publish-version', 'restore-version', 'delete-revision', 'delete-edition',
             ]],
         ];
