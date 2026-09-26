@@ -335,8 +335,12 @@ class TranslationImportExportService
             $this->pushUnit($units, "field.$id.label", $type, 'label', (string)$field->label, $id);
             $this->pushUnit($units, "field.$id.help_text", $type, 'help_text', (string)$field->help_text, $id, false);
 
-            foreach ($field->getOptions() as $i => $opt) {
-                $this->pushUnit($units, "field.$id.option.$i", $type, 'option', (string)$opt, $id, true, (int)$i);
+            foreach ($field->getChoicePairs() as $pair) {
+                $code = (string)$pair['code'];
+                if ($code === '') {
+                    continue;
+                }
+                $this->pushUnit($units, "field.$id.option.$code", $type, 'option', (string)$pair['label'], $id);
             }
 
             if ($field->type === FormField::TYPE_PAGE_BREAK) {
@@ -357,13 +361,19 @@ class TranslationImportExportService
             }
             if ($field->type === FormField::TYPE_GRID_SINGLE || $field->type === FormField::TYPE_GRID_MULTI) {
                 $grid = $field->getGridConfig();
-                foreach ($grid['rows'] as $i => $row) {
-                    $text = is_array($row) ? (string)($row['label'] ?? $row['value'] ?? '') : (string)$row;
-                    $this->pushUnit($units, "field.$id.grid_row.$i", $type, 'grid_row', $text, $id, true, (int)$i);
+                foreach ($grid['rows'] as $row) {
+                    $code = is_array($row) ? (string)($row['code'] ?? $row['value'] ?? '') : (string)$row;
+                    $text = is_array($row) ? (string)($row['label'] ?? $code) : (string)$row;
+                    if ($code !== '') {
+                        $this->pushUnit($units, "field.$id.grid_row.$code", $type, 'grid_row', $text, $id);
+                    }
                 }
-                foreach ($grid['columns'] as $i => $col) {
-                    $text = is_array($col) ? (string)($col['label'] ?? $col['value'] ?? '') : (string)$col;
-                    $this->pushUnit($units, "field.$id.grid_column.$i", $type, 'grid_column', $text, $id, true, (int)$i);
+                foreach ($grid['columns'] as $col) {
+                    $code = is_array($col) ? (string)($col['code'] ?? $col['value'] ?? '') : (string)$col;
+                    $text = is_array($col) ? (string)($col['label'] ?? $code) : (string)$col;
+                    if ($code !== '') {
+                        $this->pushUnit($units, "field.$id.grid_column.$code", $type, 'grid_column', $text, $id);
+                    }
                 }
             }
             if ($field->type === FormField::TYPE_BEST_WORST || $field->type === FormField::TYPE_MAXDIFF) {
@@ -430,8 +440,18 @@ class TranslationImportExportService
             $map[$lang]["field.$id.label"] = (string)$row->label;
             $map[$lang]["field.$id.help_text"] = (string)$row->help_text;
             $overlay = $row->getOptionsOverlay();
-            foreach ($overlay['options'] ?? [] as $i => $opt) {
-                $map[$lang]["field.$id.option.$i"] = (string)$opt;
+            $fieldModel = FormField::findOne($id);
+            $pairs = $fieldModel ? $fieldModel->getChoicePairs() : [];
+            $options = $overlay['options'] ?? [];
+            if (is_array($options) && array_is_list($options) && $pairs && count($options) === count($pairs)) {
+                foreach ($pairs as $i => $pair) {
+                    $label = is_array($options[$i]) ? (string)($options[$i]['label'] ?? '') : (string)$options[$i];
+                    $map[$lang]['field.' . $id . '.option.' . $pair['code']] = $label;
+                }
+            } else {
+                foreach ($this->overlayEntries($options) as $key => $opt) {
+                    $map[$lang]["field.$id.option.$key"] = (string)$opt;
+                }
             }
             if (!empty($overlay['page_title'])) {
                 $map[$lang]["field.$id.page_title"] = (string)$overlay['page_title'];
@@ -451,14 +471,14 @@ class TranslationImportExportService
             if (!empty($overlay['highLabel'])) {
                 $map[$lang]["field.$id.rating_high_label"] = (string)$overlay['highLabel'];
             }
-            foreach ($overlay['rows'] ?? [] as $i => $val) {
-                $map[$lang]["field.$id.grid_row.$i"] = (string)$val;
+            foreach ($this->overlayEntries($overlay['rows'] ?? []) as $key => $val) {
+                $map[$lang]["field.$id.grid_row.$key"] = (string)$val;
             }
-            foreach ($overlay['columns'] ?? [] as $i => $val) {
-                $map[$lang]["field.$id.grid_column.$i"] = (string)$val;
+            foreach ($this->overlayEntries($overlay['columns'] ?? []) as $key => $val) {
+                $map[$lang]["field.$id.grid_column.$key"] = (string)$val;
             }
-            foreach ($overlay['items'] ?? [] as $i => $val) {
-                $map[$lang]["field.$id.item.$i"] = (string)$val;
+            foreach ($this->overlayEntries($overlay['items'] ?? []) as $key => $val) {
+                $map[$lang]["field.$id.item.$key"] = (string)$val;
             }
         }
 
@@ -479,13 +499,19 @@ class TranslationImportExportService
             $part = $m[2] === 'help' ? 'help_text' : $m[2];
             return ['kind' => 'field', 'field_id' => (int)$m[1], 'part' => $part];
         }
-        if (preg_match('/^field\.(\d+)\.(option|grid_row|grid_column|item)\.(\d+)$/', $key, $m)) {
-            return [
+        if (preg_match('/^field\.(\d+)\.(option|grid_row|grid_column|item)\.(.+)$/', $key, $m)) {
+            $token = $m[3];
+            $parsed = [
                 'kind' => 'field',
                 'field_id' => (int)$m[1],
                 'part' => $m[2],
-                'index' => (int)$m[3],
             ];
+            if (ctype_digit($token)) {
+                $parsed['index'] = (int)$token;
+            } else {
+                $parsed['code'] = $token;
+            }
+            return $parsed;
         }
         return null;
     }
@@ -539,6 +565,11 @@ class TranslationImportExportService
             return;
         }
 
+        if ($part === 'option' && !empty($parsed['code'])) {
+            $data['option_map'][(string)$parsed['code']] = $value;
+            return;
+        }
+
         if ($part === 'option' && $index !== null) {
             $lines = preg_split('/\r\n|\r|\n/', (string)$data['options']) ?: [];
             $source = $field->getOptions();
@@ -554,6 +585,13 @@ class TranslationImportExportService
         }
 
         $listKey = ['grid_row' => 'rows', 'grid_column' => 'columns', 'item' => 'items'][$part] ?? null;
+        if ($listKey && !empty($parsed['code'])) {
+            if (!is_array($data[$listKey] ?? null) || array_is_list($data[$listKey])) {
+                $data[$listKey] = [];
+            }
+            $data[$listKey][(string)$parsed['code']] = $value;
+            return;
+        }
         if ($listKey && $index !== null) {
             $source = [];
             if ($listKey === 'rows' || $listKey === 'columns') {
@@ -593,5 +631,27 @@ class TranslationImportExportService
             ksort($merged);
             $data[$listKey] = array_values($merged);
         }
+    }
+
+    /**
+     * @param mixed $value
+     * @return array<int|string, string>
+     */
+    private function overlayEntries($value): array
+    {
+        if (!is_array($value)) {
+            return [];
+        }
+        $out = [];
+        if (array_is_list($value)) {
+            foreach ($value as $i => $item) {
+                $out[$i] = is_array($item) ? (string)($item['label'] ?? '') : (string)$item;
+            }
+            return $out;
+        }
+        foreach ($value as $code => $item) {
+            $out[(string)$code] = is_array($item) ? (string)($item['label'] ?? '') : (string)$item;
+        }
+        return $out;
     }
 }

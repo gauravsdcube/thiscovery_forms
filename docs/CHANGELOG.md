@@ -8,6 +8,8 @@ All notable changes to this module are documented in this file.
 
 - Fix (DAT-1): removing a question soft-deletes it (`custom_form_field.deleted_at`) and the answer foreign key is ON DELETE RESTRICT, so stored answers survive. Migration `m260926_130000_answer_field_restrict`. No feature flag: a question delete no longer destroys data.
 
+- Fix (DAT-2): choice translations keep the option code and change only the label. Old positional lists are mapped by position; a count mismatch keeps the source label and logs a warning. Detection: `php yii thiscovery-forms/detect-translation-loss` (counts only).
+
 ## 1.28.2 (September 25, 2026)
 
 - Fix: Remove UAT tester form and UAT results from the published module (routes, buttons, and table)

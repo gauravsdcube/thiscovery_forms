@@ -293,7 +293,7 @@ class TranslationService
         $row->label = trim((string)($data['label'] ?? ''));
         $row->help_text = trim((string)($data['help_text'] ?? ''));
         $extra = $row->isNewRecord ? [] : $row->getOptionsOverlay();
-        $posted = $this->extraFromData($data);
+        $posted = $this->extraFromData($data, $field);
         foreach ($posted as $key => $value) {
             $extra[$key] = $value;
         }
@@ -351,12 +351,19 @@ class TranslationService
             $decoded = [];
         }
         if (isset($overlay['options']) && is_array($overlay['options'])) {
-            if ($decoded && (isset($decoded['options']) || isset($decoded['__type']))) {
-                $decoded['options'] = $overlay['options'];
+            $source = [];
+            if (isset($decoded['options']) && is_array($decoded['options'])) {
+                $source = $decoded['options'];
+            } elseif ($this->isList($decoded)) {
+                $source = $decoded;
+            }
+            $relabelled = $this->relabelChoices($source, $overlay['options'], 'options field ' . (int)$field->id);
+            if (isset($decoded['options']) || isset($decoded['__type'])) {
+                $decoded['options'] = $relabelled;
             } elseif ($this->isList($decoded) || !$decoded) {
-                $decoded = $overlay['options'];
+                $decoded = $relabelled;
             } else {
-                $decoded['options'] = $overlay['options'];
+                $decoded['options'] = $relabelled;
             }
         }
         if (isset($overlay['page_title']) && isset($decoded['title'])) {
@@ -372,13 +379,13 @@ class TranslationService
             $decoded['instructions'] = $overlay['html_instructions'];
         }
         if (isset($overlay['rows']) && is_array($overlay['rows']) && array_key_exists('rows', $decoded)) {
-            $decoded['rows'] = $overlay['rows'];
+            $decoded['rows'] = $this->relabelChoices($decoded['rows'], $overlay['rows'], 'rows field ' . (int)$field->id);
         }
         if (isset($overlay['columns']) && is_array($overlay['columns']) && array_key_exists('columns', $decoded)) {
-            $decoded['columns'] = $overlay['columns'];
+            $decoded['columns'] = $this->relabelChoices($decoded['columns'], $overlay['columns'], 'columns field ' . (int)$field->id);
         }
         if (isset($overlay['items']) && is_array($overlay['items']) && array_key_exists('items', $decoded)) {
-            $decoded['items'] = $overlay['items'];
+            $decoded['items'] = $this->relabelChoices($decoded['items'], $overlay['items'], 'items field ' . (int)$field->id);
         }
         if (isset($overlay['lowLabel']) && array_key_exists('lowLabel', $decoded)) {
             $decoded['lowLabel'] = $overlay['lowLabel'];
@@ -392,20 +399,16 @@ class TranslationService
     /**
      * @return array<string, mixed>
      */
-    public function extraFromData(array $data): array
+    public function extraFromData(array $data, ?FormField $field = null): array
     {
         $extra = [];
-        $options = $data['options'] ?? '';
-        if (is_array($options)) {
-            $list = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $options), 'strlen'));
-            if ($list) {
-                $extra['options'] = $list;
-            }
+        if (!empty($data['option_map']) && is_array($data['option_map'])) {
+            $extra['options'] = $this->stringMap($data['option_map']);
         } else {
-            $options = trim((string)$options);
-            if ($options !== '') {
-                $lines = preg_split('/\r\n|\r|\n/', $options) ?: [];
-                $extra['options'] = array_values(array_filter(array_map('trim', $lines), 'strlen'));
+            $options = $data['options'] ?? '';
+            $mapped = $this->choiceMapFromPosted($options, $field ? $field->getChoicePairs() : [], 'options field ' . (int)($field->id ?? 0));
+            if ($mapped) {
+                $extra['options'] = $mapped;
             }
         }
         foreach (['page_title', 'rich_content', 'html_content', 'html_instructions'] as $key) {
@@ -420,21 +423,163 @@ class TranslationService
             $extra['highLabel'] = (string)$data['rating_high_label'];
         }
         foreach (['rows', 'columns', 'items'] as $key) {
-            $val = $data[$key] ?? null;
-            if (is_array($val)) {
-                $list = array_values(array_filter(array_map(static fn($v) => trim((string)$v), $val), 'strlen'));
-                if ($list) {
-                    $extra[$key] = $list;
-                }
-            } elseif (is_string($val) && trim($val) !== '') {
-                $lines = preg_split('/\r\n|\r|\n/', $val) ?: [];
-                $list = array_values(array_filter(array_map('trim', $lines), 'strlen'));
-                if ($list) {
-                    $extra[$key] = $list;
-                }
+            if (!isset($data[$key]) || !$field) {
+                continue;
+            }
+            if ($key === 'items') {
+                $pairs = $field->getItemsConfig()['items'] ?? [];
+            } else {
+                $pairs = $field->getGridConfig()[$key] ?? [];
+            }
+            $mapped = $this->choiceMapFromPosted($data[$key], is_array($pairs) ? $pairs : [], $key . ' field ' . (int)$field->id);
+            if ($mapped) {
+                $extra[$key] = $mapped;
             }
         }
         return $extra;
+    }
+
+    /**
+     * Keep choice codes and replace only labels. A positional list is mapped by
+     * index; a count mismatch keeps the source label and logs a warning.
+     *
+     * @param mixed $source
+     * @param mixed $overlay
+     * @return array<int, string>
+     */
+    private function relabelChoices($source, $overlay, string $context): array
+    {
+        if (!is_array($source)) {
+            return [];
+        }
+        $pairs = ChoiceOptions::itemsFromDecoded(['options' => $source]);
+        $labels = $this->translationLabelMap($pairs, $overlay, $context);
+        if (!$labels) {
+            return $source;
+        }
+        $out = [];
+        foreach ($pairs as $pair) {
+            $code = (string)$pair['code'];
+            $label = $labels[$code] ?? (string)$pair['label'];
+            $out[] = $code . ' | ' . $label;
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<int, array{code?:string,label?:string}> $pairs
+     * @param mixed $overlay
+     * @return array<string, string>
+     */
+    private function translationLabelMap(array $pairs, $overlay, string $context): array
+    {
+        if (!is_array($overlay) || !$overlay) {
+            return [];
+        }
+        if (!array_is_list($overlay)) {
+            return $this->stringMap($overlay);
+        }
+        if (count($overlay) !== count($pairs)) {
+            Yii::warning(
+                'Thiscovery Forms translation count mismatch (' . $context . '): stored '
+                . count($overlay) . ', source ' . count($pairs) . '. Source labels kept.',
+                'thiscovery-forms'
+            );
+            return [];
+        }
+        $map = [];
+        foreach ($pairs as $i => $pair) {
+            $code = (string)($pair['code'] ?? '');
+            if ($code === '') {
+                continue;
+            }
+            $item = $overlay[$i];
+            if (is_array($item)) {
+                $map[$code] = trim((string)($item['label'] ?? $pair['label'] ?? $code));
+            } else {
+                $parsed = ChoiceOptions::parseLine(trim((string)$item));
+                $map[$code] = $parsed['label'] !== '' ? $parsed['label'] : trim((string)$item);
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * @param array<int, array{code?:string,label?:string}> $pairs
+     * @param mixed $posted
+     * @return array<string, string>
+     */
+    private function choiceMapFromPosted($posted, array $pairs, string $context): array
+    {
+        if (is_string($posted)) {
+            $posted = preg_split('/\r\n|\r|\n/', $posted) ?: [];
+        }
+        if (!is_array($posted) || !$posted) {
+            return [];
+        }
+        if (!array_is_list($posted)) {
+            return $this->stringMap($posted);
+        }
+        $lines = [];
+        $map = [];
+        foreach ($posted as $item) {
+            if (is_array($item)) {
+                $code = trim((string)($item['code'] ?? ''));
+                $label = trim((string)($item['label'] ?? ''));
+                if ($code !== '') {
+                    $map[$code] = $label !== '' ? $label : $code;
+                }
+                continue;
+            }
+            $text = trim((string)$item);
+            if ($text !== '') {
+                $lines[] = $text;
+            }
+        }
+        if ($map && !$lines) {
+            return $map;
+        }
+        if (!$pairs || count($lines) !== count($pairs)) {
+            if ($lines) {
+                Yii::warning(
+                    'Thiscovery Forms translation count mismatch (' . $context . '): posted '
+                    . count($lines) . ', source ' . count($pairs) . '.',
+                    'thiscovery-forms'
+                );
+            }
+            return $map;
+        }
+        foreach ($pairs as $i => $pair) {
+            $code = trim((string)($pair['code'] ?? ''));
+            if ($code === '') {
+                continue;
+            }
+            $parsed = ChoiceOptions::parseLine($lines[$i]);
+            $map[$code] = $parsed['label'] !== '' ? $parsed['label'] : $lines[$i];
+        }
+        return $map;
+    }
+
+    /**
+     * @param array<mixed> $map
+     * @return array<string, string>
+     */
+    private function stringMap(array $map): array
+    {
+        $out = [];
+        foreach ($map as $code => $label) {
+            if (is_array($label)) {
+                $code = (string)($label['code'] ?? $code);
+                $label = (string)($label['label'] ?? '');
+            }
+            $code = trim((string)$code);
+            $label = trim((string)$label);
+            if ($code === '' || $label === '') {
+                continue;
+            }
+            $out[$code] = $label;
+        }
+        return $out;
     }
 
     /**
