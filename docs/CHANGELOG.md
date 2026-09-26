@@ -12,6 +12,8 @@ All notable changes to this module are documented in this file.
 
 - Fix (DAT-3): the answer header and answer rows commit together. Status becomes complete and the resume code is cleared only after the rows are written. Dashboard enqueue and file attachment run after commit. A database error rolls the submission back. Detection: `php yii thiscovery-forms/detect-partial-completes` (counts only).
 
+- Fix (LOG-1, LOG-3): a skipped page follows its go-to and its page-break rules, including skip-page on the page break that opens it. The 80-step cap is replaced by the page count plus a cycle warning. Flag `routing_alignment` defaults to on; set it to `0` to restore the 1.28.2 walk. LOG-2 action go-to, LOG-4 chained visibility, and the missing `between` operator stay for later releases.
+
 ## 1.28.2 (September 25, 2026)
 
 - Fix: Remove UAT tester form and UAT results from the published module (routes, buttons, and table)

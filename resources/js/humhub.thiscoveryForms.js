@@ -3973,6 +3973,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         var pageShouldSkip = function (idx, values) {
             values = values || readAnswers();
             var page = pagesConfig[idx] || {};
+            if (page.skipLogic && page.skipLogic.rules && page.skipLogic.rules.length && logicMet(page.skipLogic, values)) {
+                return true;
+            }
             var fieldLogic = page.fieldLogic || [];
             for (var i = 0; i < fieldLogic.length; i++) {
                 var logic = fieldLogic[i].logic || {};
@@ -3999,6 +4002,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     var gotoKey = String(logic.gotoPageKey || '');
                     if (gotoKey && pageKeyIndex[gotoKey] !== undefined) {
                         return { index: parseInt(pageKeyIndex[gotoKey], 10), explicit: true, end: false };
+                    }
+                    if (gotoKey) {
+                        return { index: null, explicit: true, end: true };
                     }
                 }
             }
@@ -4045,10 +4051,19 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             var idx = 0;
             var guard = 0;
-            while (idx !== null && idx !== undefined && !seen[idx] && guard++ < 80) {
+            var limit = pagesConfig.length + 1;
+            while (idx !== null && idx !== undefined && guard++ < limit) {
+                if (seen[idx]) {
+                    if (window.console) window.console.warn('Thiscovery Forms page cycle detected.');
+                    break;
+                }
                 seen[idx] = true;
                 var nav = nextVisiblePage(idx);
                 if (nav.end || nav.index === null || nav.index === undefined) {
+                    break;
+                }
+                if (seen[nav.index]) {
+                    if (window.console) window.console.warn('Thiscovery Forms page cycle detected.');
                     break;
                 }
                 idx = nav.index;

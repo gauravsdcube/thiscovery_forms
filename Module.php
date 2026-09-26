@@ -44,6 +44,12 @@ class Module extends ContentContainerModule
      * Set to 0 to restore the 1.28.2 behaviour without a redeploy.
      */
     public const SETTING_IDENTITY_ENFORCE = 'identity_enforce_mode';
+
+    /**
+     * When 1 (the default), skipped pages follow their go-to rules and the page walk
+     * is not capped at 80 steps. Set to 0 to restore the 1.28.2 walk.
+     */
+    public const SETTING_ROUTING_ALIGNMENT = 'routing_alignment';
     public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
     public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
     public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
@@ -260,6 +266,16 @@ class Module extends ContentContainerModule
             return true;
         }
         $value = (string)$module->settings->get(self::SETTING_IDENTITY_ENFORCE, '1');
+        return !in_array($value, ['0', 'false', 'off'], true);
+    }
+
+    public static function routingAligned(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self) {
+            return true;
+        }
+        $value = (string)$module->settings->get(self::SETTING_ROUTING_ALIGNMENT, '1');
         return !in_array($value, ['0', 'false', 'off'], true);
     }
 

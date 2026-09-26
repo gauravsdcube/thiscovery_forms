@@ -74,13 +74,14 @@ $rewriteFileUrls = static function (string $html) use ($formFileBase): string {
     );
 };
 $user = Yii::$app->user->identity;
+$previousBreak = null;
 foreach ($pages as $page) {
     $branches = [];
     if ($page['break'] instanceof FormField) {
         $branches = $page['break']->getPageBreakConfig()['branches'];
     }
     $fieldLogic = [];
-    foreach (FormPager::navigationFields($page) as $item) {
+    foreach ($page['items'] as $item) {
         $logic = $item->getLogic();
         if (!empty($logic['rules'])) {
             $fieldLogic[] = [
@@ -89,14 +90,32 @@ foreach ($pages as $page) {
             ];
         }
     }
+    if ($page['break'] instanceof FormField) {
+        $breakLogic = $page['break']->getLogic();
+        if (!empty($breakLogic['rules']) && ($breakLogic['action'] ?? '') !== 'skip_page') {
+            $fieldLogic[] = [
+                'fieldId' => (int)$page['break']->id,
+                'logic' => $breakLogic,
+            ];
+        }
+    }
+    $skipLogic = null;
+    if ($previousBreak instanceof FormField) {
+        $introLogic = $previousBreak->getLogic();
+        if (($introLogic['action'] ?? '') === 'skip_page' && !empty($introLogic['rules'])) {
+            $skipLogic = $introLogic;
+        }
+    }
     $pagePayload[] = [
         'index' => $page['index'],
         'pageKey' => $page['pageKey'],
         'title' => $page['title'],
         'branches' => $branches,
         'fieldLogic' => $fieldLogic,
+        'skipLogic' => $skipLogic,
         'fieldIds' => array_map(static fn(FormField $f) => (int)$f->id, $page['items']),
     ];
+    $previousBreak = $page['break'] ?? null;
 }
 
 $this->registerJsConfig('thiscoveryForms', [
