@@ -10,6 +10,8 @@ All notable changes to this module are documented in this file.
 
 - Fix (DAT-2): choice translations keep the option code and change only the label. Old positional lists are mapped by position; a count mismatch keeps the source label and logs a warning. Detection: `php yii thiscovery-forms/detect-translation-loss` (counts only).
 
+- Fix (DAT-3): the answer header and answer rows commit together. Status becomes complete and the resume code is cleared only after the rows are written. Dashboard enqueue and file attachment run after commit. A database error rolls the submission back. Detection: `php yii thiscovery-forms/detect-partial-completes` (counts only).
+
 ## 1.28.2 (September 25, 2026)
 
 - Fix: Remove UAT tester form and UAT results from the published module (routes, buttons, and table)

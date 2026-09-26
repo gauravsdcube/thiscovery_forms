@@ -505,12 +505,9 @@ class SubmitForm extends Model
                 $answer->resume_code = (new \humhub\modules\thiscoveryForms\services\ResumeService())->generateCode();
             }
         } else {
-            $answer->status = FormAnswer::STATUS_COMPLETE;
-            $answer->resume_code = null;
-            if ($anonymous) {
-                $answer->resume_email = null;
+            if ($answer->isNewRecord || $answer->isInProgress()) {
+                $answer->status = FormAnswer::STATUS_IN_PROGRESS;
             }
-            $answer->current_page = null;
         }
 
         if ($isTest || ($existing && $existing->isTest())) {
@@ -520,73 +517,100 @@ class SubmitForm extends Model
             $answer->updated_by = null;
         }
 
-        if (!$answer->save()) {
+        $fileGuids = [];
+        $db = Yii::$app->db;
+        $transaction = $db->beginTransaction();
+        try {
+            if (!$answer->save()) {
+                $transaction->rollBack();
+                $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
+                return null;
+            }
+
+            if (!$isTest && !$answer->edition_id && $this->form->current_edition_id) {
+                $answer->updateAttributes(['edition_id' => (int)$this->form->current_edition_id]);
+                $answer->edition_id = (int)$this->form->current_edition_id;
+            }
+
+            $existingFields = [];
+            foreach ($answer->answerFields as $af) {
+                $existingFields[$af->field_id] = $af;
+            }
+
+            $liveFieldIds = array_flip(FormField::find()
+                ->select('id')
+                ->where(['form_id' => (int)$this->form->id, 'deleted_at' => null])
+                ->column());
+
+            foreach ($this->form->fields as $field) {
+                if (!$field->collectsAnswer()) {
+                    continue;
+                }
+                $fieldId = (int)$field->id;
+                if ($fieldId < 1 || !isset($liveFieldIds[$fieldId])) {
+                    continue;
+                }
+                $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
+                $value = $visible ? ($this->values[$fieldId] ?? null) : null;
+
+                if (!$visible || $this->isEmptyValue($value)) {
+                    if (isset($existingFields[$fieldId])) {
+                        $existingFields[$fieldId]->delete();
+                    }
+                    continue;
+                }
+
+                if ($field->type === FormField::TYPE_IMAGE_AREA) {
+                    $value = $this->scoreImageArea($field, is_array($value) ? $value : []);
+                }
+
+                $af = $existingFields[$fieldId] ?? new FormAnswerField();
+                $af->answer_id = $answer->id;
+                $af->field_id = $fieldId;
+                $af->value = $this->encodeValue($value);
+                $af->justification = $field->supportsJustification()
+                    ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)
+                    : null;
+
+                if (!$af->save()) {
+                    $transaction->rollBack();
+                    $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
+                        'label' => $field->label,
+                    ]));
+                    return null;
+                }
+
+                if ($field->type === FormField::TYPE_FILE && $af->value) {
+                    $fileGuids[] = (string)$af->value;
+                }
+            }
+
+            if (!$asDraft) {
+                $answer->status = FormAnswer::STATUS_COMPLETE;
+                $answer->resume_code = null;
+                $answer->current_page = null;
+                if ($anonymous) {
+                    $answer->resume_email = null;
+                }
+                $answer->save(false, ['status', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
+            }
+
+            $transaction->commit();
+        } catch (\Throwable $e) {
+            $transaction->rollBack();
+            Yii::warning('Thiscovery Forms submit rolled back: ' . $e->getMessage(), 'thiscovery-forms');
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
             return null;
         }
 
-        if (!$isTest && !$answer->edition_id && $this->form->current_edition_id) {
-            $answer->updateAttributes(['edition_id' => (int)$this->form->current_edition_id]);
-            $answer->edition_id = (int)$this->form->current_edition_id;
-        }
-
-        $existingFields = [];
-        foreach ($answer->answerFields as $af) {
-            $existingFields[$af->field_id] = $af;
-        }
-
-        $liveFieldIds = array_flip(FormField::find()
-            ->select('id')
-            ->where(['form_id' => (int)$this->form->id])
-            ->column());
-
-        foreach ($this->form->fields as $field) {
-            if (!$field->collectsAnswer()) {
-                continue;
-            }
-            $fieldId = (int)$field->id;
-            if ($fieldId < 1 || !isset($liveFieldIds[$fieldId])) {
-                continue;
-            }
-            $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
-            $value = $visible ? ($this->values[$fieldId] ?? null) : null;
-
-            if (!$visible || $this->isEmptyValue($value)) {
-                if (isset($existingFields[$fieldId])) {
-                    $existingFields[$fieldId]->delete();
-                }
-                continue;
-            }
-
-            if ($field->type === FormField::TYPE_IMAGE_AREA) {
-                $value = $this->scoreImageArea($field, is_array($value) ? $value : []);
-            }
-
-            $af = $existingFields[$fieldId] ?? new FormAnswerField();
-            $af->answer_id = $answer->id;
-            $af->field_id = $fieldId;
-            $af->value = $this->encodeValue($value);
-            $af->justification = $field->supportsJustification()
-                ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)
-                : null;
-
-            if (!$af->save()) {
-                $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
-                    'label' => $field->label,
-                ]));
-                return null;
-            }
-
-            if ($field->type === FormField::TYPE_FILE && $af->value) {
-                try {
-                    $answer->fileManager->attach($af->value);
-                } catch (\Throwable $e) {
-                    Yii::warning('Thiscovery Forms file attach failed: ' . $e->getMessage(), 'thiscovery-forms');
-                }
-            }
-        }
-
         unset($answer->answerFields);
+        foreach ($fileGuids as $guid) {
+            try {
+                $answer->fileManager->attach($guid);
+            } catch (\Throwable $e) {
+                Yii::warning('Thiscovery Forms file attach failed: ' . $e->getMessage(), 'thiscovery-forms');
+            }
+        }
 
         if (!$asDraft && !$isTest && Yii::$app->hasModule('thiscovery-dashboard')) {
             $dash = Yii::$app->getModule('thiscovery-dashboard');
