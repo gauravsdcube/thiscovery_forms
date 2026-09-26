@@ -31,7 +31,7 @@ foreach ($answer->answerFields as $af) {
 }
 $answeredCount = 0;
 $answerableTotal = 0;
-foreach ($formModel->fields as $field) {
+foreach ($formModel->getAllFields()->all() as $field) {
     if (!$field->collectsAnswer()) {
         continue;
     }
@@ -119,11 +119,12 @@ foreach ($formModel->fields as $field) {
     }
     ?>
 
-    <?php if (!count($formModel->fields)): ?>
+    <?php $detailFields = $formModel->getAllFields()->all(); ?>
+    <?php if (!count($detailFields)): ?>
         <p class="cf-answer-empty"><?= Yii::t('ThiscoveryFormsModule.base', 'This form has no fields.') ?></p>
     <?php else: ?>
         <div class="cf-answer-fields cf-answer-fields--stack">
-            <?php foreach ($formModel->fields as $field): ?>
+            <?php foreach ($detailFields as $field): ?>
                 <?php
                 if (!$field->collectsAnswer()) {
                     continue;

@@ -23,6 +23,7 @@ use yii\db\ActiveQuery;
  * @property int $required
  * @property int $sort_order
  * @property string|null $options_json
+ * @property string|null $deleted_at
  * @property int|null $condition_field_id
  * @property string|null $condition_operator
  * @property string|null $condition_value
@@ -96,6 +97,7 @@ class FormField extends ActiveRecord
                 'message' => Yii::t('ThiscoveryFormsModule.base', 'Variable must start with a letter and use only letters, numbers, and underscores.')],
             [['help_text', 'condition_value'], 'string', 'max' => 500],
             [['options_json', 'logic_json', 'actions_json'], 'string'],
+            [['deleted_at'], 'safe'],
             [['type'], 'in', 'range' => array_keys(self::getTypeLabels())],
             [['condition_operator'], 'in', 'range' => array_keys(self::getOperatorLabels()), 'skipOnEmpty' => true],
         ];
@@ -235,6 +237,20 @@ class FormField extends ActiveRecord
         }
         FormFieldI18n::deleteAll(['field_id' => $this->id]);
         return true;
+    }
+
+    public function isRemoved(): bool
+    {
+        return $this->deleted_at !== null && $this->deleted_at !== '';
+    }
+
+    /**
+     * Hide the question from new fills. Stored answers keep this row id.
+     */
+    public function softDelete(): bool
+    {
+        $this->deleted_at = date('Y-m-d H:i:s');
+        return (bool)$this->save(false, ['deleted_at']);
     }
 
     public function getConditionField(): ActiveQuery

@@ -92,7 +92,7 @@ $labels = FormIntegrityMeta::componentLabels();
         <ul>
             <?php
             $fieldLabels = [];
-            foreach ($formModel->fields as $f) {
+            foreach ($formModel->getAllFields()->all() as $f) {
                 $fieldLabels[(string)$f->id] = $f->label;
             }
             foreach ($meta->getQuestionTimings() as $fid => $ms):

@@ -152,7 +152,7 @@ class FormAnswer extends ActiveRecord
         if ($form) {
             $preferred = ['text', 'textarea', 'dropdown', 'rich_text'];
             foreach ($preferred as $type) {
-                foreach ($form->fields as $field) {
+                foreach ($form->getAllFields()->all() as $field) {
                     if ($field->type !== $type || !$field->collectsAnswer()) {
                         continue;
                     }

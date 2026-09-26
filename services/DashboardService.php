@@ -267,7 +267,7 @@ class DashboardService
     public function getStructuredBreakdowns(CustomForm $form): array
     {
         $charts = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, self::STRUCTURED_TYPES, true)) {
                 continue;
             }
@@ -796,7 +796,7 @@ class DashboardService
         }
 
         $rates = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!$field->collectsAnswer()) {
                 continue;
             }

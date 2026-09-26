@@ -163,7 +163,7 @@ class ExportSettings
      */
     public static function catalogue(CustomForm $form, ?array $fields = null, string $headerMode = ExportService::HEADER_LABEL): array
     {
-        $fields = $fields ?? array_values(array_filter($form->fields, static fn($f) => $f->collectsAnswer()));
+        $fields = $fields ?? array_values(array_filter($form->getAllFields()->all(), static fn($f) => $f->collectsAnswer()));
         $cols = [];
 
         $pushMeta = static function (string $key, string $header, bool $lock = false) use (&$cols) {

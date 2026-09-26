@@ -222,7 +222,9 @@ class FormSnapshotService
 
     /**
      * Snapshot field IDs can be stale after import/replace. Answers still FK to
-     * custom_form_field, so map each hydrated field onto a live row.
+     * custom_form_field, so map each hydrated field onto a live row, including
+     * a soft-deleted row with the same id so a restored edition undeletes it
+     * instead of inserting a new question.
      *
      * @param FormField[] $fields
      */

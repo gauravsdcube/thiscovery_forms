@@ -80,7 +80,7 @@ class FormsDataProvider implements DataProviderInterface
             return [];
         }
         $out = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!$field->collectsAnswer()) {
                 continue;
             }
@@ -107,7 +107,7 @@ class FormsDataProvider implements DataProviderInterface
         $out = [
             ['id' => 'wave_id', 'label' => Yii::t('ThiscoveryFormsModule.base', 'Wave')],
         ];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (in_array($field->type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_PANEL_ATTR], true)) {
                 $out[] = ['id' => 'q:' . $field->id, 'label' => $field->label];
             }

@@ -29,7 +29,7 @@ class ExportService
         [$query] = AnswerListService::query($form, $params);
         $query->with(['answerFields', 'user', 'wave', 'round', 'panelMember', 'integrityMeta']);
 
-        $fields = array_values(array_filter($form->fields, static fn($f) => $f->collectsAnswer()));
+        $fields = array_values(array_filter($form->getAllFields()->all(), static fn($f) => $f->collectsAnswer()));
         $headerMode = (string)($params['header_mode'] ?? self::HEADER_LABEL);
         if (!isset(self::headerModeLabels()[$headerMode])) {
             $headerMode = self::HEADER_LABEL;

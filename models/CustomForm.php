@@ -308,7 +308,19 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     public function getFields(): ActiveQuery
     {
-        return $this->hasMany(FormField::class, ['form_id' => 'id'])->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
+        return $this->hasMany(FormField::class, ['form_id' => 'id'])
+            ->andWhere(['custom_form_field.deleted_at' => null])
+            ->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
+    }
+
+    /**
+     * Live questions plus ones removed after answers were stored.
+     * Use this for answer detail, export, snapshots of past responses, and the dashboard.
+     */
+    public function getAllFields(): ActiveQuery
+    {
+        return $this->hasMany(FormField::class, ['form_id' => 'id'])
+            ->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
     }
 
     public function getFolder(): ActiveQuery
@@ -1094,10 +1106,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
             return false;
         }
 
-        foreach ($this->answers as $answer) {
+        foreach (FormAnswer::find()->where(['form_id' => $this->id])->all() as $answer) {
             $answer->delete();
         }
-        foreach ($this->fields as $field) {
+        foreach ($this->getAllFields()->all() as $field) {
             $field->delete();
         }
         foreach ($this->getWaves()->all() as $wave) {
@@ -1840,7 +1852,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function saveFieldsFromPost(array $rows): bool
     {
         $existing = [];
-        foreach ($this->fields as $field) {
+        foreach ($this->getAllFields()->all() as $field) {
             $existing[$field->id] = $field;
         }
 
@@ -2231,13 +2243,14 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
 
             $field->setActions($row['actions'] ?? []);
+            $field->deleted_at = null;
 
             $field->save(false);
         }
 
         foreach ($existing as $id => $field) {
             if (!in_array($id, $keptIds, true)) {
-                $field->delete();
+                $field->softDelete();
             }
         }
 

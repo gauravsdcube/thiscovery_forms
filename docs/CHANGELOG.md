@@ -6,6 +6,8 @@ All notable changes to this module are documented in this file.
 
 - Fix (GOV-1, GOV-2): a fully anonymous form no longer stores `created_by`, `updated_by`, `panel_member_id`, or a completed `resume_email`, and panel completion is a counter with no answer link. Submission notifications are skipped. Flag `identity_enforce_mode` defaults to on; set it to `0` to restore the previous behaviour. Repair: `php yii thiscovery-forms/repair-identity` (dry-run; `--apply=1` writes). Migration `m260926_120000_anonymous_completion_wave` adds `form_panel_activity.wave_id`.
 
+- Fix (DAT-1): removing a question soft-deletes it (`custom_form_field.deleted_at`) and the answer foreign key is ON DELETE RESTRICT, so stored answers survive. Migration `m260926_130000_answer_field_restrict`. No feature flag: a question delete no longer destroys data.
+
 ## 1.28.2 (September 25, 2026)
 
 - Fix: Remove UAT tester form and UAT results from the published module (routes, buttons, and table)
