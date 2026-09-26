@@ -338,7 +338,7 @@ class GlobalController extends Controller
                 ]);
             }
         }
-        $anonymous = $isPreview || $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
+        $anonymous = $form->submitAsAnonymous($isPreview, (bool)$ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous, false, $isPreview);
 

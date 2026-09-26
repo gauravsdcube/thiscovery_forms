@@ -13,6 +13,7 @@ use yii\db\ActiveQuery;
  * @property int $member_id
  * @property int $form_id
  * @property int|null $answer_id
+ * @property int|null $wave_id
  * @property string|null $created_at
  *
  * @property-read FormPanel $panel
@@ -31,7 +32,7 @@ class FormPanelActivity extends ActiveRecord
     {
         return [
             [['panel_id', 'member_id', 'form_id'], 'required'],
-            [['panel_id', 'member_id', 'form_id', 'answer_id'], 'integer'],
+            [['panel_id', 'member_id', 'form_id', 'answer_id', 'wave_id'], 'integer'],
             [['created_at'], 'safe'],
         ];
     }

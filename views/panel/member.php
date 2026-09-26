@@ -148,7 +148,7 @@ $activities = $activities ?? [];
                         <?php /** @var FormPanelActivity $row */ ?>
                         <tr class="cf-form-row">
                             <td class="cf-form-table__actions-col">
-                                <?php if ($row->form && $row->answer_id): ?>
+                                <?php if ($row->form && $row->answer_id && !$row->form->shouldHideIdentity()): ?>
                                     <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Open'))
                                         ->link(Url::toAnswerDetail($row->form, $row->answer_id))
                                         ->sm()

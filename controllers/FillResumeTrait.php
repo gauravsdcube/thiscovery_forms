@@ -444,7 +444,7 @@ trait FillResumeTrait
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
-        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
+        $anonymous = $form->submitAsAnonymous(false, (bool)$ctx->tokenAccess);
         $email = trim((string)Yii::$app->request->post('resume_email', ''));
         $page = Yii::$app->request->post('current_page');
         $currentPage = ($page !== null && $page !== '') ? (int)$page : null;

@@ -38,6 +38,12 @@ class Module extends ContentContainerModule
     public const SETTING_LLM_API_KEY = 'llm_api_key';
     public const SETTING_LLM_MODEL = 'llm_model';
     public const SETTING_FROM_BRIEF_MAX_UPLOAD_MB = 'from_brief_max_upload_mb';
+
+    /**
+     * When 1 (the default), a fully anonymous form never stores a respondent link.
+     * Set to 0 to restore the 1.28.2 behaviour without a redeploy.
+     */
+    public const SETTING_IDENTITY_ENFORCE = 'identity_enforce_mode';
     public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
     public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
     public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
@@ -242,6 +248,19 @@ class Module extends ContentContainerModule
             return false;
         }
         return trim((string)$module->settings->get(self::SETTING_LLM_API_KEY, '')) !== '';
+    }
+
+    /**
+     * Missing setting means enforced. Only an explicit 0 turns the fix off.
+     */
+    public static function identityEnforced(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self) {
+            return true;
+        }
+        $value = (string)$module->settings->get(self::SETTING_IDENTITY_ENFORCE, '1');
+        return !in_array($value, ['0', 'false', 'off'], true);
     }
 
     public static function fromBriefMaxUploadBytes(): int

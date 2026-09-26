@@ -11,6 +11,7 @@ use humhub\modules\thiscoveryForms\models\FormEmailSend;
 use humhub\modules\thiscoveryForms\models\FormEmailTemplate;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormPanel;
+use humhub\modules\thiscoveryForms\models\FormPanelActivity;
 use humhub\modules\thiscoveryForms\models\FormPanelMember;
 use humhub\modules\thiscoveryForms\models\FormWave;
 use humhub\modules\thiscoveryForms\services\PanelFieldService;
@@ -297,6 +298,17 @@ class EmailTemplateService
                         'is_test' => 0,
                     ])
                     ->andWhere(['status' => \humhub\modules\thiscoveryForms\models\FormAnswer::STATUS_COMPLETE])
+                    ->exists();
+                if ($done) {
+                    continue;
+                }
+                $done = FormPanelActivity::find()
+                    ->where([
+                        'form_id' => $form->id,
+                        'member_id' => $member->id,
+                        'answer_id' => null,
+                        'wave_id' => $wave->id,
+                    ])
                     ->exists();
                 if ($done) {
                     continue;

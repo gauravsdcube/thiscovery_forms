@@ -469,6 +469,14 @@ class SubmitForm extends Model
             return null;
         }
 
+        $stripIdentity = $this->form
+            && $this->form->hidesIdentityFromManagers()
+            && \humhub\modules\thiscoveryForms\Module::identityEnforced();
+        if ($stripIdentity) {
+            $anonymous = true;
+            $this->panelMemberId = null;
+        }
+
         $answer = $existing ?: new FormAnswer();
         $answer->form_id = $this->form->id;
         if ($this->waveId) {
@@ -477,7 +485,9 @@ class SubmitForm extends Model
         if ($this->roundId) {
             $answer->round_id = $this->roundId;
         }
-        if ($this->panelMemberId) {
+        if ($stripIdentity) {
+            $answer->panel_member_id = null;
+        } elseif ($this->panelMemberId) {
             $answer->panel_member_id = $this->panelMemberId;
         }
         if ($this->weight !== null) {
@@ -497,6 +507,9 @@ class SubmitForm extends Model
         } else {
             $answer->status = FormAnswer::STATUS_COMPLETE;
             $answer->resume_code = null;
+            if ($anonymous) {
+                $answer->resume_email = null;
+            }
             $answer->current_page = null;
         }
 

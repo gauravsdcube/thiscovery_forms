@@ -398,6 +398,22 @@ class CustomForm extends ContentActiveRecord implements Searchable
         return $this->getIdentityMode() === self::IDENTITY_FULLY_ANONYMOUS;
     }
 
+    /**
+     * Whether this fill must be stored with no respondent identity.
+     * Preview and a fully anonymous form (when enforcement is on) are always anonymous.
+     * allowsAnonymous() only decides whether a guest may open the form.
+     */
+    public function submitAsAnonymous(bool $isPreview, bool $guestTokenAccess): bool
+    {
+        if ($isPreview) {
+            return true;
+        }
+        if (Module::identityEnforced() && $this->hidesIdentityFromManagers()) {
+            return true;
+        }
+        return $this->allowsAnonymous() || (Yii::$app->user->isGuest && $guestTokenAccess);
+    }
+
     public function shouldHideIdentity($viewer = null): bool
     {
         $mode = $this->getIdentityMode();

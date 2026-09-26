@@ -541,6 +541,11 @@ class PanelService
 
     public function handleCompletion(CustomForm $form, FormAnswer $answer): void
     {
+        if (\humhub\modules\thiscoveryForms\Module::identityEnforced() && $form->hidesIdentityFromManagers()) {
+            $this->recordAnonymousCompletion($form, $answer);
+            return;
+        }
+
         $mode = (string)$form->getSetting('enrol_panel_mode', self::ENROL_NONE);
         $enrol = $mode !== self::ENROL_NONE && $mode !== '';
         $log = $form->getSetting('log_panel_activity', false);
@@ -610,6 +615,51 @@ class PanelService
         if (!$answer->isTest()) {
             (new EmailTemplateService())->sendCompletionEmail($form, $answer, $member);
         }
+    }
+
+    /**
+     * Completion flag for a fully anonymous form. Keyed by member and wave, with no answer id.
+     */
+    private function recordAnonymousCompletion(CustomForm $form, FormAnswer $answer): void
+    {
+        if ($answer->panel_member_id) {
+            $answer->panel_member_id = null;
+            $answer->updateAttributes(['panel_member_id' => null]);
+        }
+
+        $panel = $this->getPanel($form) ?: $this->getEnrolPanel($form);
+        if (!$panel) {
+            return;
+        }
+
+        $member = null;
+        $sessionUser = Yii::$app->user->identity;
+        if ($sessionUser instanceof User && !Yii::$app->user->isGuest) {
+            $member = $this->findMemberOnPanel($panel, $sessionUser, (string)$sessionUser->email);
+        }
+        if (!$member) {
+            return;
+        }
+
+        $waveId = $answer->wave_id ? (int)$answer->wave_id : null;
+        $exists = FormPanelActivity::find()->where([
+            'panel_id' => $panel->id,
+            'member_id' => $member->id,
+            'form_id' => $form->id,
+            'answer_id' => null,
+            'wave_id' => $waveId,
+        ])->exists();
+        if ($exists) {
+            return;
+        }
+
+        $row = new FormPanelActivity();
+        $row->panel_id = (int)$panel->id;
+        $row->member_id = (int)$member->id;
+        $row->form_id = (int)$form->id;
+        $row->answer_id = null;
+        $row->wave_id = $waveId;
+        $row->save(false);
     }
 
     public function recordActivity(FormPanel $panel, FormPanelMember $member, CustomForm $form, FormAnswer $answer): void

@@ -595,7 +595,7 @@ trait StudioTrait
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
-        $anonymous = $form->allowsAnonymous() || (Yii::$app->user->isGuest && $ctx->tokenAccess);
+        $anonymous = $form->submitAsAnonymous(false, (bool)$ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous);
 

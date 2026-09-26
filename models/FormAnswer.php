@@ -194,6 +194,18 @@ class FormAnswer extends ActiveRecord
         return parent::beforeValidate();
     }
 
+    public function beforeSave($insert)
+    {
+        if (!parent::beforeSave($insert)) {
+            return false;
+        }
+        if ($this->forceAnonymous) {
+            $this->created_by = null;
+            $this->updated_by = null;
+        }
+        return true;
+    }
+
     public function isAnonymous(): bool
     {
         return $this->created_by === null || $this->created_by === '';
