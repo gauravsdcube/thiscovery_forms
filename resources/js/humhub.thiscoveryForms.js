@@ -3986,7 +3986,62 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return !pageHasVisibleContent(idx);
         };
 
+        var fieldHasAnswer = function (values, fieldId) {
+            var value = values[String(fieldId)];
+            return value !== undefined && value !== null && value !== '' && !(Array.isArray(value) && value.length === 0);
+        };
+
+        var navFromAction = function (row) {
+            if (!row) {
+                return null;
+            }
+            if (row.fn === 'goto_end') {
+                return { index: null, explicit: true, end: true };
+            }
+            if (row.fn === 'goto_page') {
+                var key = String(row.pageKey || '');
+                if (key && pageKeyIndex[key] !== undefined) {
+                    return { index: parseInt(pageKeyIndex[key], 10), explicit: true, end: false };
+                }
+                if (key) {
+                    return { index: null, explicit: true, end: true };
+                }
+            }
+            return null;
+        };
+
+        var actionNavigation = function (fromIndex) {
+            if (module.config.routingAligned === false) {
+                return null;
+            }
+            var values = readAnswers();
+            var page = pagesConfig[fromIndex] || {};
+            var chosen = null;
+            (page.actionGotos || []).forEach(function (row) {
+                if (fieldHasAnswer(values, row.fieldId)) {
+                    var nav = navFromAction(row);
+                    if (nav) {
+                        chosen = nav;
+                    }
+                }
+            });
+            if (chosen) {
+                return chosen;
+            }
+            (page.breakActions || []).forEach(function (row) {
+                var nav = navFromAction(row);
+                if (nav) {
+                    chosen = nav;
+                }
+            });
+            return chosen;
+        };
+
         var resolveNavigation = function (fromIndex) {
+            var actionNav = actionNavigation(fromIndex);
+            if (actionNav) {
+                return actionNav;
+            }
             var values = readAnswers();
             var page = pagesConfig[fromIndex] || {};
             var fieldLogic = page.fieldLogic || [];
@@ -4104,6 +4159,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $root.find('[data-cf-page]').each(function () {
                 var $page = $(this);
                 var p = parseInt($page.attr('data-cf-page'), 10);
+                if (p === currentPage) {
+                    $page.removeClass('cf-page-offpath');
+                    return;
+                }
                 var onPath = !isNaN(p) && !!reachable[p];
                 var wasOff = $page.hasClass('cf-page-offpath');
                 $page.toggleClass('cf-page-offpath', !onPath);
@@ -4127,6 +4186,14 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             currentPage = idx;
             var $targetPage = $root.find('[data-cf-page="' + idx + '"]');
+            $targetPage.removeClass('cf-page-offpath');
+            $targetPage.find('[data-cf-conditional]').each(function () {
+                var $field = $(this);
+                if ($field.hasClass('cf-hidden')) {
+                    return;
+                }
+                $field.find('input, select, textarea').prop('disabled', false);
+            });
             if (pageChanged || !$targetPage.hasClass('is-active')) {
                 $root.find('[data-cf-page]').removeClass('is-active');
                 $targetPage.addClass('is-active');
@@ -4223,7 +4290,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             clearTimeout(fieldActionTimer);
             fieldActionTimer = setTimeout(function () {
-                runActions('field', fieldId).done(applyActionResult);
+                runActions('field', fieldId).done(function (res) {
+                    if (res && res.vars && typeof res.vars === 'object') {
+                        writeActionVars(res.vars);
+                    }
+                });
             }, 400);
         });
 
@@ -4545,10 +4616,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (!validateCurrentPage()) {
                     return false;
                 }
-                    var goNext = function () {
-                    var nav = nextVisiblePage(currentPage);
+                var goNext = function () {
+                    var nav = actionNavigation(currentPage) || nextVisiblePage(currentPage);
                     if (nav.end || nav.index === null) {
                         showPage(currentPage, {scroll: false});
+                        $root.find('[data-cf-page-next]').hide();
+                        $root.find('[data-cf-submit-wrap]').show();
                         return;
                     }
                     pageHistory.push(nav.index);
@@ -4557,9 +4630,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var breakId = $root.find('[data-cf-page="' + currentPage + '"]').attr('data-cf-page-break-id');
                 if (breakId) {
                     runActions('page', breakId).done(function (res) {
-                        var nav = applyActionResult(res);
-                        if (nav === 'goto' || nav === 'end') {
-                            return;
+                        if (res && res.vars && typeof res.vars === 'object') {
+                            writeActionVars(res.vars);
                         }
                         goNext();
                     }).fail(goNext);

@@ -106,6 +106,31 @@ foreach ($pages as $page) {
             $skipLogic = $introLogic;
         }
     }
+    $actionGotos = [];
+    foreach ($page['items'] as $item) {
+        foreach ($item->getActions() as $action) {
+            if (!in_array($action['fn'], ['goto_page', 'goto_end'], true)) {
+                continue;
+            }
+            $actionGotos[] = [
+                'fieldId' => (int)$item->id,
+                'fn' => $action['fn'],
+                'pageKey' => (string)$action['page_key'],
+            ];
+        }
+    }
+    $breakActions = [];
+    if ($page['break'] instanceof FormField) {
+        foreach ($page['break']->getActions() as $action) {
+            if (!in_array($action['fn'], ['goto_page', 'goto_end'], true)) {
+                continue;
+            }
+            $breakActions[] = [
+                'fn' => $action['fn'],
+                'pageKey' => (string)$action['page_key'],
+            ];
+        }
+    }
     $pagePayload[] = [
         'index' => $page['index'],
         'pageKey' => $page['pageKey'],
@@ -113,6 +138,8 @@ foreach ($pages as $page) {
         'branches' => $branches,
         'fieldLogic' => $fieldLogic,
         'skipLogic' => $skipLogic,
+        'actionGotos' => $actionGotos,
+        'breakActions' => $breakActions,
         'fieldIds' => array_map(static fn(FormField $f) => (int)$f->id, $page['items']),
     ];
     $previousBreak = $page['break'] ?? null;
@@ -120,6 +147,7 @@ foreach ($pages as $page) {
 
 $this->registerJsConfig('thiscoveryForms', [
     'pages' => $pagePayload,
+    'routingAligned' => \humhub\modules\thiscoveryForms\Module::routingAligned(),
     'pageKeyIndex' => $pageKeyIndex,
     'pageLabel' => Yii::t('ThiscoveryFormsModule.base', 'Page {current} of {total}'),
     'nextLabel' => Yii::t('ThiscoveryFormsModule.base', 'Next'),

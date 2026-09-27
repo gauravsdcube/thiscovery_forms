@@ -209,6 +209,11 @@ class FormPager
      */
     private function leavePageTarget(array $pages, array $pageKeyIndex, int $fromIndex, array $values, array $allFields): array
     {
+        $action = $this->actionLeaveTarget($pages[$fromIndex], $pageKeyIndex, $values);
+        if ($action !== null) {
+            return $action;
+        }
+
         $engine = new LogicEngine();
         $nav = $engine->pageNavigation(self::navigationFields($pages[$fromIndex]), $values, $allFields);
         if ($nav) {
@@ -248,6 +253,73 @@ class FormPager
             'explicit' => false,
             'index' => isset($pages[$next]) ? $next : null,
         ];
+    }
+
+    /**
+     * Go-to actions have no conditions. An answered question's action wins over
+     * the page break. A page-break action is unconditional. The last go-to in
+     * the action list is the one that applies.
+     *
+     * @return array{end:bool,explicit:bool,index:?int}|null
+     */
+    private function actionLeaveTarget(array $page, array $pageKeyIndex, array $values): ?array
+    {
+        $chosen = null;
+        foreach ($page['items'] ?? [] as $field) {
+            if (!$field instanceof FormField || !$this->fieldHasAnswer($values, (int)$field->id)) {
+                continue;
+            }
+            $goto = $this->gotoFromActions($field->getActions(), $pageKeyIndex);
+            if ($goto !== null) {
+                $chosen = $goto;
+            }
+        }
+        if ($chosen !== null) {
+            return $chosen;
+        }
+        $break = $page['break'] ?? null;
+        if ($break instanceof FormField) {
+            return $this->gotoFromActions($break->getActions(), $pageKeyIndex);
+        }
+        return null;
+    }
+
+    /**
+     * @param array<int, array<string, mixed>> $actions
+     * @return array{end:bool,explicit:bool,index:?int}|null
+     */
+    private function gotoFromActions(array $actions, array $pageKeyIndex): ?array
+    {
+        $chosen = null;
+        foreach ($actions as $action) {
+            $fn = (string)($action['fn'] ?? '');
+            if ($fn === FormActionService::FN_GOTO_END) {
+                $chosen = ['end' => true, 'explicit' => true, 'index' => null];
+                continue;
+            }
+            if ($fn !== FormActionService::FN_GOTO_PAGE) {
+                continue;
+            }
+            $key = trim((string)($action['page_key'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            if (!isset($pageKeyIndex[$key])) {
+                $chosen = ['end' => true, 'explicit' => true, 'index' => null];
+                continue;
+            }
+            $chosen = ['end' => false, 'explicit' => true, 'index' => (int)$pageKeyIndex[$key]];
+        }
+        return $chosen;
+    }
+
+    private function fieldHasAnswer(array $values, int $fieldId): bool
+    {
+        $value = $values[$fieldId] ?? ($values[(string)$fieldId] ?? null);
+        if ($value === null || $value === '' || $value === []) {
+            return false;
+        }
+        return true;
     }
 
     private function pageMarkedSkip(array $pages, int $idx, array $values, LogicEngine $engine, array $allFields): bool

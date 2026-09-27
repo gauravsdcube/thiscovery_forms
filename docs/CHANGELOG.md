@@ -14,6 +14,8 @@ All notable changes to this module are documented in this file.
 
 - Fix (LOG-1, LOG-3): a skipped page follows its go-to and its page-break rules, including skip-page on the page break that opens it. The 80-step cap is replaced by the page count plus a cycle warning. Flag `routing_alignment` defaults to on; set it to `0` to restore the 1.28.2 walk. LOG-2 action go-to, LOG-4 chained visibility, and the missing `between` operator stay for later releases.
 
+- Fix (LOG-2): a Go to page or Go to end action is applied when Next is pressed, after the current page is valid, not while the respondent is still answering. An answered question's action is used before a page-break action. Page-break actions have no conditions. The landing page is no longer cleared. Covered by the `routing_alignment` flag.
+
 ## 1.28.2 (September 25, 2026)
 
 - Fix: Remove UAT tester form and UAT results from the published module (routes, buttons, and table)

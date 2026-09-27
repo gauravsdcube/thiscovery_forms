@@ -1047,8 +1047,8 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Actions') ?></div>
             <div class="cf-field-help mb-2">
                 <?= $isPageBreak
-                    ? Yii::t('ThiscoveryFormsModule.base', 'These run when the respondent finishes the page before this break (Next), in the order listed. Custom function looks up a named formula from Settings → Custom functions.')
-                    : Yii::t('ThiscoveryFormsModule.base', 'These run when this question is answered, in the order listed. Custom function looks up a named formula from Settings → Custom functions.') ?>
+                    ? Yii::t('ThiscoveryFormsModule.base', 'These run when the respondent presses Next, after this page is valid. A Go to page or Go to end action has no conditions, so it always leaves this page. The form does not jump while the respondent is still answering. Emails and variables still run. If an answered question on this page also has a Go to action, that question action is used instead.')
+                    : Yii::t('ThiscoveryFormsModule.base', 'Emails and variables run shortly after this question changes. A Go to page or Go to end action has no conditions, but it waits until Next, and only if this question has an answer. It is used ahead of a Go to action on the page break. Custom function looks up a named formula from Settings → Custom functions.') ?>
             </div>
             <?= $this->render('@thiscovery-forms/views/form/_action_rows', [
                 'namePrefix' => $namePrefix . '[actions]',
