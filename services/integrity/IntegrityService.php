@@ -202,11 +202,15 @@ class IntegrityService
         // so the next render must still show CAPTCHA and require a pass.
         $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious || $this->isCaptchaRequired($form));
         if ($needCaptcha) {
-            if (!$this->verifyCaptcha($cfg, $post)) {
+            $passed = $this->verifyCaptcha($cfg, $post);
+            $this->rememberCaptchaResult($form, $passed);
+            if (!$passed) {
                 $this->markCaptchaRequired($form);
                 return Yii::t('ThiscoveryFormsModule.base', 'Please complete the verification check and try again.');
             }
             $this->clearCaptchaRequired($form);
+        } else {
+            Yii::$app->session->remove($this->captchaResultKey($form));
         }
         return null;
     }
@@ -218,6 +222,7 @@ class IntegrityService
         if (!IntegritySettings::isOn($cfg, 'enabled')) {
             $this->consumeAccessToken($form, $rawToken, $cfg);
             Yii::$app->session->remove(self::START_PREFIX . (int)$form->id);
+            Yii::$app->session->remove($this->captchaResultKey($form));
             return null;
         }
 
@@ -260,8 +265,9 @@ class IntegrityService
         $suspicious = $meta->honeypot_triggered || !$sessionOk || $meta->rate_limited;
         $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious);
         $meta->captcha_shown = $needCaptcha ? 1 : 0;
+        $recorded = $this->takeCaptchaResult($form);
         if ($needCaptcha) {
-            $meta->captcha_passed = $this->verifyCaptcha($cfg, $post) ? 1 : 0;
+            $meta->captcha_passed = $recorded === true ? 1 : 0;
         } else {
             $meta->captcha_passed = null;
         }
@@ -551,6 +557,27 @@ class IntegrityService
     public function markCaptchaRequired(CustomForm $form): void
     {
         Yii::$app->session->set($this->captchaRequiredKey($form), 1);
+    }
+
+    public function captchaResultKey(CustomForm $form): string
+    {
+        return 'cf-int-captcha-pass-' . (int)$form->id;
+    }
+
+    private function rememberCaptchaResult(CustomForm $form, bool $passed): void
+    {
+        Yii::$app->session->set($this->captchaResultKey($form), $passed ? 1 : 0);
+    }
+
+    private function takeCaptchaResult(CustomForm $form): ?bool
+    {
+        $key = $this->captchaResultKey($form);
+        if (!Yii::$app->session->has($key)) {
+            return null;
+        }
+        $passed = (int)Yii::$app->session->get($key) === 1;
+        Yii::$app->session->remove($key);
+        return $passed;
     }
 
     public function clearCaptchaRequired(CustomForm $form): void
