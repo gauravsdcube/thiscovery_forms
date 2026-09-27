@@ -204,6 +204,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['kind'], 'default', 'value' => self::KIND_SURVEY],
             [['kind'], 'in', 'range' => array_keys(self::getKindLabels())],
             [['description', 'thank_you_content', 'already_submitted_message', 'custom_css', 'settings_json'], 'string'],
+            [['custom_css'], 'validateCustomCss'],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
             [['status'], 'validatePublishedBeforeOpen'],
             [['current_edition_id'], 'integer'],
@@ -1392,8 +1393,16 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $css = preg_replace('/javascript\s*:/i', '', $css);
         $css = preg_replace('/-moz-binding\s*:/i', '', $css);
         $css = preg_replace('/behavior\s*:/i', '', $css);
+        $css = str_replace('<', '', (string)$css);
 
-        return trim((string)$css);
+        return trim($css);
+    }
+
+    public function validateCustomCss(): void
+    {
+        if (str_contains((string)$this->custom_css, '<')) {
+            $this->addError('custom_css', Yii::t('ThiscoveryFormsModule.base', 'Custom CSS cannot contain the < character.'));
+        }
     }
 
     public function resolveTheme(): ?FormTheme

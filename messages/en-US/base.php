@@ -43,6 +43,7 @@ return [
     'Thanks for completing this form…' => 'Thanks for completing this form…',
     'Thank you!' => 'Thank you!',
     'Custom CSS' => 'Custom CSS',
+    'Custom CSS cannot contain the < character.' => 'Custom CSS cannot contain the < character.',
     'CSS' => 'CSS',
     'Appearance' => 'Appearance',
     'Leave fields blank to use the site theme. These styles apply only on the fill page.' => 'Leave fields blank to use the site theme. These styles apply only on the fill page.',

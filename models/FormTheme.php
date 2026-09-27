@@ -37,6 +37,7 @@ class FormTheme extends ActiveRecord
             [['name'], 'required'],
             [['name'], 'string', 'max' => 120],
             [['style_json', 'custom_css'], 'string'],
+            [['custom_css'], 'validateCustomCss'],
             [['is_default'], 'boolean'],
             [['created_by', 'updated_by'], 'integer'],
             [['created_at', 'updated_at'], 'safe'],
@@ -50,6 +51,13 @@ class FormTheme extends ActiveRecord
             'custom_css' => Yii::t('ThiscoveryFormsModule.base', 'Custom CSS'),
             'is_default' => Yii::t('ThiscoveryFormsModule.base', 'Default theme'),
         ];
+    }
+
+    public function validateCustomCss(): void
+    {
+        if (str_contains((string)$this->custom_css, '<')) {
+            $this->addError('custom_css', Yii::t('ThiscoveryFormsModule.base', 'Custom CSS cannot contain the < character.'));
+        }
     }
 
     public function getStyle(): array
