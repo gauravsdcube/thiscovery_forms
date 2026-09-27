@@ -16,6 +16,7 @@ use humhub\modules\thiscoveryForms\services\FillContext;
 use humhub\modules\thiscoveryForms\services\FillContextService;
 use humhub\modules\thiscoveryForms\services\ResumeService;
 use humhub\modules\thiscoveryForms\services\TranslationService;
+use humhub\modules\thiscoveryForms\services\UploadGrant;
 use Yii;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
@@ -441,6 +442,7 @@ trait FillResumeTrait
             throw new ForbiddenHttpException();
         }
 
+        $submit->editingAnswer = $existing;
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
@@ -715,6 +717,7 @@ trait FillResumeTrait
         $fieldId = (int)Yii::$app->request->post('field_id', 0);
         $submit = new SubmitForm(['form' => $form]);
         $submit->scenario = SubmitForm::SCENARIO_DRAFT;
+        $submit->editingAnswer = $this->resolveFillExisting($form, $submit);
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
@@ -772,6 +775,7 @@ trait FillResumeTrait
             }
             if ($file->save()) {
                 ImageHelper::downscaleImage($file);
+                UploadGrant::remember((int)$form->id, (string)$file->guid);
                 $files[] = array_merge(['error' => false], FileHelper::getFileInfos($file));
             } else {
                 $errorMessage = $file->getErrors('uploadedFile');
@@ -807,12 +811,9 @@ trait FillResumeTrait
             return ['success' => true];
         }
 
-        if ($file->isAssigned()) {
-            $object = $file->getPolymorphicRelation();
-            $allowed = $object instanceof FormAnswer && (int)$object->form_id === (int)$form->id;
-            if (!$allowed) {
-                throw new ForbiddenHttpException();
-            }
+        $answer = $this->resolveFillExisting($form, new SubmitForm(['form' => $form]));
+        if (!UploadGrant::mayRemove($form, $file, $answer instanceof FormAnswer ? $answer : null)) {
+            throw new ForbiddenHttpException();
         }
 
         $file->delete();

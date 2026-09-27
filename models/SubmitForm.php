@@ -2,7 +2,9 @@
 
 namespace humhub\modules\thiscoveryForms\models;
 
+use humhub\modules\file\models\File;
 use humhub\modules\thiscoveryForms\services\FormPager;
+use humhub\modules\thiscoveryForms\services\UploadGrant;
 use Yii;
 use yii\base\Model;
 
@@ -21,6 +23,9 @@ class SubmitForm extends Model
 
     /** @var array fieldId => justification text */
     public $justifications = [];
+
+    /** @var FormAnswer|null Answer being edited, so an already attached file can be kept. */
+    public $editingAnswer;
 
     /** @var int|null */
     public $waveId;
@@ -67,7 +72,7 @@ class SubmitForm extends Model
             }
             if ($field->type === FormField::TYPE_FILE) {
                 $guid = $fieldPost[$key] ?? '';
-                $this->values[$field->id] = is_string($guid) ? trim($guid) : '';
+                $this->values[$field->id] = $this->acceptFileGuid($field, is_string($guid) ? trim($guid) : '');
                 continue;
             }
             if ($field->type === FormField::TYPE_CHECKBOX) {
@@ -146,6 +151,31 @@ class SubmitForm extends Model
         }
 
         return true;
+    }
+
+    private function acceptFileGuid(FormField $field, string $guid): string
+    {
+        if ($guid === '') {
+            return '';
+        }
+        if (UploadGrant::granted((int)$this->form->id, $guid)) {
+            return $guid;
+        }
+        $answer = $this->editingAnswer;
+        if ($answer instanceof FormAnswer) {
+            $stored = FormAnswerField::find()
+                ->select('value')
+                ->where(['answer_id' => (int)$answer->id, 'field_id' => (int)$field->id])
+                ->scalar();
+            if ((string)$stored === $guid) {
+                return $guid;
+            }
+            $file = File::findOne(['guid' => $guid]);
+            if ($file && UploadGrant::attachedTo($file, $answer)) {
+                return $guid;
+            }
+        }
+        return '';
     }
 
     protected function applyHiddenDefaultsAndMeta(): void

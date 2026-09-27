@@ -592,6 +592,7 @@ trait StudioTrait
             return ['success' => false, 'errors' => [Yii::t('ThiscoveryFormsModule.base', 'You are not allowed to submit this form.')]];
         }
 
+        $submit->editingAnswer = $existing;
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);

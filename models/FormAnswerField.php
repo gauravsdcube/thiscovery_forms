@@ -142,7 +142,7 @@ class FormAnswerField extends ActiveRecord
     {
         if ($this->field && $this->field->type === FormField::TYPE_FILE && $this->value) {
             $file = File::findOne(['guid' => $this->value]);
-            if ($file) {
+            if ($file && $file->object_model === FormAnswer::class && (int)$file->object_id === (int)$this->answer_id) {
                 $file->delete();
             }
         }

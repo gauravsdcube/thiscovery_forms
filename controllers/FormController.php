@@ -260,6 +260,7 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException();
         }
 
+        $submit->editingAnswer = $existing;
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
