@@ -3679,11 +3679,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             };
             $root.find('[data-cf-pipe]').each(function () {
                 var tpl = String($(this).attr('data-cf-pipe') || '');
-                var html = replaceTpl(tpl);
+                var text = replaceTpl(tpl);
                 if ($(this).find('.text-danger').length) {
-                    $(this).contents().filter(function () { return this.nodeType === 3; }).first().replaceWith(html + ' ');
+                    var node = $(this).contents().filter(function () { return this.nodeType === 3; }).get(0);
+                    var shown = text.charAt(text.length - 1) === ' ' ? text : text + ' ';
+                    if (node) {
+                        node.nodeValue = shown;
+                    } else {
+                        this.insertBefore(document.createTextNode(shown), this.firstChild);
+                    }
                 } else {
-                    $(this).text(html);
+                    $(this).text(text);
                 }
             });
         };

@@ -14,6 +14,8 @@ All notable changes to this module are documented in this file.
 
 - Fix (LOG-1, LOG-3): a skipped page follows its go-to and its page-break rules, including skip-page on the page break that opens it. The 80-step cap is replaced by the page count plus a cycle warning. Flag `routing_alignment` defaults to on; set it to `0` to restore the 1.28.2 walk. LOG-2 action go-to, LOG-4 chained visibility, and the missing `between` operator stay for later releases.
 
+- Fix (SEC-4): an answer piped into a required label is inserted as text, including when the label also shows the required marker. No flag.
+
 - Fix (SEC-3): custom CSS that contains `<` is rejected on save. CSS already stored is rendered with `<` removed, so it cannot close the style element. No flag.
 
 - Fix (SEC-2): clearing a file answer deletes the file only when it is attached to that answer. A posted file id is kept only when it was uploaded in this fill session or is already attached to the answer being edited. The same rule applies when the respondent removes a file. No flag.
