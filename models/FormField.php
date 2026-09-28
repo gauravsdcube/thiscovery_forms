@@ -1562,8 +1562,8 @@ class FormField extends ActiveRecord
 
     public function setGridConfig(array $config): void
     {
-        $rows = $this->normalizeGridPairs($config['rows'] ?? []);
-        $columns = $this->normalizeGridPairs($config['columns'] ?? []);
+        $rows = self::gridPairs($config['rows'] ?? []);
+        $columns = self::gridPairs($config['columns'] ?? []);
         ChoiceOptions::assertCodeConsistency(array_map(static fn($p) => [
             'code' => (string)($p['code'] ?? ''),
             'label' => (string)($p['label'] ?? ''),
@@ -1600,10 +1600,36 @@ class FormField extends ActiveRecord
     {
         $decoded = $this->decodedOptions();
         return [
-            'rows' => $this->normalizeGridPairs($decoded['rows'] ?? []),
-            'columns' => $this->normalizeGridPairs($decoded['columns'] ?? []),
+            'rows' => self::gridPairs($decoded['rows'] ?? []),
+            'columns' => self::gridPairs($decoded['columns'] ?? []),
             'mobile_layout' => (($decoded['mobile_layout'] ?? 'scroll') === 'stack') ? 'stack' : 'scroll',
         ];
+    }
+
+    /**
+     * Stable key for a grid row or column: its code, otherwise the stored value, otherwise the label.
+     *
+     * @param array{code?:string,label?:string,value?:string} $pair
+     */
+    public static function gridPairKey(array $pair): string
+    {
+        $code = trim((string)($pair['code'] ?? ''));
+        if ($code !== '') {
+            return $code;
+        }
+        $value = trim((string)($pair['value'] ?? ''));
+        if ($value !== '') {
+            return $value;
+        }
+        return trim((string)($pair['label'] ?? ''));
+    }
+
+    /**
+     * @return array<int, array{code:string,label:string,value:string}>
+     */
+    public static function gridPairs($source): array
+    {
+        return (new self())->normalizeGridPairs($source);
     }
 
     /**
@@ -1621,9 +1647,11 @@ class FormField extends ActiveRecord
         $anyCode = false;
         $pairs = [];
         foreach ($source as $item) {
+            $explicit = '';
             if (is_array($item)) {
                 $code = trim((string)($item['code'] ?? ''));
                 $label = trim((string)($item['label'] ?? ''));
+                $explicit = trim((string)($item['value'] ?? ''));
             } else {
                 $line = trim((string)$item);
                 if ($line === '') {
@@ -1649,13 +1677,17 @@ class FormField extends ActiveRecord
             if ($code !== '') {
                 $anyCode = true;
             }
-            $pairs[] = ['code' => $code, 'label' => $label];
+            $pairs[] = ['code' => $code, 'label' => $label, 'explicit' => $explicit];
         }
         foreach ($pairs as $pair) {
             if ($anyCode && $pair['code'] === '') {
                 // leave empty for studio validation
             }
-            $value = $pair['code'] !== '' ? $pair['code'] : $pair['label'];
+            if ($pair['explicit'] !== '') {
+                $value = $pair['explicit'];
+            } else {
+                $value = $pair['code'] !== '' ? $pair['code'] : $pair['label'];
+            }
             $out[] = ['code' => $pair['code'], 'label' => $pair['label'], 'value' => $value];
         }
         return $out;
@@ -1680,6 +1712,28 @@ class FormField extends ActiveRecord
             $payload['sets'] = $sets;
         }
         $this->options_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * Source item => translated label. Not stored on the question.
+     *
+     * @var array<string, string>
+     */
+    public array $itemLabelOverlay = [];
+
+    /**
+     * Label shown for a Best/Worst or MaxDiff item. The posted value stays the source item.
+     */
+    public function itemDisplayLabel(string $source): string
+    {
+        $label = trim((string)($this->itemLabelOverlay[$source] ?? ''));
+        if ($label === '') {
+            return $source;
+        }
+        if (preg_match('/^(.+?)\s+\|\s+(.+)$/u', $label, $m) && trim($m[1]) === $source) {
+            return trim($m[2]);
+        }
+        return $label;
     }
 
     public function getItemsConfig(): array

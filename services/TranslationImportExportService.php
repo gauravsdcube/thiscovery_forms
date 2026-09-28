@@ -362,17 +362,17 @@ class TranslationImportExportService
             if ($field->type === FormField::TYPE_GRID_SINGLE || $field->type === FormField::TYPE_GRID_MULTI) {
                 $grid = $field->getGridConfig();
                 foreach ($grid['rows'] as $row) {
-                    $code = is_array($row) ? (string)($row['code'] ?? $row['value'] ?? '') : (string)$row;
-                    $text = is_array($row) ? (string)($row['label'] ?? $code) : (string)$row;
-                    if ($code !== '') {
-                        $this->pushUnit($units, "field.$id.grid_row.$code", $type, 'grid_row', $text, $id);
+                    $key = is_array($row) ? FormField::gridPairKey($row) : trim((string)$row);
+                    $text = is_array($row) ? (string)($row['label'] ?? $key) : (string)$row;
+                    if ($key !== '') {
+                        $this->pushUnit($units, "field.$id.grid_row.$key", $type, 'grid_row', $text, $id);
                     }
                 }
                 foreach ($grid['columns'] as $col) {
-                    $code = is_array($col) ? (string)($col['code'] ?? $col['value'] ?? '') : (string)$col;
-                    $text = is_array($col) ? (string)($col['label'] ?? $code) : (string)$col;
-                    if ($code !== '') {
-                        $this->pushUnit($units, "field.$id.grid_column.$code", $type, 'grid_column', $text, $id);
+                    $key = is_array($col) ? FormField::gridPairKey($col) : trim((string)$col);
+                    $text = is_array($col) ? (string)($col['label'] ?? $key) : (string)$col;
+                    if ($key !== '') {
+                        $this->pushUnit($units, "field.$id.grid_column.$key", $type, 'grid_column', $text, $id);
                     }
                 }
             }

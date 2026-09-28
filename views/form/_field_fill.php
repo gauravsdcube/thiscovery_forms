@@ -726,7 +726,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                     <?php foreach ($items as $item): ?>
                         <tr>
                             <td><?= Html::radio($inputName . '[best]', $best !== '' && $best === $item, $choiceInputOpts(['value' => $item])) ?></td>
-                            <td><?= Html::encode($item) ?></td>
+                            <td><?= Html::encode($field->itemDisplayLabel((string)$item)) ?></td>
                             <td><?= Html::radio($inputName . '[worst]', $worst !== '' && $worst === $item, $choiceInputOpts(['value' => $item])) ?></td>
                         </tr>
                     <?php endforeach; ?>
@@ -759,7 +759,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                             <?php foreach ($set as $item): ?>
                                 <tr>
                                     <td><?= Html::radio($inputName . '[sets][' . $si . '][best]', $best !== '' && $best === (string)$item, $choiceInputOpts(['value' => $item])) ?></td>
-                                    <td><?= Html::encode($item) ?></td>
+                                    <td><?= Html::encode($field->itemDisplayLabel((string)$item)) ?></td>
                                     <td><?= Html::radio($inputName . '[sets][' . $si . '][worst]', $worst !== '' && $worst === (string)$item, $choiceInputOpts(['value' => $item])) ?></td>
                                 </tr>
                             <?php endforeach; ?>

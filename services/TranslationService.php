@@ -379,13 +379,13 @@ class TranslationService
             $decoded['instructions'] = $overlay['html_instructions'];
         }
         if (isset($overlay['rows']) && is_array($overlay['rows']) && array_key_exists('rows', $decoded)) {
-            $decoded['rows'] = $this->relabelChoices($decoded['rows'], $overlay['rows'], 'rows field ' . (int)$field->id);
+            $decoded['rows'] = $this->relabelGrid($decoded['rows'], $overlay['rows'], 'rows field ' . (int)$field->id);
         }
         if (isset($overlay['columns']) && is_array($overlay['columns']) && array_key_exists('columns', $decoded)) {
-            $decoded['columns'] = $this->relabelChoices($decoded['columns'], $overlay['columns'], 'columns field ' . (int)$field->id);
+            $decoded['columns'] = $this->relabelGrid($decoded['columns'], $overlay['columns'], 'columns field ' . (int)$field->id);
         }
         if (isset($overlay['items']) && is_array($overlay['items']) && array_key_exists('items', $decoded)) {
-            $decoded['items'] = $this->relabelChoices($decoded['items'], $overlay['items'], 'items field ' . (int)$field->id);
+            $this->applyItemLabels($field, $overlay['items']);
         }
         if (isset($overlay['lowLabel']) && array_key_exists('lowLabel', $decoded)) {
             $decoded['lowLabel'] = $overlay['lowLabel'];
@@ -437,6 +437,110 @@ class TranslationService
             }
         }
         return $extra;
+    }
+
+    /**
+     * Replace grid labels. The posted value stays the source code or, when there
+     * is no code, the source label.
+     *
+     * @param mixed $source
+     * @param mixed $overlay
+     * @return array<int, array{code:string,label:string,value?:string}|string>
+     */
+    private function relabelGrid($source, $overlay, string $context): array
+    {
+        $pairs = FormField::gridPairs($source);
+        if (!$pairs) {
+            return is_array($source) ? $source : [];
+        }
+        $labels = $this->gridLabelMap($pairs, $overlay, $context);
+        $out = [];
+        foreach ($pairs as $pair) {
+            $key = FormField::gridPairKey($pair);
+            $label = $labels[$key] ?? (string)$pair['label'];
+            if ((string)$pair['code'] === '') {
+                $out[] = [
+                    'code' => '',
+                    'label' => $label,
+                    'value' => (string)$pair['value'],
+                ];
+            } else {
+                $out[] = ['code' => (string)$pair['code'], 'label' => $label];
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<int, array{code?:string,label?:string,value?:string}> $pairs
+     * @param mixed $overlay
+     * @return array<string, string>
+     */
+    private function gridLabelMap(array $pairs, $overlay, string $context): array
+    {
+        if (!is_array($overlay) || !$overlay) {
+            return [];
+        }
+        if (!array_is_list($overlay)) {
+            return $this->stringMap($overlay);
+        }
+        if (count($overlay) !== count($pairs)) {
+            Yii::warning(
+                'Thiscovery Forms translation count mismatch (' . $context . '): stored '
+                . count($overlay) . ', source ' . count($pairs) . '. Source labels kept.',
+                'thiscovery-forms'
+            );
+            return [];
+        }
+        $map = [];
+        foreach ($pairs as $i => $pair) {
+            $key = FormField::gridPairKey($pair);
+            if ($key === '') {
+                continue;
+            }
+            $item = $overlay[$i];
+            $text = is_array($item) ? trim((string)($item['label'] ?? '')) : trim((string)$item);
+            if ($text !== '') {
+                $map[$key] = $text;
+            }
+        }
+        return $map;
+    }
+
+    /**
+     * Best/Worst and MaxDiff stay positional. The translation is only a display label.
+     *
+     * @param array<int|string, mixed> $overlay
+     */
+    private function applyItemLabels(FormField $field, array $overlay): void
+    {
+        $items = $field->getItemsConfig()['items'];
+        $map = [];
+        if (!array_is_list($overlay)) {
+            foreach ($overlay as $key => $label) {
+                $text = is_array($label) ? trim((string)($label['label'] ?? '')) : trim((string)$label);
+                if ($text !== '') {
+                    $map[(string)$key] = $this->plainItemLabel($text);
+                }
+            }
+        } elseif (count($overlay) === count($items)) {
+            foreach ($items as $i => $item) {
+                $raw = $overlay[$i];
+                $text = is_array($raw) ? trim((string)($raw['label'] ?? '')) : trim((string)$raw);
+                if ($text !== '') {
+                    $map[(string)$item] = $this->plainItemLabel($text);
+                }
+            }
+        }
+        $field->itemLabelOverlay = $map;
+    }
+
+    private function plainItemLabel(string $label): string
+    {
+        if (preg_match('/^(.+?)\s+\|\s+(.+)$/u', trim($label), $m)) {
+            return trim($m[2]);
+        }
+        return trim($label);
     }
 
     /**
@@ -520,6 +624,24 @@ class TranslationService
         if (!array_is_list($posted)) {
             return $this->stringMap($posted);
         }
+        if ($pairs && is_string(reset($pairs))) {
+            $lines = [];
+            foreach ($posted as $item) {
+                $text = trim((string)$item);
+                if ($text !== '') {
+                    $lines[] = $text;
+                }
+            }
+            if (count($lines) !== count($pairs)) {
+                Yii::warning(
+                    'Thiscovery Forms translation count mismatch (' . $context . '): posted '
+                    . count($lines) . ', source ' . count($pairs) . '.',
+                    'thiscovery-forms'
+                );
+                return [];
+            }
+            return $lines;
+        }
         $lines = [];
         $map = [];
         foreach ($posted as $item) {
@@ -550,7 +672,7 @@ class TranslationService
             return $map;
         }
         foreach ($pairs as $i => $pair) {
-            $code = trim((string)($pair['code'] ?? ''));
+            $code = is_array($pair) ? FormField::gridPairKey($pair) : trim((string)($pair['code'] ?? ''));
             if ($code === '') {
                 continue;
             }
