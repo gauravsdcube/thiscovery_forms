@@ -30,6 +30,12 @@ $loose->title = 'r14-loose.txt';
 $loose->size = 4;
 $loose->mime_type = 'text/plain';
 $loose->save(false);
+$other = review_user('review_respondent');
+$loose->updateAttributes([
+    'created_by' => (int)$other->id,
+    'object_model' => \humhub\modules\user\models\User::class,
+    'object_id' => (int)$other->id,
+]);
 
 $answer = new FormAnswer();
 $answer->form_id = (int)$form->id;
@@ -48,7 +54,9 @@ if (($submit->values[(int)$field->id] ?? '') !== '') {
     $failures[] = 'stored guid was accepted without an attachment';
 }
 
+$loose->updateAttributes(['object_model' => '', 'object_id' => null]);
 $answer->fileManager->attach($loose->guid);
+$loose->refresh();
 $submit->loadValuesFromRequest(['values' => [(string)$field->id => (string)$loose->guid]]);
 if (($submit->values[(int)$field->id] ?? '') !== (string)$loose->guid) {
     $failures[] = 'attached stored guid was rejected';

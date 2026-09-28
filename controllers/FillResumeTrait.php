@@ -221,16 +221,20 @@ trait FillResumeTrait
     /**
      * Load draft for fill: resume code wins, else scoped wave/round answer, else logged-in user's answer.
      */
-    protected function resolveFillExisting(CustomForm $form, SubmitForm $submit): ?FormAnswer
+    protected function resolveFillExisting(CustomForm $form, SubmitForm $submit, bool $load = true): ?FormAnswer
     {
         if ($this->isPreviewMode($form)) {
             if (!$form->allowsResume() || !$this->hasResumeIntent($form)) {
-                $this->forgetProgressDraft($form);
+                if ($load) {
+                    $this->forgetProgressDraft($form);
+                }
                 return null;
             }
             $draft = $this->resolveDraftFromRequest($form);
             if ($draft && $draft->isTest()) {
-                $submit->loadFromAnswer($draft);
+                if ($load) {
+                    $submit->loadFromAnswer($draft);
+                }
                 return $draft;
             }
             if ($this->isContinueOwnRequest()) {
@@ -238,7 +242,9 @@ trait FillResumeTrait
                 if ($sid > 0) {
                     $ans = FormAnswer::findOne(['id' => $sid, 'form_id' => $form->id, 'is_test' => 1]);
                     if ($ans && $ans->isInProgress()) {
-                        $submit->loadFromAnswer($ans);
+                        if ($load) {
+                            $submit->loadFromAnswer($ans);
+                        }
                         return $ans;
                     }
                 }
@@ -248,14 +254,18 @@ trait FillResumeTrait
 
         $draft = $this->resolveDraftFromRequest($form);
         if ($draft && $form->allowsResume() && $this->hasResumeIntent($form)) {
-            $submit->loadFromAnswer($draft);
+            if ($load) {
+                $submit->loadFromAnswer($draft);
+            }
             return $draft;
         }
 
         if ($form->allowsResume() && $this->isContinueOwnRequest()) {
             $own = $this->resolveOwnInProgress($form);
             if ($own) {
-                $submit->loadFromAnswer($own);
+                if ($load) {
+                    $submit->loadFromAnswer($own);
+                }
                 return $own;
             }
         }
@@ -275,11 +285,15 @@ trait FillResumeTrait
                 if ($startNew && $scoped->isInProgress()) {
                     return null;
                 }
-                $submit->loadFromAnswer($scoped);
+                if ($load) {
+                    $submit->loadFromAnswer($scoped);
+                }
                 return $scoped;
             }
             if ($form->isConsensus() && $ctx->previousRoundAnswer && !$startNew) {
-                $submit->loadFromAnswer($ctx->previousRoundAnswer);
+                if ($load) {
+                    $submit->loadFromAnswer($ctx->previousRoundAnswer);
+                }
             }
             return null;
         }
@@ -291,7 +305,9 @@ trait FillResumeTrait
         if (!$form->allow_multiple && !$form->allowsAnonymous()) {
             $complete = $form->getUserAnswer();
             if ($complete) {
-                $submit->loadFromAnswer($complete);
+                if ($load) {
+                    $submit->loadFromAnswer($complete);
+                }
                 return $complete;
             }
             if ($skipInProgress) {
@@ -299,7 +315,9 @@ trait FillResumeTrait
             }
             $inProgress = $form->getUserInProgressAnswer();
             if ($inProgress) {
-                $submit->loadFromAnswer($inProgress);
+                if ($load) {
+                    $submit->loadFromAnswer($inProgress);
+                }
                 return $inProgress;
             }
         }
@@ -717,11 +735,11 @@ trait FillResumeTrait
         $fieldId = (int)Yii::$app->request->post('field_id', 0);
         $submit = new SubmitForm(['form' => $form]);
         $submit->scenario = SubmitForm::SCENARIO_DRAFT;
-        $submit->editingAnswer = $this->resolveFillExisting($form, $submit);
+        $answer = $this->resolveFillExisting($form, $submit, false);
+        $submit->editingAnswer = $answer;
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
-        $answer = $this->resolveFillExisting($form, $submit);
         $source = null;
         if ($fieldId) {
             foreach ($form->fields as $candidate) {
@@ -811,7 +829,16 @@ trait FillResumeTrait
             return ['success' => true];
         }
 
-        $answer = $this->resolveFillExisting($form, new SubmitForm(['form' => $form]));
+        $postedAnswerId = (int)Yii::$app->request->post('answer_id', 0);
+        if ($postedAnswerId > 0) {
+            $answer = FormAnswer::findOne(['id' => $postedAnswerId, 'form_id' => (int)$form->id]);
+            $user = Yii::$app->user->getIdentity();
+            if (!$answer || (!$form->canManage($user) && !$form->canEditOwnAnswer($answer, $user))) {
+                throw new ForbiddenHttpException();
+            }
+        } else {
+            $answer = $this->resolveFillExisting($form, new SubmitForm(['form' => $form]), false);
+        }
         $editing = $answer instanceof FormAnswer
             && ($answer->status !== FormAnswer::STATUS_COMPLETE || $form->allowsEdit());
         if (!UploadGrant::mayRemove($form, $file, $answer instanceof FormAnswer ? $answer : null, $editing)) {

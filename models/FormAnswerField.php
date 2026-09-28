@@ -138,12 +138,40 @@ class FormAnswerField extends ActiveRecord
         return nl2br(Html::encode($text));
     }
 
+    /** @var string[] */
+    private static array $deferredFileGuids = [];
+
+    public static bool $deferFileDeletes = false;
+
+    public static function deleteDeferredFiles(): void
+    {
+        self::$deferFileDeletes = false;
+        $guids = self::$deferredFileGuids;
+        self::$deferredFileGuids = [];
+        foreach ($guids as $guid) {
+            $file = File::findOne(['guid' => $guid]);
+            if ($file) {
+                $file->delete();
+            }
+        }
+    }
+
+    public static function discardDeferredFiles(): void
+    {
+        self::$deferFileDeletes = false;
+        self::$deferredFileGuids = [];
+    }
+
     public function beforeDelete()
     {
         if ($this->field && $this->field->type === FormField::TYPE_FILE && $this->value) {
             $file = File::findOne(['guid' => $this->value]);
             if ($file && $file->object_model === FormAnswer::class && (int)$file->object_id === (int)$this->answer_id) {
-                $file->delete();
+                if (self::$deferFileDeletes) {
+                    self::$deferredFileGuids[] = (string)$file->guid;
+                } else {
+                    $file->delete();
+                }
             }
         }
         return parent::beforeDelete();

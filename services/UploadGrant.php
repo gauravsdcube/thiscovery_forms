@@ -56,8 +56,41 @@ class UploadGrant
         return $file->object_model === FormAnswer::class && (int)$file->object_id === (int)$answer->id;
     }
 
+    public static function grantLegacy(int $formId, ?FormAnswer $answer): void
+    {
+        $userId = (int)Yii::$app->user->id;
+        if ($userId > 0) {
+            $guids = File::find()
+                ->select('guid')
+                ->where(['created_by' => $userId])
+                ->andWhere(['or', ['object_model' => null], ['object_model' => '']])
+                ->orderBy(['id' => SORT_DESC])
+                ->limit(50)
+                ->column();
+            foreach ($guids as $guid) {
+                self::remember($formId, (string)$guid);
+            }
+        }
+        if (!$answer) {
+            return;
+        }
+        foreach ($answer->answerFields as $field) {
+            $value = trim((string)$field->value);
+            if (!preg_match('/^[0-9a-f-]{36}$/i', $value)) {
+                continue;
+            }
+            $file = File::findOne(['guid' => $value]);
+            if ($file && (self::attachedTo($file, $answer) || $file->object_model === null || $file->object_model === '')) {
+                self::remember($formId, $value);
+            }
+        }
+    }
+
     public static function mayRemove(CustomForm $form, File $file, ?FormAnswer $answer, bool $editingAllowed = false): bool
     {
+        if (!self::granted((int)$form->id, (string)$file->guid)) {
+            self::grantLegacy((int)$form->id, $answer);
+        }
         $completed = $answer !== null && $answer->status === FormAnswer::STATUS_COMPLETE;
         if ($completed && self::attachedTo($file, $answer) && !$editingAllowed) {
             return false;

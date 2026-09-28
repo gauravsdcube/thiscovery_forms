@@ -158,6 +158,9 @@ class SubmitForm extends Model
         if ($guid === '') {
             return '';
         }
+        if (!UploadGrant::granted((int)$this->form->id, $guid)) {
+            UploadGrant::grantLegacy((int)$this->form->id, $this->editingAnswer instanceof FormAnswer ? $this->editingAnswer : null);
+        }
         if (UploadGrant::granted((int)$this->form->id, $guid)) {
             return $guid;
         }
@@ -550,10 +553,12 @@ class SubmitForm extends Model
 
         $fileGuids = [];
         $db = Yii::$app->db;
+        FormAnswerField::$deferFileDeletes = true;
         $transaction = $db->beginTransaction();
         try {
             if (!$answer->save()) {
                 $transaction->rollBack();
+                FormAnswerField::discardDeferredFiles();
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
                 return null;
             }
@@ -624,6 +629,7 @@ class SubmitForm extends Model
 
                 if (!$af->save()) {
                     $transaction->rollBack();
+                    FormAnswerField::discardDeferredFiles();
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
                         'label' => $field->label,
                     ]));
@@ -648,11 +654,13 @@ class SubmitForm extends Model
             $transaction->commit();
         } catch (\Throwable $e) {
             $transaction->rollBack();
-            Yii::warning('Thiscovery Forms submit rolled back: ' . $e->getMessage(), 'thiscovery-forms');
+            FormAnswerField::discardDeferredFiles();
+            Yii::error('Thiscovery Forms submit rolled back: ' . $e->getMessage(), 'thiscovery-forms');
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
             return null;
         }
 
+        FormAnswerField::deleteDeferredFiles();
         unset($answer->answerFields);
         foreach ($fileGuids as $guid) {
             try {

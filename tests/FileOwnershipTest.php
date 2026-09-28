@@ -28,6 +28,7 @@ $victim->title = 'hf7-victim.txt';
 $victim->size = 4;
 $victim->mime_type = 'text/plain';
 $victim->save(false);
+$victim->updateAttributes(['created_by' => (int)review_user('review_respondent')->id]);
 $victimGuid = (string)$victim->guid;
 
 $answer = new FormAnswer();
