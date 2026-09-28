@@ -62,6 +62,7 @@ $answer->submitted_at = date('Y-m-d H:i:s');
 $answer->save(false);
 $answer->updateAttributes(['created_by' => null, 'panel_member_id' => null]);
 
+FormPanelActivity::deleteAll(['form_id' => (int)$form->id, 'answer_id' => null]);
 $before = (int)(json_decode((string)@file_get_contents('http://127.0.0.1:8025/api/v1/search?query=' . rawurlencode('r5-guest@example.test')), true)['messages_count'] ?? 0);
 ReviewLib::asUser(null);
 (new PanelService())->handleCompletion(ReviewLib::reload($form), $answer, $member);
@@ -74,6 +75,8 @@ $row = FormPanelActivity::find()->where([
 ])->one();
 if (!$row) {
     $failures[] = 'no anonymous completion row for the token guest';
+} elseif ((string)$row->created_at !== date('Y-m-d') . ' 00:00:00') {
+    $failures[] = 'anonymous completion time was ' . $row->created_at;
 }
 if ($answer->panel_member_id !== null) {
     $failures[] = 'the answer stored the member';

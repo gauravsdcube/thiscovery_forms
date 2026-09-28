@@ -692,6 +692,7 @@ class PanelService
         $row->form_id = (int)$form->id;
         $row->answer_id = null;
         $row->wave_id = $waveId;
+        $row->created_at = date('Y-m-d') . ' 00:00:00';
         $row->save(false);
     }
 
