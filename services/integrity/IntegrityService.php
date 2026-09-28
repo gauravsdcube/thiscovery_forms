@@ -187,6 +187,7 @@ class IntegrityService
         $cfg = $this->settings($form);
         $accessError = $this->gateAccess($form, $cfg, $ctx);
         if ($accessError) {
+            $this->discardCaptchaResult($form);
             return $accessError;
         }
         $integrityOn = IntegritySettings::isOn($cfg, 'enabled');
@@ -195,6 +196,7 @@ class IntegrityService
         }
         if (!IntegritySettings::isOn($cfg, 'captcha') || !$this->captchaAvailable($cfg)) {
             $this->clearCaptchaRequired($form);
+            $this->discardCaptchaResult($form);
         }
         // Suspicious signals (honeypot / session) only exist when integrity scoring is on.
         $suspicious = $integrityOn && $this->looksSuspiciousBeforeSave($form, $post, $cfg);
@@ -203,14 +205,15 @@ class IntegrityService
         $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious || $this->isCaptchaRequired($form));
         if ($needCaptcha) {
             $passed = $this->verifyCaptcha($cfg, $post);
-            $this->rememberCaptchaResult($form, $passed);
             if (!$passed) {
                 $this->markCaptchaRequired($form);
+                $this->discardCaptchaResult($form);
                 return Yii::t('ThiscoveryFormsModule.base', 'Please complete the verification check and try again.');
             }
             $this->clearCaptchaRequired($form);
+            $this->rememberCaptchaResult($form, true, true);
         } else {
-            Yii::$app->session->remove($this->captchaResultKey($form));
+            $this->discardCaptchaResult($form);
         }
         return null;
     }
@@ -262,13 +265,12 @@ class IntegrityService
             $meta->access_token_hash = IntegritySettings::hashValue('tok:' . $rawToken);
         }
 
-        $suspicious = $meta->honeypot_triggered || !$sessionOk || $meta->rate_limited;
-        $needCaptcha = $this->shouldShowCaptcha($cfg, $suspicious);
-        $meta->captcha_shown = $needCaptcha ? 1 : 0;
         $recorded = $this->takeCaptchaResult($form);
-        if ($needCaptcha) {
-            $meta->captcha_passed = $recorded === true ? 1 : 0;
+        if ($recorded !== null && $recorded['shown']) {
+            $meta->captcha_shown = 1;
+            $meta->captcha_passed = $recorded['passed'] ? 1 : 0;
         } else {
+            $meta->captcha_shown = 0;
             $meta->captcha_passed = null;
         }
 
@@ -564,20 +566,40 @@ class IntegrityService
         return 'cf-int-captcha-pass-' . (int)$form->id;
     }
 
-    private function rememberCaptchaResult(CustomForm $form, bool $passed): void
+    private function rememberCaptchaResult(CustomForm $form, bool $shown, bool $passed): void
     {
-        Yii::$app->session->set($this->captchaResultKey($form), $passed ? 1 : 0);
+        Yii::$app->session->set($this->captchaResultKey($form), [
+            'shown' => $shown ? 1 : 0,
+            'passed' => $passed ? 1 : 0,
+        ]);
     }
 
-    private function takeCaptchaResult(CustomForm $form): ?bool
+    /**
+     * @return array{shown:bool,passed:bool}|null
+     */
+    private function takeCaptchaResult(CustomForm $form): ?array
     {
         $key = $this->captchaResultKey($form);
         if (!Yii::$app->session->has($key)) {
             return null;
         }
-        $passed = (int)Yii::$app->session->get($key) === 1;
+        $raw = Yii::$app->session->get($key);
         Yii::$app->session->remove($key);
-        return $passed;
+        if (is_array($raw)) {
+            return [
+                'shown' => !empty($raw['shown']),
+                'passed' => !empty($raw['passed']),
+            ];
+        }
+        return [
+            'shown' => true,
+            'passed' => (int)$raw === 1,
+        ];
+    }
+
+    public function discardCaptchaResult(CustomForm $form): void
+    {
+        Yii::$app->session->remove($this->captchaResultKey($form));
     }
 
     public function clearCaptchaRequired(CustomForm $form): void

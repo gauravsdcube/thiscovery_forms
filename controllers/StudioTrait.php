@@ -604,6 +604,7 @@ trait StudioTrait
             return ['success' => false, 'errors' => array_values($submit->getErrorSummary(true))];
         }
 
+        (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->discardCaptchaResult($form);
         $this->afterCompleteSave($form, $ctx, $answer, $anonymous);
 
         if ($wasNewComplete && !$anonymous) {
