@@ -571,14 +571,30 @@ class SubmitForm extends Model
                 ->select('id')
                 ->where(['form_id' => (int)$this->form->id, 'deleted_at' => null])
                 ->column());
+            $editionFill = (int)$answer->edition_id > 0;
 
             foreach ($this->form->fields as $field) {
                 if (!$field->collectsAnswer()) {
                     continue;
                 }
                 $fieldId = (int)$field->id;
-                if ($fieldId < 1 || !isset($liveFieldIds[$fieldId])) {
+                if ($fieldId < 1) {
                     continue;
+                }
+                if (!isset($liveFieldIds[$fieldId])) {
+                    // A published edition still contains questions removed from the
+                    // draft. Those ids are on the hydrated definition. A live-draft
+                    // fill does not, and a posted id with no row at all is skipped.
+                    if (!$editionFill) {
+                        if (array_key_exists($fieldId, $this->values)) {
+                            Yii::warning(
+                                'Thiscovery Forms field #' . $fieldId
+                                . ' has no live custom_form_field row; answers for it will be skipped.',
+                                'thiscovery-forms'
+                            );
+                        }
+                        continue;
+                    }
                 }
                 $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
                 $value = $visible ? ($this->values[$fieldId] ?? null) : null;
