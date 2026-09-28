@@ -812,7 +812,9 @@ trait FillResumeTrait
         }
 
         $answer = $this->resolveFillExisting($form, new SubmitForm(['form' => $form]));
-        if (!UploadGrant::mayRemove($form, $file, $answer instanceof FormAnswer ? $answer : null)) {
+        $editing = $answer instanceof FormAnswer
+            && ($answer->status !== FormAnswer::STATUS_COMPLETE || $form->allowsEdit());
+        if (!UploadGrant::mayRemove($form, $file, $answer instanceof FormAnswer ? $answer : null, $editing)) {
             throw new ForbiddenHttpException();
         }
 

@@ -167,11 +167,12 @@ class SubmitForm extends Model
                 ->select('value')
                 ->where(['answer_id' => (int)$answer->id, 'field_id' => (int)$field->id])
                 ->scalar();
-            if ((string)$stored === $guid) {
-                return $guid;
-            }
             $file = File::findOne(['guid' => $guid]);
-            if ($file && UploadGrant::attachedTo($file, $answer)) {
+            $attached = $file && UploadGrant::attachedTo($file, $answer);
+            if ((string)$stored === $guid) {
+                return $attached ? $guid : '';
+            }
+            if ($attached) {
                 return $guid;
             }
         }
@@ -567,10 +568,13 @@ class SubmitForm extends Model
                 $existingFields[$af->field_id] = $af;
             }
 
-            $liveFieldIds = array_flip(FormField::find()
+            $liveQuery = FormField::find()
                 ->select('id')
-                ->where(['form_id' => (int)$this->form->id, 'deleted_at' => null])
-                ->column());
+                ->where(['form_id' => (int)$this->form->id]);
+            if (FormField::supportsSoftDelete()) {
+                $liveQuery->andWhere(['deleted_at' => null]);
+            }
+            $liveFieldIds = array_flip($liveQuery->column());
             $editionFill = (int)$answer->edition_id > 0;
 
             foreach ($this->form->fields as $field) {
@@ -653,9 +657,13 @@ class SubmitForm extends Model
         foreach ($fileGuids as $guid) {
             try {
                 $answer->fileManager->attach($guid);
+                UploadGrant::forget((int)$this->form->id, (string)$guid);
             } catch (\Throwable $e) {
                 Yii::warning('Thiscovery Forms file attach failed: ' . $e->getMessage(), 'thiscovery-forms');
             }
+        }
+        if (!$asDraft) {
+            UploadGrant::forgetAll((int)$this->form->id);
         }
 
         if (!$asDraft && !$isTest && Yii::$app->hasModule('thiscovery-dashboard')) {
