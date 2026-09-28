@@ -18,10 +18,42 @@ use yii\console\ExitCode;
  */
 class DetectPartialCompletesController extends Controller
 {
+    /**
+     * Required on-route questions with no stored answer.
+     * Soft-deleted questions are not part of the live route.
+     */
+    public function missingRequired(FormAnswer $answer): int
+    {
+        $form = $answer->form;
+        if (!$form) {
+            return 0;
+        }
+        $values = [];
+        foreach ($answer->answerFields as $cell) {
+            $values[(int)$cell->field_id] = $cell->value;
+        }
+        $visited = (new FormPager())->visitedFieldIds($form->fields, $values);
+        $missing = 0;
+        foreach ($form->fields as $field) {
+            if (!$field->required || !$field->collectsAnswer()) {
+                continue;
+            }
+            $id = (int)$field->id;
+            if (!isset($visited[$id])) {
+                continue;
+            }
+            $value = $values[$id] ?? null;
+            if ($value === null || $value === '' || $value === []) {
+                $missing++;
+            }
+        }
+        return $missing;
+    }
+
     public function actionIndex(): int
     {
-        $count = 0;
-        $pager = new FormPager();
+        $total = 0;
+        $byForm = [];
         $query = FormAnswer::find()
             ->where(['status' => FormAnswer::STATUS_COMPLETE, 'is_test' => 0])
             ->with(['answerFields', 'form']);
@@ -30,33 +62,18 @@ class DetectPartialCompletesController extends Controller
             if (!$form) {
                 continue;
             }
-            $values = [];
-            foreach ($answer->answerFields as $cell) {
-                $values[(int)$cell->field_id] = $cell->value;
-            }
-            $visited = $pager->visitedFieldIds($form->fields, $values);
-            $required = 0;
-            foreach ($form->fields as $field) {
-                if (!$field->required || !$field->collectsAnswer()) {
-                    continue;
-                }
-                if (!in_array((int)$field->id, $visited, true)) {
-                    continue;
-                }
-                $required++;
-            }
-            $stored = 0;
-            foreach ($answer->answerFields as $cell) {
-                if ($cell->value !== null && $cell->value !== '') {
-                    $stored++;
-                }
-            }
-            if ($stored < $required) {
-                $count++;
+            $missing = $this->missingRequired($answer);
+            if ($missing > 0) {
+                $total++;
+                $byForm[(int)$form->id] = ($byForm[(int)$form->id] ?? 0) + 1;
             }
             unset($form->fields);
         }
-        $this->stdout('partial_completes=' . $count . "\n");
+        ksort($byForm);
+        foreach ($byForm as $formId => $count) {
+            $this->stdout('form=' . $formId . ' partial_completes=' . $count . "\n");
+        }
+        $this->stdout('partial_completes=' . $total . "\n");
         return ExitCode::OK;
     }
 }
