@@ -1916,6 +1916,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $orderedRows = $this->closeUnclosedQuestionGroups($orderedRows);
 
         $usedVariables = [];
+        foreach ($existing as $field) {
+            if ($field->isRemoved() && trim((string)$field->variable) !== '') {
+                $usedVariables[strtolower((string)$field->variable)] = true;
+            }
+        }
         foreach ($orderedRows as $item) {
             $tempKey = $item['key'];
             $row = $item['row'];

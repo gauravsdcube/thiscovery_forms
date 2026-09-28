@@ -115,10 +115,6 @@ class ExportSettings
 
     public static function fieldColumnKey(FormField $field): string
     {
-        $variable = trim((string)$field->variable);
-        if ($variable !== '') {
-            return 'var.' . $variable;
-        }
         return 'field.' . (int)$field->id;
     }
 
@@ -199,14 +195,16 @@ class ExportSettings
         }
 
         $svc = new ExportService();
+        $usedHeaders = [];
         foreach ($fields as $field) {
             if (!$field->collectsAnswer()) {
                 continue;
             }
             $lock = self::fieldDropsWhenScrub($field);
+            $header = self::uniqueHeader($svc->fieldHeader($field, $headerMode), $usedHeaders);
             $cols[] = [
                 'key' => self::fieldColumnKey($field),
-                'header' => $svc->fieldHeader($field, $headerMode),
+                'header' => $header,
                 'group' => self::GROUP_QUESTION,
                 'lock' => $lock,
                 'field' => $field,
@@ -215,7 +213,7 @@ class ExportSettings
             if ($field->supportsJustification()) {
                 $cols[] = [
                     'key' => self::commentColumnKey($field),
-                    'header' => $svc->fieldHeader($field, $headerMode) . ' — ' . Yii::t('ThiscoveryFormsModule.base', 'Comment'),
+                    'header' => self::uniqueHeader($header . ' — ' . Yii::t('ThiscoveryFormsModule.base', 'Comment'), $usedHeaders),
                     'group' => self::GROUP_QUESTION,
                     'lock' => false,
                     'field' => $field,
@@ -225,6 +223,25 @@ class ExportSettings
         }
 
         return $cols;
+    }
+
+    /**
+     * @param array<string, true> $used
+     */
+    public static function uniqueHeader(string $header, array &$used): string
+    {
+        $header = trim($header);
+        if ($header === '') {
+            $header = 'field';
+        }
+        $candidate = $header;
+        $n = 2;
+        while (isset($used[strtolower($candidate)])) {
+            $candidate = $header . ' (' . $n . ')';
+            $n++;
+        }
+        $used[strtolower($candidate)] = true;
+        return $candidate;
     }
 
     /**
