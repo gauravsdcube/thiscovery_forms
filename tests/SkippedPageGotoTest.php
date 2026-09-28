@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-5. A skipped page's go-to is part of the stored route.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/SkippedPageGotoTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\SubmitForm;

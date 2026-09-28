@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-2. Deleting a question must not destroy stored answers.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/SoftDeleteFieldTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\FormAnswerField;
 use humhub\modules\thiscoveryForms\models\FormField;

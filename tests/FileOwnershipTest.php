@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-7. Deleting a file answer must not delete a file that belongs to someone else.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/FileOwnershipTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\file\models\File;
 use humhub\modules\thiscoveryForms\models\FormAnswer;

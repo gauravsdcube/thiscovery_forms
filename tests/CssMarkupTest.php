@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-8. Custom CSS cannot break out of the style element.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/CssMarkupTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 

@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-4. A failed answer-row insert rolls the whole submission back.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/SubmitTransactionTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\SubmitForm;

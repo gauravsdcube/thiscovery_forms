@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-1. Fully anonymous forms must not store or name the respondent.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/IdentityModeTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;

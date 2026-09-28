@@ -1,10 +1,8 @@
 <?php
 /**
  * HF-10. The completion record reuses the captcha result from the submit gate.
- * Run: sudo -u www-data php /home/admin/thiscovery-review/bin/boot.php \
- *   /var/www/humhub/protected/modules/thiscovery-forms/tests/CaptchaResultTest.php
  */
-require '/home/admin/thiscovery-review/fixtures/evidence_support.php';
+require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\FormAnswer;
 use humhub\modules\thiscoveryForms\models\FormField;
