@@ -2,6 +2,32 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.4 (September 28, 2026)
+
+1.28.4 replaces 1.28.3 for production. It keeps the 1.28.3 fixes and adds the following.
+
+- Fix (NEW-10): a variable name cannot be reused by a new question when a removed question still has it. Export columns are keyed by field id, and a repeated header is suffixed. Detection: `php yii thiscovery-forms/detect-duplicate-variables` (counts only).
+
+- Fix (NEW-11): removing a question that has no answers deletes it. A question that already has answers stays removed, keeps its original removal time, sorts after live questions, and is labelled "(removed)" in the answer, the export, and the dashboard.
+
+- Fix (NEW-12): scoring, the project record, round summaries, and the completion rate include questions that were removed after people answered. The completion rate uses that same set on both sides. A fully anonymous form does not show a unique-respondent count.
+
+- Fix (NEW-13): migration `m260928_200000_answer_field_fk_guard` checks `information_schema` and does nothing when the answer-field foreign key is already ON DELETE RESTRICT. On the test table (102,859 rows) the original swap copied the table: dropping the key took 0.074s and adding RESTRICT took 1.052s. Run that swap in a maintenance window, or with `pt-online-schema-change` or `gh-ost`, on a larger table. The application tolerates `deleted_at` not existing yet.
+
+- Fix (NEW-14): a stored file is accepted only when it is attached to the answer being edited. The upload grant is removed once the file is attached and when the answer is completed. A completed answer cannot lose its file unless editing is allowed. The grant list holds 50 files. Detection: `php yii thiscovery-forms/detect-unattached-files` (counts only).
+
+- Fix (NEW-15): a captcha result is stored as shown and passed by the submit gate, and a failed check is not left in the session. A poll submit discards any stored result, so it cannot record a failure.
+
+- Fix (NEW-16): returning to a page only re-enables inputs that were disabled because the page was unreachable. An "Other, please specify" box and the hidden copy of a grid stay disabled.
+
+- Fix (NEW-17): the studio rejects a go-to that points at an earlier page. While the form is being filled, that go-to continues forward and is logged, in the browser and on the server. Flag `routing_alignment` still defaults to on. LOG-4 chained visibility and the missing `between` operator are unchanged.
+
+- Fix (NEW-18): an anonymous completion row stores the calendar date only. The date can still be compared with answers from that day; the row does not store the answer id.
+
+- Fix (NEW-19): stylesheet validation runs when the CSS changes, so an existing form can be saved. Migration `m260928_210000_strip_css_markup` removes `<` from stored stylesheets on forms, themes, and the stylesheet inside a snapshot. Restoring a snapshot strips it as well. The removed characters cannot be put back.
+
+- Fix (NEW-20): deleting a file can name the answer being edited, and that lookup does not load the answer into the form. A cleared file is deleted after the save commits. A failed save is logged as an error. A file uploaded before grants existed is kept when it was uploaded by the same user and is still unattached, or when the draft already stores it.
+
 ## 1.28.3 (September 28, 2026)
 
 - Fix (GOV-1, GOV-2): a fully anonymous form no longer stores `created_by`, `updated_by`, `panel_member_id`, or a completed `resume_email`, and panel completion is a counter with no answer link. Submission notifications are skipped. Flag `identity_enforce_mode` defaults to on; set it to `0` to restore the previous behaviour. Repair: `php yii thiscovery-forms/repair-identity` (dry-run; `--apply=1` writes). Migration `m260926_120000_anonymous_completion_wave` adds `form_panel_activity.wave_id`.
