@@ -4087,8 +4087,21 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             };
         };
 
+        var forwardPastCycle = function (fromIndex) {
+            console.warn('Thiscovery Forms page cycle detected.');
+            var probe = fromIndex + 1;
+            while (probe < pagesConfig.length && pageShouldSkip(probe)) {
+                probe++;
+            }
+            return probe < pagesConfig.length ? probe : null;
+        };
+
         var nextVisiblePage = function (fromIndex) {
             var nav = resolveNavigation(fromIndex);
+            if (routingAligned && nav.explicit && !nav.end && nav.index !== null && nav.index <= fromIndex) {
+                var forward = forwardPastCycle(fromIndex);
+                return { index: forward, explicit: false, end: forward === null };
+            }
             if (nav.end || nav.explicit) {
                 return nav;
             }
@@ -4278,6 +4291,14 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (res.gotoPageKey && module.config.pageKeyIndex && Object.prototype.hasOwnProperty.call(module.config.pageKeyIndex, res.gotoPageKey)) {
                 var gotoIdx = parseInt(module.config.pageKeyIndex[res.gotoPageKey], 10);
                 if (!isNaN(gotoIdx)) {
+                    if (routingAligned && gotoIdx <= currentPage) {
+                        var forwardIdx = forwardPastCycle(currentPage);
+                        if (forwardIdx !== null) {
+                            pageHistory.push(forwardIdx);
+                            showPage(forwardIdx);
+                        }
+                        return 'goto';
+                    }
                     pageHistory.push(gotoIdx);
                     showPage(gotoIdx);
                     return 'goto';

@@ -15,6 +15,8 @@ use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ViewAnswers;
 use humhub\modules\thiscoveryForms\permissions\ViewGlobalAnswers;
 use humhub\modules\thiscoveryForms\services\DisplaySettings;
+use humhub\modules\thiscoveryForms\services\FormActionService;
+use humhub\modules\thiscoveryForms\services\FormPager;
 use humhub\modules\thiscoveryForms\services\FormStyleService;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
 use humhub\modules\thiscoveryForms\services\PanelService;
@@ -309,9 +311,12 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     public function getFields(): ActiveQuery
     {
-        return $this->hasMany(FormField::class, ['form_id' => 'id'])
-            ->andWhere(['custom_form_field.deleted_at' => null])
+        $query = $this->hasMany(FormField::class, ['form_id' => 'id'])
             ->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
+        if (FormField::supportsSoftDelete()) {
+            $query->andWhere(['custom_form_field.deleted_at' => null]);
+        }
+        return $query;
     }
 
     /**
@@ -320,8 +325,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
      */
     public function getAllFields(): ActiveQuery
     {
-        return $this->hasMany(FormField::class, ['form_id' => 'id'])
-            ->orderBy(new \yii\db\Expression('(custom_form_field.deleted_at IS NOT NULL) ASC, custom_form_field.sort_order ASC, custom_form_field.id ASC'));
+        $query = $this->hasMany(FormField::class, ['form_id' => 'id']);
+        if (FormField::supportsSoftDelete()) {
+            $query->orderBy(new \yii\db\Expression('(custom_form_field.deleted_at IS NOT NULL) ASC, custom_form_field.sort_order ASC, custom_form_field.id ASC'));
+        } else {
+            $query->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
+        }
+        return $query;
     }
 
     public function getFolder(): ActiveQuery
@@ -2257,7 +2267,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
 
             $field->setActions($row['actions'] ?? []);
-            $field->deleted_at = null;
+            if (FormField::supportsSoftDelete()) {
+                $field->deleted_at = null;
+            }
 
             $field->save(false);
         }
@@ -2303,7 +2315,54 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
         unset($this->fields);
 
+        $backward = $this->backwardGotoLabel();
+        if ($backward !== null) {
+            $this->addError('title', Yii::t('ThiscoveryFormsModule.base', '“{label}” cannot go to an earlier page.', [
+                'label' => $backward,
+            ]));
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * A go-to that points at the current page or an earlier one.
+     */
+    private function backwardGotoLabel(): ?string
+    {
+        $built = (new FormPager())->buildPages($this->getFields()->all());
+        $index = $built['pageKeyIndex'];
+        $pointsBack = static function (int $from, string $key) use ($index): bool {
+            $key = trim($key);
+            return $key !== '' && isset($index[$key]) && (int)$index[$key] <= $from;
+        };
+        foreach ($built['pages'] as $page) {
+            $from = (int)$page['index'];
+            $fields = $page['items'];
+            if (($page['break'] ?? null) instanceof FormField) {
+                $fields[] = $page['break'];
+            }
+            foreach ($fields as $field) {
+                $logic = $field->getLogic();
+                if (($logic['action'] ?? '') === LogicEngine::ACTION_GOTO_PAGE && $pointsBack($from, (string)($logic['gotoPageKey'] ?? ''))) {
+                    return (string)$field->label;
+                }
+                foreach ($field->getActions() as $action) {
+                    if (($action['fn'] ?? '') === FormActionService::FN_GOTO_PAGE && $pointsBack($from, (string)($action['page_key'] ?? ''))) {
+                        return (string)$field->label;
+                    }
+                }
+                if ($field->type === FormField::TYPE_PAGE_BREAK) {
+                    foreach ($field->getPageBreakConfig()['branches'] as $branch) {
+                        if ($pointsBack($from, (string)($branch['gotoPageKey'] ?? ''))) {
+                            return (string)$field->label;
+                        }
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     /**

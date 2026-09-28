@@ -268,6 +268,7 @@ return [
     'Total submissions' => 'Total submissions',
     'Unique respondents' => 'Unique respondents',
     'Unique respondents not available' => 'Unique respondents not available',
+    '“{label}” cannot go to an earlier page.' => '“{label}” cannot go to an earlier page.',
     'Last 7 days' => 'Last 7 days',
     'Avg. field completion' => 'Avg. field completion',
     'Submissions over time' => 'Submissions over time',
