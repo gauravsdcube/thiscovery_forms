@@ -3963,6 +3963,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var pageHistory = [0];
         var currentPage = 0;
+        var routingAligned = module.config.routingAligned !== false;
         var pagesConfig = module.config.pages || [];
         var pageKeyIndex = module.config.pageKeyIndex || {};
         var multiPage = $root.attr('data-cf-multipage') === '1' && pagesConfig.length > 1;
@@ -3979,7 +3980,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         var pageShouldSkip = function (idx, values) {
             values = values || readAnswers();
             var page = pagesConfig[idx] || {};
-            if (page.skipLogic && page.skipLogic.rules && page.skipLogic.rules.length && logicMet(page.skipLogic, values)) {
+            if (routingAligned && page.skipLogic && page.skipLogic.rules && page.skipLogic.rules.length && logicMet(page.skipLogic, values)) {
                 return true;
             }
             var fieldLogic = page.fieldLogic || [];
@@ -4064,7 +4065,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     if (gotoKey && pageKeyIndex[gotoKey] !== undefined) {
                         return { index: parseInt(pageKeyIndex[gotoKey], 10), explicit: true, end: false };
                     }
-                    if (gotoKey) {
+                    if (routingAligned && gotoKey) {
                         return { index: null, explicit: true, end: true };
                     }
                 }
@@ -4112,10 +4113,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             var idx = 0;
             var guard = 0;
-            var limit = pagesConfig.length + 1;
+            var limit = routingAligned ? pagesConfig.length + 1 : 80;
             while (idx !== null && idx !== undefined && guard++ < limit) {
                 if (seen[idx]) {
-                    if (window.console) window.console.warn('Thiscovery Forms page cycle detected.');
+                    if (routingAligned && window.console) window.console.warn('Thiscovery Forms page cycle detected.');
                     break;
                 }
                 seen[idx] = true;
@@ -4123,7 +4124,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (nav.end || nav.index === null || nav.index === undefined) {
                     break;
                 }
-                if (seen[nav.index]) {
+                if (routingAligned && seen[nav.index]) {
                     if (window.console) window.console.warn('Thiscovery Forms page cycle detected.');
                     break;
                 }
@@ -4165,7 +4166,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $root.find('[data-cf-page]').each(function () {
                 var $page = $(this);
                 var p = parseInt($page.attr('data-cf-page'), 10);
-                if (p === currentPage) {
+                if (routingAligned && p === currentPage) {
                     $page.removeClass('cf-page-offpath');
                     return;
                 }
@@ -4192,14 +4193,16 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             currentPage = idx;
             var $targetPage = $root.find('[data-cf-page="' + idx + '"]');
-            $targetPage.removeClass('cf-page-offpath');
-            $targetPage.find('[data-cf-conditional]').each(function () {
-                var $field = $(this);
-                if ($field.hasClass('cf-hidden')) {
-                    return;
-                }
-                $field.find('input, select, textarea').prop('disabled', false);
-            });
+            if (routingAligned) {
+                $targetPage.removeClass('cf-page-offpath');
+                $targetPage.find('[data-cf-conditional]').each(function () {
+                    var $field = $(this);
+                    if ($field.hasClass('cf-hidden')) {
+                        return;
+                    }
+                    $field.find('input, select, textarea').prop('disabled', false);
+                });
+            }
             if (pageChanged || !$targetPage.hasClass('is-active')) {
                 $root.find('[data-cf-page]').removeClass('is-active');
                 $targetPage.addClass('is-active');
@@ -4297,6 +4300,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             clearTimeout(fieldActionTimer);
             fieldActionTimer = setTimeout(function () {
                 runActions('field', fieldId).done(function (res) {
+                    if (!routingAligned) {
+                        applyActionResult(res);
+                        return;
+                    }
                     if (res && res.vars && typeof res.vars === 'object') {
                         writeActionVars(res.vars);
                     }
@@ -4623,11 +4630,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     return false;
                 }
                 var goNext = function () {
-                    var nav = actionNavigation(currentPage) || nextVisiblePage(currentPage);
+                    var nav = routingAligned
+                        ? (actionNavigation(currentPage) || nextVisiblePage(currentPage))
+                        : nextVisiblePage(currentPage);
                     if (nav.end || nav.index === null) {
                         showPage(currentPage, {scroll: false});
-                        $root.find('[data-cf-page-next]').hide();
-                        $root.find('[data-cf-submit-wrap]').show();
+                        if (routingAligned) {
+                            $root.find('[data-cf-page-next]').hide();
+                            $root.find('[data-cf-submit-wrap]').show();
+                        }
                         return;
                     }
                     pageHistory.push(nav.index);
@@ -4636,7 +4647,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var breakId = $root.find('[data-cf-page="' + currentPage + '"]').attr('data-cf-page-break-id');
                 if (breakId) {
                     runActions('page', breakId).done(function (res) {
-                        if (res && res.vars && typeof res.vars === 'object') {
+                        if (!routingAligned) {
+                            var applied = applyActionResult(res);
+                            if (applied === 'goto' || applied === 'end') {
+                                return;
+                            }
+                        } else if (res && res.vars && typeof res.vars === 'object') {
                             writeActionVars(res.vars);
                         }
                         goNext();

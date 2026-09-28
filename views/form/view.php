@@ -75,13 +75,15 @@ $rewriteFileUrls = static function (string $html) use ($formFileBase): string {
 };
 $user = Yii::$app->user->identity;
 $previousBreak = null;
+$routingAligned = \humhub\modules\thiscoveryForms\Module::routingAligned();
 foreach ($pages as $page) {
     $branches = [];
     if ($page['break'] instanceof FormField) {
         $branches = $page['break']->getPageBreakConfig()['branches'];
     }
     $fieldLogic = [];
-    foreach ($page['items'] as $item) {
+    $logicFields = $routingAligned ? $page['items'] : \humhub\modules\thiscoveryForms\services\FormPager::navigationFields($page);
+    foreach ($logicFields as $item) {
         $logic = $item->getLogic();
         if (!empty($logic['rules'])) {
             $fieldLogic[] = [
@@ -90,7 +92,7 @@ foreach ($pages as $page) {
             ];
         }
     }
-    if ($page['break'] instanceof FormField) {
+    if ($routingAligned && $page['break'] instanceof FormField) {
         $breakLogic = $page['break']->getLogic();
         if (!empty($breakLogic['rules']) && ($breakLogic['action'] ?? '') !== 'skip_page') {
             $fieldLogic[] = [
@@ -100,7 +102,7 @@ foreach ($pages as $page) {
         }
     }
     $skipLogic = null;
-    if ($previousBreak instanceof FormField) {
+    if ($routingAligned && $previousBreak instanceof FormField) {
         $introLogic = $previousBreak->getLogic();
         if (($introLogic['action'] ?? '') === 'skip_page' && !empty($introLogic['rules'])) {
             $skipLogic = $introLogic;
