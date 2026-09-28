@@ -239,8 +239,28 @@ class FormField extends ActiveRecord
         return true;
     }
 
+    /** @var bool|null Test override. Null reads the schema once and caches it. */
+    public static ?bool $softDeleteOverride = null;
+
+    private static ?bool $softDeleteCache = null;
+
+    public static function supportsSoftDelete(): bool
+    {
+        if (self::$softDeleteOverride !== null) {
+            return self::$softDeleteOverride;
+        }
+        if (self::$softDeleteCache === null) {
+            $schema = Yii::$app->db->getTableSchema(static::tableName(), true);
+            self::$softDeleteCache = $schema !== null && isset($schema->columns['deleted_at']);
+        }
+        return self::$softDeleteCache;
+    }
+
     public function isRemoved(): bool
     {
+        if (!self::supportsSoftDelete()) {
+            return false;
+        }
         return $this->deleted_at !== null && $this->deleted_at !== '';
     }
 
@@ -249,6 +269,9 @@ class FormField extends ActiveRecord
      */
     public function softDelete(): bool
     {
+        if (!self::supportsSoftDelete()) {
+            return false;
+        }
         if ($this->isRemoved()) {
             return true;
         }
