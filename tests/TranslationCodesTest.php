@@ -105,7 +105,7 @@ if (($overlay['options']['yes'] ?? '') !== 'Ie' || ($overlay['options']['no'] ??
 
 $export = (new TranslationImportExportService())->exportJson($form);
 $blob = json_encode($export);
-if (!str_contains($blob, 'option.yes') || !str_contains($blob, 'Ie')) {
+if (!str_contains($blob, 'option.c:yes') || !str_contains($blob, 'Ie')) {
     $failures[] = 'export did not key the translation by code';
 }
 $again = (new TranslationImportExportService())->importJson($form, json_encode($export));

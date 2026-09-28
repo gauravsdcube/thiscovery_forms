@@ -340,7 +340,7 @@ class TranslationImportExportService
                 if ($code === '') {
                     continue;
                 }
-                $this->pushUnit($units, "field.$id.option.$code", $type, 'option', (string)$pair['label'], $id);
+                $this->pushUnit($units, "field.$id.option.c:$code", $type, 'option', (string)$pair['label'], $id);
             }
 
             if ($field->type === FormField::TYPE_PAGE_BREAK) {
@@ -446,11 +446,11 @@ class TranslationImportExportService
             if (is_array($options) && array_is_list($options) && $pairs && count($options) === count($pairs)) {
                 foreach ($pairs as $i => $pair) {
                     $label = is_array($options[$i]) ? (string)($options[$i]['label'] ?? '') : (string)$options[$i];
-                    $map[$lang]['field.' . $id . '.option.' . $pair['code']] = $label;
+                    $map[$lang]['field.' . $id . '.option.c:' . $pair['code']] = $label;
                 }
             } else {
                 foreach ($this->overlayEntries($options) as $key => $opt) {
-                    $map[$lang]["field.$id.option.$key"] = (string)$opt;
+                    $map[$lang]["field.$id.option.c:$key"] = (string)$opt;
                 }
             }
             if (!empty($overlay['page_title'])) {
@@ -505,10 +505,13 @@ class TranslationImportExportService
                 'kind' => 'field',
                 'field_id' => (int)$m[1],
                 'part' => $m[2],
+                'token' => $token,
             ];
-            if (ctype_digit($token)) {
+            if (str_starts_with($token, 'c:')) {
+                $parsed['code'] = substr($token, 2);
+            } elseif ($m[2] !== 'option' && ctype_digit($token)) {
                 $parsed['index'] = (int)$token;
-            } else {
+            } elseif ($m[2] !== 'option') {
                 $parsed['code'] = $token;
             }
             return $parsed;
@@ -552,8 +555,30 @@ class TranslationImportExportService
     }
 
     /**
+     * A token is a choice code when the question has that code, even if it is numeric.
+     *
+     * @param array{code?: string, token?: string} $parsed
+     */
+    private function optionCode(FormField $field, array $parsed): ?string
+    {
+        if (isset($parsed['code']) && (string)$parsed['code'] !== '') {
+            return (string)$parsed['code'];
+        }
+        $token = (string)($parsed['token'] ?? '');
+        if ($token === '') {
+            return null;
+        }
+        foreach ($field->getChoicePairs() as $pair) {
+            if ((string)$pair['code'] === $token) {
+                return $token;
+            }
+        }
+        return null;
+    }
+
+    /**
      * @param array<string, mixed> $data
-     * @param array{kind: string, part: string, field_id?: int, index?: int} $parsed
+     * @param array{kind: string, part: string, field_id?: int, index?: int, token?: string, code?: string} $parsed
      */
     private function applyFieldPart(array &$data, array $parsed, string $value, FormField $field): void
     {
@@ -565,9 +590,16 @@ class TranslationImportExportService
             return;
         }
 
-        if ($part === 'option' && !empty($parsed['code'])) {
-            $data['option_map'][(string)$parsed['code']] = $value;
-            return;
+        if ($part === 'option') {
+            $code = $this->optionCode($field, $parsed);
+            if ($code !== null) {
+                $data['option_map'][$code] = $value;
+                return;
+            }
+            $token = (string)($parsed['token'] ?? '');
+            if ($index === null && ctype_digit($token)) {
+                $index = (int)$token;
+            }
         }
 
         if ($part === 'option' && $index !== null) {
