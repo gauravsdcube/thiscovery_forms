@@ -133,16 +133,18 @@ class DashboardService
             ])
             ->count();
 
-        $fieldCount = 0;
-        foreach ($form->fields as $field) {
+        $fieldIds = [];
+        foreach ($form->getAllFields()->all() as $field) {
             if ($field->collectsAnswer()) {
-                $fieldCount++;
+                $fieldIds[] = (int)$field->id;
             }
         }
+        $fieldCount = count($fieldIds);
         $answeredFieldQ = (new Query())
             ->from(['af' => FormAnswerField::tableName()])
             ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
             ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['af.field_id' => $fieldIds ?: [0]])
             ->andWhere(['and',
                 ['IS NOT', 'af.value', null],
                 ['<>', 'af.value', ''],
@@ -159,6 +161,7 @@ class DashboardService
             'totalAnswers' => $totalAnswers,
             'inProgress' => $inProgress,
             'uniqueRespondents' => $uniqueRespondents,
+            'showUniqueRespondents' => !($form->hidesIdentityFromManagers() && \humhub\modules\thiscoveryForms\Module::identityEnforced()),
             'answersLast7' => $answersLast7,
             'excludedFromAnalysis' => $excludedFromAnalysis,
             'fieldCount' => $fieldCount,

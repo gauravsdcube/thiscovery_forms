@@ -65,7 +65,7 @@ class Eq5dService
     {
         $byRole = [];
         $radios = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if ($field->type !== FormField::TYPE_RADIO || !$field->collectsAnswer()) {
                 continue;
             }
@@ -89,7 +89,7 @@ class Eq5dService
     public function vasField(CustomForm $form): ?FormField
     {
         $fallback = null;
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if ($field->type !== FormField::TYPE_RATING || !$field->collectsAnswer()) {
                 continue;
             }

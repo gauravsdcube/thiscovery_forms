@@ -129,7 +129,7 @@ class RoundService
             ]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</h3>',
         ];
 
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING], true)) {
                 continue;
             }
@@ -209,7 +209,7 @@ class RoundService
     {
         $threshold = $form->getConsensusThreshold();
         $frozen = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING], true)) {
                 continue;
             }

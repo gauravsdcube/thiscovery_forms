@@ -426,7 +426,7 @@ class PanelService
         $first = '';
         $last = '';
         $attrs = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if ($field->isDisplayOnly() || in_array($field->type, [
                 FormField::TYPE_MAP,
                 FormField::TYPE_IMAGE_AREA,

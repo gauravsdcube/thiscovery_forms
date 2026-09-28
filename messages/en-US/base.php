@@ -267,6 +267,7 @@ return [
     'Submissions' => 'Submissions',
     'Total submissions' => 'Total submissions',
     'Unique respondents' => 'Unique respondents',
+    'Unique respondents not available' => 'Unique respondents not available',
     'Last 7 days' => 'Last 7 days',
     'Avg. field completion' => 'Avg. field completion',
     'Submissions over time' => 'Submissions over time',

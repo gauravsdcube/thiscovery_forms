@@ -952,7 +952,7 @@ class IntegrityService
         $minItems = max(3, (int)($cfg['straightline_min_items'] ?? 5));
         $flags = [];
         $score = 0.0;
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, [FormField::TYPE_GRID_SINGLE, FormField::TYPE_GRID_MULTI], true)) {
                 continue;
             }
@@ -973,7 +973,7 @@ class IntegrityService
             }
         }
         $ratings = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if ($field->type !== FormField::TYPE_RATING) {
                 continue;
             }
@@ -1039,7 +1039,7 @@ class IntegrityService
             }
             $run = [];
         };
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!$field->collectsAnswer() || $field->isHiddenFromRespondent() || $field->isAttentionCheck()) {
                 $flush();
                 continue;
@@ -1079,7 +1079,7 @@ class IntegrityService
         $flags = [];
         $failed = 0;
         $total = 0;
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!$field->isAttentionCheck()) {
                 continue;
             }
@@ -1151,7 +1151,7 @@ class IntegrityService
         $hits = 0;
         $textTypes = [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_HTML];
         $seenNorm = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, $textTypes, true) || !$field->collectsAnswer() || $field->isHiddenFromRespondent()) {
                 continue;
             }
@@ -1375,7 +1375,7 @@ class IntegrityService
     private function answerSignature(CustomForm $form, array $values): string
     {
         $parts = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!$field->collectsAnswer() || in_array($field->type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_HTML, FormField::TYPE_FILE, FormField::TYPE_MAP], true)) {
                 continue;
             }
@@ -1388,7 +1388,7 @@ class IntegrityService
     private function answerTexts(CustomForm $form, array $values): array
     {
         $out = [];
-        foreach ($form->fields as $field) {
+        foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA], true)) {
                 continue;
             }

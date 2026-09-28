@@ -25,7 +25,7 @@ foreach ($answer->answerFields as $af) {
     $valueMap[(int)$af->field_id] = $af->getDisplayValue();
 }
 
-$pager = (new FormPager())->buildPages($formModel->fields);
+$pager = (new FormPager())->buildPages($formModel->getAllFields()->all());
 $pages = $pager['pages'];
 $user = Yii::$app->user->getIdentity();
 $canAct = $service->canActOnAnswer($answer, $user);

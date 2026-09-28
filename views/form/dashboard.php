@@ -83,10 +83,17 @@ JS
             <div class="cf-stat-value"><?= (int)($stats['inProgress'] ?? 0) ?></div>
             <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'In progress') ?></div>
         </div>
+        <?php if (!empty($stats['showUniqueRespondents'])): ?>
         <div class="cf-stat-card">
             <div class="cf-stat-value"><?= (int)$stats['uniqueRespondents'] ?></div>
             <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Unique respondents') ?></div>
         </div>
+        <?php else: ?>
+        <div class="cf-stat-card">
+            <div class="cf-stat-value">—</div>
+            <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Unique respondents not available') ?></div>
+        </div>
+        <?php endif; ?>
         <div class="cf-stat-card">
             <div class="cf-stat-value"><?= (int)$stats['answersLast7'] ?></div>
             <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Last 7 days') ?></div>
