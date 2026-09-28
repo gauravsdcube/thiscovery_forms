@@ -4179,7 +4179,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                             clearFieldAnswers($(this));
                         });
                     }
-                    $page.find('input, select, textarea').prop('disabled', true);
+                    $page.find('input, select, textarea').each(function () {
+                        if (!this.disabled) {
+                            this.setAttribute('data-cf-offpath-disabled', '1');
+                        }
+                        this.disabled = true;
+                    });
                 }
             });
         };
@@ -4195,12 +4200,16 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var $targetPage = $root.find('[data-cf-page="' + idx + '"]');
             if (routingAligned) {
                 $targetPage.removeClass('cf-page-offpath');
-                $targetPage.find('[data-cf-conditional]').each(function () {
-                    var $field = $(this);
-                    if ($field.hasClass('cf-hidden')) {
+                $targetPage.find('[data-cf-offpath-disabled]').each(function () {
+                    var $input = $(this);
+                    $input.removeAttr('data-cf-offpath-disabled');
+                    if ($input.is('[data-cf-other-text]')) {
                         return;
                     }
-                    $field.find('input, select, textarea').prop('disabled', false);
+                    if ($input.closest('.cf-grid-fade, [data-cf-grid-stack]').length) {
+                        return;
+                    }
+                    this.disabled = false;
                 });
             }
             if (pageChanged || !$targetPage.hasClass('is-active')) {
@@ -4494,6 +4503,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             updateProgress();
             if (multiPage) {
                 showPage(currentPage);
+            }
+            if (syncGridMobileInputs) {
+                syncGridMobileInputs();
             }
             syncGridOverflow();
             if (newlyShown.length) {
