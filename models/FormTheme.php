@@ -55,6 +55,9 @@ class FormTheme extends ActiveRecord
 
     public function validateCustomCss(): void
     {
+        if (!$this->isAttributeChanged('custom_css')) {
+            return;
+        }
         if (str_contains((string)$this->custom_css, '<')) {
             $this->addError('custom_css', Yii::t('ThiscoveryFormsModule.base', 'Custom CSS cannot contain the < character.'));
         }
@@ -142,7 +145,7 @@ class FormTheme extends ActiveRecord
             $style = [];
         }
         $theme->setStyle($style);
-        $theme->custom_css = (string)($payload['custom_css'] ?? '');
+        $theme->custom_css = str_replace('<', '', (string)($payload['custom_css'] ?? ''));
         $theme->is_default = !empty($payload['is_default']) ? 1 : 0;
         return $theme;
     }

@@ -121,7 +121,7 @@ class FormSnapshotService
         $form->description = $meta['description'] ?? $form->description;
         $form->thank_you_content = $meta['thank_you_content'] ?? $form->thank_you_content;
         $form->already_submitted_message = $meta['already_submitted_message'] ?? $form->already_submitted_message;
-        $form->custom_css = $meta['custom_css'] ?? $form->custom_css;
+        $form->custom_css = str_replace('<', '', (string)($meta['custom_css'] ?? $form->custom_css));
         if (isset($meta['kind'])) {
             $form->kind = (string)$meta['kind'];
         }

@@ -1410,6 +1410,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     public function validateCustomCss(): void
     {
+        if (!$this->isAttributeChanged('custom_css')) {
+            return;
+        }
         if (str_contains((string)$this->custom_css, '<')) {
             $this->addError('custom_css', Yii::t('ThiscoveryFormsModule.base', 'Custom CSS cannot contain the < character.'));
         }
