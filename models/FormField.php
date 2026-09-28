@@ -249,8 +249,23 @@ class FormField extends ActiveRecord
      */
     public function softDelete(): bool
     {
+        if ($this->isRemoved()) {
+            return true;
+        }
         $this->deleted_at = date('Y-m-d H:i:s');
         return (bool)$this->save(false, ['deleted_at']);
+    }
+
+    public function displayLabel(): string
+    {
+        $label = trim((string)$this->label);
+        if ($label === '') {
+            $label = trim((string)$this->variable);
+        }
+        if ($this->isRemoved()) {
+            $label .= ' (' . Yii::t('ThiscoveryFormsModule.base', 'removed') . ')';
+        }
+        return $label;
     }
 
     public function getConditionField(): ActiveQuery

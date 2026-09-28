@@ -133,7 +133,7 @@ foreach ($formModel->getAllFields()->all() as $field) {
                 $isEmpty = $afValue === '';
                 ?>
                 <div class="cf-answer-field<?= $isEmpty ? ' is-empty' : '' ?>">
-                    <div class="cf-answer-field__label"><?= Html::encode($field->label) ?></div>
+                    <div class="cf-answer-field__label"><?= Html::encode($field->displayLabel()) ?></div>
                     <div class="cf-answer-field__value">
                         <?php if ($isEmpty): ?>
                             <span class="cf-answer-field__blank"><?= Yii::t('ThiscoveryFormsModule.base', 'No answer') ?></span>

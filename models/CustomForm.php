@@ -321,7 +321,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function getAllFields(): ActiveQuery
     {
         return $this->hasMany(FormField::class, ['form_id' => 'id'])
-            ->orderBy(['sort_order' => SORT_ASC, 'id' => SORT_ASC]);
+            ->orderBy(new \yii\db\Expression('(custom_form_field.deleted_at IS NOT NULL) ASC, custom_form_field.sort_order ASC, custom_form_field.id ASC'));
     }
 
     public function getFolder(): ActiveQuery
@@ -2263,8 +2263,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         foreach ($existing as $id => $field) {
-            if (!in_array($id, $keptIds, true)) {
+            if (in_array($id, $keptIds, true) || $field->isRemoved()) {
+                continue;
+            }
+            $hasAnswers = (new \yii\db\Query())
+                ->from('custom_form_answer_field')
+                ->where(['field_id' => (int)$id])
+                ->exists();
+            if ($hasAnswers) {
                 $field->softDelete();
+            } else {
+                $field->delete();
             }
         }
 

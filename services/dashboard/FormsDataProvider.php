@@ -87,7 +87,7 @@ class FormsDataProvider implements DataProviderInterface
             $type = QuestionTypeRegistry::forField($field);
             $out[] = [
                 'id' => (string)$field->id,
-                'label' => $field->label,
+                'label' => $field->displayLabel(),
                 'typeId' => $type->getId(),
                 'typeLabel' => $type->getLabel(),
                 'dataShape' => $type->getDataShape(),
@@ -109,7 +109,7 @@ class FormsDataProvider implements DataProviderInterface
         ];
         foreach ($form->getAllFields()->all() as $field) {
             if (in_array($field->type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_PANEL_ATTR], true)) {
-                $out[] = ['id' => 'q:' . $field->id, 'label' => $field->label];
+                $out[] = ['id' => 'q:' . $field->id, 'label' => $field->displayLabel()];
             }
         }
         return $out;

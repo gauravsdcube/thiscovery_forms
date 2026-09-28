@@ -133,15 +133,20 @@ class ExportService
             $variable = $label;
         }
         if ($mode === self::HEADER_VARIABLE) {
-            return $variable !== '' ? $variable : $label;
-        }
-        if ($mode === self::HEADER_BOTH) {
+            $header = $variable !== '' ? $variable : $label;
+        } elseif ($mode === self::HEADER_BOTH) {
             if ($variable !== '' && $label !== '' && strcasecmp($variable, $label) !== 0) {
-                return $variable . ' — ' . $label;
+                $header = $variable . ' — ' . $label;
+            } else {
+                $header = $variable !== '' ? $variable : $label;
             }
-            return $variable !== '' ? $variable : $label;
+        } else {
+            $header = $label !== '' ? $label : $variable;
         }
-        return $label !== '' ? $label : $variable;
+        if ($field->isRemoved()) {
+            $header .= ' (' . Yii::t('ThiscoveryFormsModule.base', 'removed') . ')';
+        }
+        return $header;
     }
 
     private function formatCell($val): string

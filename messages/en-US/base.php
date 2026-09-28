@@ -290,6 +290,7 @@ return [
     'Updated {date}' => 'Updated {date}',
     '{answered}/{total} fields' => '{answered}/{total} fields',
     'No answer' => 'No answer',
+    'removed' => 'removed',
     'This form has no fields.' => 'This form has no fields.',
     '{n,plural,=0{No submissions yet}=1{1 submission} other{# submissions}}' => '{n,plural,=0{No submissions yet}=1{1 submission} other{# submissions}}',
     'Form builder' => 'Form builder',
