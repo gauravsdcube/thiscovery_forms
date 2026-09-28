@@ -539,10 +539,15 @@ class PanelService
         return $this->getEnrolPanel($form);
     }
 
-    public function handleCompletion(CustomForm $form, FormAnswer $answer): void
+    public function handleCompletion(CustomForm $form, FormAnswer $answer, ?FormPanelMember $knownMember = null): void
     {
+        if ($answer->isTest()) {
+            return;
+        }
         if (\humhub\modules\thiscoveryForms\Module::identityEnforced() && $form->hidesIdentityFromManagers()) {
-            $this->recordAnonymousCompletion($form, $answer);
+            $this->recordAnonymousCompletion($form, $answer, $knownMember);
+            $this->enrolWithoutAnswer($form, $knownMember);
+            (new EmailTemplateService())->sendCompletionEmail($form, $answer, $knownMember);
             return;
         }
 
@@ -620,7 +625,29 @@ class PanelService
     /**
      * Completion flag for a fully anonymous form. Keyed by member and wave, with no answer id.
      */
-    private function recordAnonymousCompletion(CustomForm $form, FormAnswer $answer): void
+    private function enrolWithoutAnswer(CustomForm $form, ?FormPanelMember $member): void
+    {
+        if (!$member) {
+            return;
+        }
+        $mode = (string)$form->getSetting('enrol_panel_mode', self::ENROL_NONE);
+        if ($mode === self::ENROL_NONE || $mode === '') {
+            return;
+        }
+        $panel = $this->resolveEnrolPanel($form);
+        if (!$panel || (int)$panel->id === (int)$member->panel_id) {
+            return;
+        }
+        $user = $member->user_id ? User::findOne((int)$member->user_id) : null;
+        $this->upsertMember($panel, [
+            'email' => (string)$member->email,
+            'first' => (string)$member->first_name,
+            'last' => (string)$member->last_name,
+            'user' => $user,
+        ]);
+    }
+
+    private function recordAnonymousCompletion(CustomForm $form, FormAnswer $answer, ?FormPanelMember $member = null): void
     {
         if ($answer->panel_member_id) {
             $answer->panel_member_id = null;
@@ -632,13 +659,19 @@ class PanelService
             return;
         }
 
-        $member = null;
-        $sessionUser = Yii::$app->user->identity;
-        if ($sessionUser instanceof User && !Yii::$app->user->isGuest) {
-            $member = $this->findMemberOnPanel($panel, $sessionUser, (string)$sessionUser->email);
-        }
         if (!$member) {
-            return;
+            $sessionUser = Yii::$app->user->identity;
+            if ($sessionUser instanceof User && !Yii::$app->user->isGuest) {
+                $member = $this->findMemberOnPanel($panel, $sessionUser, (string)$sessionUser->email);
+            }
+        }
+        if (!$member || (int)$member->panel_id !== (int)$panel->id) {
+            if ($member && (int)$member->panel_id !== (int)$panel->id) {
+                $member = $this->findMemberOnPanel($panel, null, (string)$member->email);
+            }
+            if (!$member) {
+                return;
+            }
         }
 
         $waveId = $answer->wave_id ? (int)$answer->wave_id : null;

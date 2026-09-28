@@ -4,6 +4,7 @@ namespace humhub\modules\thiscoveryForms\services;
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use humhub\modules\thiscoveryForms\models\FormPanelActivity;
 use Yii;
 
 class FillContextService
@@ -90,10 +91,43 @@ class FillContextService
         } else {
             $user = Yii::$app->user->getIdentity();
             if (!$user) {
-                return null;
+                return $this->anonymousWaveMarker($form, $ctx, $scopeId, $column);
             }
             $query->andWhere(['created_by' => $user->id]);
         }
-        return $query->orderBy(['id' => SORT_DESC])->one();
+        $found = $query->orderBy(['id' => SORT_DESC])->one();
+        if ($found) {
+            return $found;
+        }
+        return $this->anonymousWaveMarker($form, $ctx, $scopeId, $column);
+    }
+
+    /**
+     * A fully anonymous completion is not stored on the answer. The completion
+     * row is what stops the same member submitting the wave again.
+     */
+    private function anonymousWaveMarker(CustomForm $form, FillContext $ctx, ?int $scopeId, string $column): ?FormAnswer
+    {
+        if ($column !== 'wave_id' || !$scopeId || !$ctx->member || !$form->hidesIdentityFromManagers()) {
+            return null;
+        }
+        if (!\humhub\modules\thiscoveryForms\Module::identityEnforced()) {
+            return null;
+        }
+        $done = FormPanelActivity::find()->where([
+            'form_id' => (int)$form->id,
+            'member_id' => (int)$ctx->member->id,
+            'wave_id' => (int)$scopeId,
+            'answer_id' => null,
+        ])->exists();
+        if (!$done) {
+            return null;
+        }
+        $marker = new FormAnswer();
+        $marker->form_id = (int)$form->id;
+        $marker->status = FormAnswer::STATUS_COMPLETE;
+        $marker->wave_id = (int)$scopeId;
+        $marker->is_test = 0;
+        return $marker;
     }
 }

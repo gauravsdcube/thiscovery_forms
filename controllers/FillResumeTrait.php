@@ -653,7 +653,7 @@ trait FillResumeTrait
                 $answer->save(false, ['vars_json', 'updated_at']);
             } catch (\Throwable $e) {
             }
-            (new \humhub\modules\thiscoveryForms\services\PanelService())->handleCompletion($form, $answer);
+            (new \humhub\modules\thiscoveryForms\services\PanelService())->handleCompletion($form, $answer, $ctx->member);
             if (!$isTest) {
                 (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->onComplete(
                     $form,
