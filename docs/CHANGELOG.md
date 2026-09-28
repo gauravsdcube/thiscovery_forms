@@ -2,7 +2,7 @@
 
 All notable changes to this module are documented in this file.
 
-## 1.28.3 (September 26, 2026)
+## 1.28.3 (September 28, 2026)
 
 - Fix (GOV-1, GOV-2): a fully anonymous form no longer stores `created_by`, `updated_by`, `panel_member_id`, or a completed `resume_email`, and panel completion is a counter with no answer link. Submission notifications are skipped. Flag `identity_enforce_mode` defaults to on; set it to `0` to restore the previous behaviour. Repair: `php yii thiscovery-forms/repair-identity` (dry-run; `--apply=1` writes). Migration `m260926_120000_anonymous_completion_wave` adds `form_panel_activity.wave_id`.
 
@@ -12,7 +12,7 @@ All notable changes to this module are documented in this file.
 
 - Fix (DAT-3): the answer header and answer rows commit together. Status becomes complete and the resume code is cleared only after the rows are written. Dashboard enqueue and file attachment run after commit. A database error rolls the submission back. Detection: `php yii thiscovery-forms/detect-partial-completes` (counts only).
 
-- Fix (LOG-1, LOG-3): a skipped page follows its go-to and its page-break rules, including skip-page on the page break that opens it. The 80-step cap is replaced by the page count plus a cycle warning. Flag `routing_alignment` defaults to on; set it to `0` to restore the 1.28.2 walk. LOG-2 action go-to, LOG-4 chained visibility, and the missing `between` operator stay for later releases.
+- Fix (LOG-1, LOG-3): a skipped page follows its go-to and its page-break rules, including skip-page on the page break that opens it. The 80-step cap is replaced by the page count plus a cycle warning. Flag `routing_alignment` defaults to on; set it to `0` to restore the 1.28.2 walk. LOG-4 chained visibility and the missing `between` operator stay for a later release.
 
 - Fix (INT-1): the captcha result from the submit check is stored for that form and reused when the response is scored. It is cleared after completion, so a solved check is recorded as passed and is not verified a second time. No flag.
 
