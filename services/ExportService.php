@@ -43,7 +43,7 @@ class ExportService
         foreach ($columns as $col) {
             $header[] = $col['header'];
         }
-        fputcsv($fh, $header);
+        fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($header));
 
         /** @var FormAnswer $answer */
         foreach ($query->each(100) as $answer) {
@@ -56,7 +56,7 @@ class ExportService
                 }
                 $row[] = $value;
             }
-            fputcsv($fh, $row);
+            fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($row));
         }
 
         rewind($fh);

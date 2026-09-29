@@ -89,13 +89,13 @@ class TranslationImportExportService
         $langs = $this->exportLanguages($form);
         $existing = $this->existingByLanguage($form, $langs);
         $fh = fopen('php://temp', 'r+');
-        fputcsv($fh, array_merge(['key', 'type', 'part', 'source'], $langs));
+        fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row(array_merge(['key', 'type', 'part', 'source'], $langs)));
         foreach ($this->collectUnits($form) as $unit) {
             $row = [$unit['key'], $unit['type'], $unit['part'], $unit['source']];
             foreach ($langs as $lang) {
                 $row[] = (string)($existing[$lang][$unit['key']] ?? '');
             }
-            fputcsv($fh, $row);
+            fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($row));
         }
         rewind($fh);
         $csv = stream_get_contents($fh);
@@ -161,6 +161,7 @@ class TranslationImportExportService
             if ($row === [null] || $row === []) {
                 continue;
             }
+            $row = array_map(static fn($cell) => \humhub\modules\thiscoveryForms\helpers\CsvCell::restore((string)$cell), $row);
             if ($header === null) {
                 $header = array_map(static fn($v) => trim((string)$v), $row);
                 foreach ($header as $idx => $name) {

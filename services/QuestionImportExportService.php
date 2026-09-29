@@ -107,10 +107,10 @@ class QuestionImportExportService
     public function exportCsv(CustomForm $form): string
     {
         $fh = fopen('php://temp', 'r+');
-        fputcsv($fh, self::CSV_COLUMNS);
+        fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row(self::CSV_COLUMNS));
         $aliases = $this->portableAliasMap($form);
         foreach ($form->fields as $field) {
-            fputcsv($fh, $this->csvRowFromField($field, $aliases));
+            fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvRowFromField($field, $aliases)));
         }
         rewind($fh);
         $csv = stream_get_contents($fh);
@@ -155,6 +155,7 @@ class QuestionImportExportService
             if ($row === [null] || $row === []) {
                 continue;
             }
+            $row = array_map(static fn($cell) => \humhub\modules\thiscoveryForms\helpers\CsvCell::restore((string)$cell), $row);
             $hasValue = false;
             foreach ($row as $cell) {
                 if (trim((string)$cell) !== '') {
