@@ -68,6 +68,7 @@ class FormCloneService
         if (!$target->saveFieldsFromPost($rows)) {
             return false;
         }
+        (new ConsentService())->copyOnto($source, $target);
 
         unset($source->fields, $target->fields);
         (new TranslationService())->copyOnto($source, $target);

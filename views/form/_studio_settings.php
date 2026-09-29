@@ -107,6 +107,45 @@ $activeSection = $activeSection ?? 'basics';
                     </div>
                 </div>
                 <?php $rand = new \humhub\modules\thiscoveryForms\services\RandomisationService(); ?>
+                <input type="hidden" name="econsent_present" value="1">
+                <?php $consentSvc = new \humhub\modules\thiscoveryForms\services\ConsentService(); ?>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-12">
+                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Consent') ?></h4>
+                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned consent on. A published information sheet is frozen. Refusing a required statement ends the form and is not a completed questionnaire. Asking to delete data opens an admin task. It does not delete answers.') ?></p>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use consent on this form') ?></label>
+                        <?= Html::dropDownList('econsent_enabled', $consentSvc->formEnabled($formModel) ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'When the sheet changes') ?></label>
+                        <?= Html::dropDownList('econsent_reconsent', (string)$formModel->getSetting('reconsent', 'off'), [
+                            'off' => Yii::t('ThiscoveryFormsModule.base', 'Keep the version they started'),
+                            'next_visit' => Yii::t('ThiscoveryFormsModule.base', 'Ask again on the next visit'),
+                            'email' => Yii::t('ThiscoveryFormsModule.base', 'Email people who already agreed'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Store IP and browser hashes') ?></label>
+                        <?= Html::dropDownList('consent_store_client_hashes', (string)$formModel->getSetting('consent_store_client_hashes', '0') === '1' ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-12 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Not consented message') ?></label>
+                        <?= Html::textInput('not_consented_message', (string)$formModel->getSetting('not_consented_message', ''), ['class' => 'form-control']) ?>
+                    </div>
+                    <?php if (empty($isNew) && $formModel->content && $formModel->content->container): ?>
+                    <div class="col-md-12">
+                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit consent documents'), $formModel->content->container->createUrl('/thiscovery-forms/consent/index', ['id' => $formModel->id]), ['class' => 'btn btn-default btn-sm']) ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
                 <input type="hidden" name="randomisation_present" value="1">
                 <div class="row g-3 mt-2">
                     <div class="col-md-12">

@@ -216,6 +216,19 @@ class ExportSettings
             $pushMeta(self::KEY_ROUND, Yii::t('ThiscoveryFormsModule.base', 'Round'));
             $pushMeta(self::KEY_WEIGHT, Yii::t('ThiscoveryFormsModule.base', 'Weight'));
         }
+        if (ConsentService::formEnabled($form)) {
+            $pushMeta('consent_version', 'consent_version');
+            $pushMeta('consent_hash', 'consent_hash');
+            $pushMeta('consent_signed_at', 'consent_signed_at');
+            foreach ((new ConsentService())->documents((int)$form->id) as $doc) {
+                if ((int)$doc['version'] < 1 || (string)$doc['status'] !== 'published') {
+                    continue;
+                }
+                foreach ((new ConsentService())->items((int)$doc['id']) as $item) {
+                    $pushMeta('consent.' . $item['code'], 'consent.' . $item['code']);
+                }
+            }
+        }
         if (RandomisationService::formEnabled($form)) {
             foreach ($form->getAllFields()->all() as $field) {
                 if ($field->isRandomizeOptions()) {

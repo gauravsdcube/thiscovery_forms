@@ -243,6 +243,37 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             </div>
         </div>
 
+        <?php if ($type === FormField::TYPE_CONSENT): ?>
+        <?php $consentCfg = $field->getConsentConfig(); ?>
+        <div class="row g-3 mt-1">
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Document id') ?></label>
+                <?= Html::textInput($namePrefix . '[consent_document_id]', $consentCfg['document_id'] ?: '', ['class' => 'form-control', 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'latest published')]) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Signature') ?></label>
+                <?= Html::dropDownList($namePrefix . '[consent_signature]', $consentCfg['signature'], [
+                    'typed' => Yii::t('ThiscoveryFormsModule.base', 'Typed name and date'),
+                    'checkbox' => Yii::t('ThiscoveryFormsModule.base', 'Checkbox only'),
+                    'drawn' => Yii::t('ThiscoveryFormsModule.base', 'Drawn, with typed name as the alternative'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Must reach the end') ?></label>
+                <?= Html::dropDownList($namePrefix . '[consent_must_read]', $consentCfg['must_read'] ? '1' : '', [
+                    '' => Yii::t('ThiscoveryFormsModule.base', 'No'),
+                    '1' => Yii::t('ThiscoveryFormsModule.base', 'Yes'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Witness') ?></label>
+                <?= Html::dropDownList($namePrefix . '[consent_witness]', $consentCfg['witness'] ? '1' : '', [
+                    '' => Yii::t('ThiscoveryFormsModule.base', 'No'),
+                    '1' => Yii::t('ThiscoveryFormsModule.base', 'Yes'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+        </div>
+        <?php endif; ?>
         <?php $randCfg = $field->getRandomiseConfig(); ?>
         <?php $showRand = in_array($type, [FormField::TYPE_QUESTION_GROUP, FormField::TYPE_RAND_BLOCK], true); ?>
         <div class="row g-3 mt-1<?= $showRand ? '' : ' d-none' ?>">

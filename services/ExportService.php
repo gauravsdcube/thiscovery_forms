@@ -159,6 +159,27 @@ class ExportService
         $cells[ExportSettings::KEY_ARM_METHOD] = (string)($assigned['method'] ?? '');
         $cells[ExportSettings::KEY_ARM_ASSIGNED_AT] = (string)($assigned['assigned_at'] ?? '');
         $cells[ExportSettings::KEY_ARM_STRATUM] = (string)($assigned['stratum_key'] ?? '');
+        $cells['consent_version'] = '';
+        $cells['consent_hash'] = '';
+        $cells['consent_signed_at'] = '';
+        $consent = new ConsentService();
+        if (ConsentService::formEnabled($form) && $consent->tablesReady()) {
+            $linked = $answer->id
+                ? (new \yii\db\Query())->from('{{%custom_form_consent_record}}')->where(['answer_id' => (int)$answer->id])->orderBy(['id' => SORT_DESC])->one()
+                : null;
+            $anonymousConsent = $form->hidesIdentityFromManagers() && \humhub\modules\thiscoveryForms\Module::identityEnforced();
+            if ($linked && !$anonymousConsent) {
+                $cells['consent_version'] = (string)$answer->consent_version;
+                $cells['consent_hash'] = (string)($linked['content_hash'] ?? '');
+                $cells['consent_signed_at'] = (string)($linked['signed_at'] ?? '');
+                $items = json_decode((string)($linked['items_json'] ?? ''), true);
+                if (is_array($items)) {
+                    foreach ($items as $code => $value) {
+                        $cells['consent.' . $code] = (string)$value;
+                    }
+                }
+            }
+        }
         $orders = $rand->orders($answer);
         foreach (['options', 'questions', 'pages', 'shown'] as $bucket) {
             foreach ($orders[$bucket] as $key => $list) {

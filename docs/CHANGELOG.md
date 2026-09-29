@@ -2,6 +2,15 @@
 
 All notable changes to this module are documented in this file.
 
+## Unreleased (1.29 consent)
+
+Electronic consent is off unless an administrator turns it on and the form turns it on. Completing a form no longer stamps a panel member’s consent time.
+
+- A published information sheet and its statements are frozen. The next edit is a new version. The record stores the hash of the text the person was shown.
+- Refusing a required statement ends the form as not consented. That response is not a completed questionnaire, and the completion email is not sent. Optional statements may be no.
+- Fully anonymous consent is not linked to the answer. Withdrawal uses a one-time code. Asking to delete data opens an admin task and does not delete answers.
+- Older consent timestamps are listed as legacy and do not count as consent for a new version.
+
 ## Unreleased (1.29 randomisation)
 
 The module version stays 1.28.7 until the 1.29.0 release. Randomisation is off unless an administrator turns it on and the form turns it on.

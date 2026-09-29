@@ -239,6 +239,20 @@ class TranslationImportExportService
                 $skipped++;
                 continue;
             }
+            if ($parsed['kind'] === 'consent') {
+                foreach (($row['translations'] ?? []) as $langCode => $value) {
+                    $lang = TranslationService::normalizeLanguage((string)$langCode);
+                    $value = trim((string)$value);
+                    if ($lang === null || $lang === $source || $value === '') {
+                        continue;
+                    }
+                    if ((new ConsentService())->saveTranslation($form, (int)$parsed['version'], (string)$parsed['part'], $lang, $value)) {
+                        $importedLangs[$lang] = true;
+                        $updated++;
+                    }
+                }
+                continue;
+            }
 
             $translations = $row['translations'] ?? [];
             if (!is_array($translations)) {
@@ -329,6 +343,9 @@ class TranslationImportExportService
         $this->pushUnit($units, 'form.title', 'form', 'title', (string)$form->title, null);
         $this->pushUnit($units, 'form.description', 'form', 'description', (string)$form->description, null, false);
         $this->pushUnit($units, 'form.thank_you_content', 'form', 'thank_you_content', (string)$form->thank_you_content, null, false);
+        foreach ((new ConsentService())->translationUnits($form) as $unit) {
+            $this->pushUnit($units, $unit['key'], 'consent', $unit['part'], $unit['source'], null, false);
+        }
 
         foreach ($form->fields as $field) {
             $id = (int)$field->id;
@@ -492,6 +509,9 @@ class TranslationImportExportService
     private function parseKey(string $key): ?array
     {
         $key = trim($key);
+        if (preg_match('/^consent\.(\d+)\.(body|[A-Za-z][A-Za-z0-9_]*)$/', $key, $m)) {
+            return ['kind' => 'consent', 'version' => (int)$m[1], 'part' => $m[2]];
+        }
         if (preg_match('/^form\.(title|description|thank_you_content|thank_you)$/', $key, $m)) {
             $part = $m[1] === 'thank_you' ? 'thank_you_content' : $m[1];
             return ['kind' => 'form', 'part' => $part];
