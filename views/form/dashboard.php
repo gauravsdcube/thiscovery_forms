@@ -24,9 +24,15 @@ $this->registerJs(<<<'JS'
 (function() {
     var tryInit = function(attempt) {
         try {
-            if (window.Chart && humhub && humhub.require) {
-                humhub.require('thiscoveryForms.dashboard').init('#cf-dashboard');
-                return;
+            if (humhub && humhub.require) {
+                var dashboard = humhub.require('thiscoveryForms.dashboard');
+                if (dashboard.paintLoops) {
+                    dashboard.paintLoops('#cf-dashboard');
+                }
+                if (window.Chart) {
+                    dashboard.init('#cf-dashboard');
+                    return;
+                }
             }
         } catch (e) {}
         if (attempt < 40) {
@@ -137,6 +143,52 @@ JS
                         <td><?= Html::encode((string)$arm['stratum_key']) ?></td>
                         <td><?= (int)$arm['assigned'] ?></td>
                         <td><?= (int)$arm['completed'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!empty($stats['loops']['questions'])): ?>
+        <div class="cf-dash-panel" data-cf-loop-split>
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Repeats') ?></h3>
+            <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'All repeats are added together. Choose one repeat to see only that label.') ?></p>
+            <?php $loopKey = trim((string)Yii::$app->request->get('loop_instance', '*')); ?>
+            <?php if ($loopKey === '') { $loopKey = '*'; } ?>
+            <form method="get" class="form-inline">
+                <input type="hidden" name="id" value="<?= (int)$formModel->id ?>">
+                <div class="form-group">
+                    <label for="cf-loop-instance"><?= Yii::t('ThiscoveryFormsModule.base', 'Show') ?></label>
+                    <select id="cf-loop-instance" class="form-control" name="loop_instance" data-cf-loop-instance style="max-width: 16rem;">
+                        <option value="*"<?= $loopKey === '*' ? ' selected' : '' ?>><?= Yii::t('ThiscoveryFormsModule.base', 'All repeats') ?></option>
+                        <?php foreach ($stats['loops']['instances'] as $instance): ?>
+                            <option value="<?= Html::encode((string)$instance['code']) ?>"<?= $loopKey === (string)$instance['code'] ? ' selected' : '' ?>><?= Html::encode((string)$instance['label']) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-default" data-cf-loop-show><?= Yii::t('ThiscoveryFormsModule.base', 'Show') ?></button>
+            </form>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Question') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Answers') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Values') ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($stats['loops']['questions'] as $question): ?>
+                    <tr data-cf-loop-row
+                        data-cf-loop-counts="<?= Html::encode(json_encode($question['counts'], JSON_UNESCAPED_UNICODE)) ?>"
+                        data-cf-loop-values="<?= Html::encode(json_encode($question['values'], JSON_UNESCAPED_UNICODE)) ?>">
+                        <td><?= Html::encode((string)$question['label']) ?></td>
+                        <td data-cf-loop-count><?= (int)($question['counts'][$loopKey] ?? 0) ?></td>
+                        <td data-cf-loop-values-cell><?= Html::encode(implode(', ', array_map(
+                            static fn($name, $n) => $name . ' (' . $n . ')',
+                            array_keys($question['values'][$loopKey] ?? []),
+                            array_values($question['values'][$loopKey] ?? [])
+                        ))) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

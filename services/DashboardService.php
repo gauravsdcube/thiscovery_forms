@@ -180,6 +180,7 @@ class DashboardService
             'rounds' => $form->isConsensus() ? $this->getRoundStats($form) : [],
             'arms' => (new RandomisationService())->allocationSummary($form),
             'quotas' => (new QuotaService())->summary($form),
+            'loops' => $this->loopBreakdown($form),
         ];
     }
 
@@ -824,7 +825,9 @@ class DashboardService
                     ['<>', 'af.value', '[]'],
                 ]);
             FormIntegrityMeta::scopeIncludedInAnalysis($answeredQ);
-            $answered = (int)$answeredQ->count();
+            $answered = (new LoopService())->isLoopField($form, $field)
+                ? (int)$answeredQ->count('DISTINCT a.id')
+                : (int)$answeredQ->count();
 
             $rates[] = [
                 'label' => $field->label,
@@ -834,5 +837,83 @@ class DashboardService
         }
 
         return $rates;
+    }
+
+    /**
+     * All repeats added together, plus the same counts for each instance label.
+     *
+     * @return array{instances:array<int,array{code:string,label:string}>,questions:array<int,array{label:string,counts:array<string,int>,values:array<string,array<string,int>>}>}
+     */
+    private function loopBreakdown(CustomForm $form): array
+    {
+        if (!LoopService::active($form)) {
+            return [];
+        }
+        $loops = new LoopService();
+        $fields = array_values($form->fields);
+        $questions = [];
+        $labels = [];
+        foreach ($fields as $field) {
+            if (!$loops->isLoopField($form, $field)) {
+                continue;
+            }
+            $group = $loops->groupForField($fields, $field);
+            if ($group) {
+                foreach ($loops->columnsFor($group, $fields) as $column) {
+                    $labels[(string)$column['code']] = (string)$column['label'];
+                }
+            }
+            $questions[(int)$field->id] = [
+                'label' => trim(strip_tags((string)$field->label)),
+                'counts' => [],
+                'values' => [],
+            ];
+        }
+        if ($questions === []) {
+            return [];
+        }
+        $rows = (new Query())
+            ->from(['af' => FormAnswerField::tableName()])
+            ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
+            ->select(['af.field_id', 'af.instance_key', 'af.value'])
+            ->where([
+                'a.form_id' => (int)$form->id,
+                'a.status' => FormAnswer::STATUS_COMPLETE,
+                'a.is_test' => 0,
+                'af.field_id' => array_keys($questions),
+            ])
+            ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]])
+            ->andWhere(['<>', 'af.instance_key', '']);
+        FormIntegrityMeta::scopeIncludedInAnalysis($rows);
+        foreach ($rows->all() as $row) {
+            $value = trim((string)$row['value']);
+            if ($value === '' || $value === '[]') {
+                continue;
+            }
+            $code = (string)$row['instance_key'];
+            $id = (int)$row['field_id'];
+            if (!isset($labels[$code])) {
+                $labels[$code] = $code;
+            }
+            $questions[$id]['counts']['*'] = ($questions[$id]['counts']['*'] ?? 0) + 1;
+            $questions[$id]['counts'][$code] = ($questions[$id]['counts'][$code] ?? 0) + 1;
+            $decoded = json_decode($value, true);
+            $display = (json_last_error() === JSON_ERROR_NONE && is_array($decoded))
+                ? implode(', ', array_map('strval', $decoded))
+                : $value;
+            if (strlen($display) > 80) {
+                $display = substr($display, 0, 77) . '...';
+            }
+            $questions[$id]['values']['*'][$display] = ($questions[$id]['values']['*'][$display] ?? 0) + 1;
+            $questions[$id]['values'][$code][$display] = ($questions[$id]['values'][$code][$display] ?? 0) + 1;
+        }
+        $instances = [];
+        foreach ($labels as $code => $label) {
+            $instances[] = ['code' => $code, 'label' => $label];
+        }
+        return [
+            'instances' => $instances,
+            'questions' => array_values($questions),
+        ];
     }
 }

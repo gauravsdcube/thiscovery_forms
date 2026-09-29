@@ -192,9 +192,20 @@ $this->registerJsConfig('thiscoveryForms', [
     'runActionsUrl' => Url::toRunActions($formModel),
     'fillFileDeleteUrl' => Url::toFillDeleteFile($formModel),
     'pipeVars' => $pipe->tokenMap($user ?? Yii::$app->user->identity, $formModel, $fillContext->member ?? null),
-    'startPage' => ($existing && $existing->isInProgress() && $existing->current_page !== null)
-        ? (int)$existing->current_page
-        : 0,
+    'startPage' => (function () use ($existing, $pages): int {
+        $start = ($existing && $existing->isInProgress() && $existing->current_page !== null)
+            ? (int)$existing->current_page
+            : 0;
+        $instance = $existing ? trim((string)$existing->current_instance_key) : '';
+        if ($existing && $existing->isInProgress() && $instance !== '') {
+            foreach ($pages as $page) {
+                if ((string)($page['instanceKey'] ?? '') === $instance) {
+                    return (int)$page['index'];
+                }
+            }
+        }
+        return $start;
+    })(),
     'questionTiming' => $integrityEnabled && !empty($integritySettings['question_timing']),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initFill("#cf-fill");', \yii\web\View::POS_READY);
@@ -476,6 +487,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?php endif; ?>
             <div class="visually-hidden" data-cf-page-live aria-live="polite" aria-atomic="true"></div>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
+            <?= Html::hiddenInput('current_instance_key', $existing ? (string)$existing->current_instance_key : '', ['data-cf-current-instance' => true]) ?>
             <?php if ($integrityEnabled): ?>
             <?= Html::hiddenInput(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::TIMING_NAME, '{}', ['data-cf-integrity-timing' => true]) ?>
             <div class="cf-honeypot" aria-hidden="true">
@@ -502,11 +514,11 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 <div class="cf-form-page<?= $page['index'] === 0 ? ' is-active' : '' ?>"
                      data-cf-page="<?= (int)$page['index'] ?>"
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
-                     <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '"' : '' ?>
+                     <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '" role="region" aria-labelledby="cf-loop-heading-' . (int)$page['index'] . '"' : '' ?>
                      data-cf-page-break-id="<?= $page['break'] ? (int)$page['break']->id : '' ?>"
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
                     <?php if (!empty($page['instanceKey'])): ?>
-                        <h2 class="cf-loop-instance"><?= Html::encode((string)($page['instanceLabel'] ?? '')) ?>, <?= (int)($page['instanceIndex'] ?? 1) ?> of <?= (int)($page['instanceCount'] ?? 1) ?></h2>
+                        <h2 class="cf-loop-instance" id="cf-loop-heading-<?= (int)$page['index'] ?>"><?= Html::encode((string)($page['instanceLabel'] ?? '')) ?>, <?= (int)($page['instanceIndex'] ?? 1) ?> of <?= (int)($page['instanceCount'] ?? 1) ?></h2>
                     <?php endif; ?>
                     <?php if (!empty($page['title'])): ?>
                         <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null); ?>

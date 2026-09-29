@@ -87,6 +87,11 @@ class ResumeService
             $answer->current_page = max(0, $currentPage);
             $dirty[] = 'current_page';
         }
+        $instance = Yii::$app->request->post('current_instance_key', null);
+        if ($instance !== null && \humhub\modules\thiscoveryForms\services\LoopService::columnReady()) {
+            $answer->current_instance_key = substr((string)$instance, 0, 64);
+            $dirty[] = 'current_instance_key';
+        }
         if ($dirty) {
             $dirty[] = 'updated_at';
             $answer->save(false, $dirty);

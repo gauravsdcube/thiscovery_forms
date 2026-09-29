@@ -9,6 +9,7 @@ use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswerField;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\Module;
+use humhub\modules\thiscoveryForms\services\DashboardService;
 use humhub\modules\thiscoveryForms\services\ExportService;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
 use humhub\modules\thiscoveryForms\services\LoopService;
@@ -204,6 +205,19 @@ try {
     ])->one();
     $check($kept && (string)$kept->value === 'second', 'reducing the number hides n2 and does not renumber it');
     $check((string)$numbered->current_instance_key === 'n2', 'resume keeps the instance key');
+
+    $dash = (new DashboardService())->getFormDashboard($form);
+    $symptomRow = null;
+    foreach ($dash['loops']['questions'] ?? [] as $question) {
+        if ($question['label'] === 'Symptom') {
+            $symptomRow = $question;
+        }
+    }
+    $allRepeats = (int)($symptomRow['counts']['*'] ?? 0);
+    $asthmaCount = (int)($symptomRow['counts']['asthma'] ?? 0);
+    $diabetesCount = (int)($symptomRow['counts']['diabetes'] ?? 0);
+    $check($symptomRow !== null && $allRepeats === $asthmaCount + $diabetesCount, 'dashboard adds every repeat');
+    $check($asthmaCount >= 1 && $diabetesCount >= 1 && $asthmaCount !== $allRepeats, 'dashboard can split one instance from the total');
 
     $module->settings->set(Module::SETTING_LOOPS, '0');
     $plain = ReviewLib::form($space, 'EV F5 flag off', [

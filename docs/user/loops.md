@@ -20,4 +20,6 @@ Logic on a repeated question can use any, all, count, or sum. Any other aggregat
 
 Text can include `{{loop.label}}`, `{{loop.index}}`, and `{{loop.count}}`. `{{answer:symptom}}` is the current repeat. `{{answer:symptom[asthma]}}` is another repeat.
 
-Resume stores the repeat that was open. Required questions are required on each repeat that is still shown. A hidden repeat is not required.
+Resume stores the repeat that was open and opens that repeat again. Required questions are required on each repeat that is still shown. A hidden repeat is not required.
+
+The dashboard adds every repeat together. The Show control on the dashboard lists each repeat label and shows only that repeat.

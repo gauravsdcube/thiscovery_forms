@@ -506,7 +506,7 @@ trait FillResumeTrait
         );
 
         if ($answer) {
-            $answer->setVars($this->postedActionVars($answer));
+            $answer->setVars($this->postedActionVars($form, $answer));
             $answer->save(false, ['vars_json', 'updated_at']);
             $this->rememberProgressDraft($form, $answer);
             $this->pruneUserInProgressDrafts($form, $answer, true);

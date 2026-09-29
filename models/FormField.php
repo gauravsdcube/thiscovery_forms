@@ -2543,6 +2543,48 @@ class FormField extends ActiveRecord
         } elseif ($field->type === self::TYPE_NUMBER) {
             $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
         }
+        if ($field->type === self::TYPE_QUESTION_GROUP && (!empty($row['randomise_enabled']) || !empty($row['loop_enabled']))) {
+            $options = [];
+            if (!empty($row['randomise_enabled'])) {
+                $show = trim((string)($row['randomise_show'] ?? ''));
+                $options['randomise'] = [
+                    'enabled' => true,
+                    'method' => (($row['randomise_method'] ?? '') === 'rotate') ? 'rotate' : 'shuffle',
+                    'show' => $show === '' ? null : (int)$show,
+                    'pinFirst' => array_values(array_filter(array_map('trim', explode(',', (string)($row['randomise_pin_first'] ?? ''))))),
+                    'pinLast' => array_values(array_filter(array_map('trim', explode(',', (string)($row['randomise_pin_last'] ?? ''))))),
+                ];
+            }
+            if (!empty($row['loop_enabled'])) {
+                $items = [];
+                $lines = preg_split('/\r\n|\r|\n/', (string)($row['loop_items'] ?? '')) ?: [];
+                foreach ($lines as $line) {
+                    $line = trim((string)$line);
+                    if ($line === '') {
+                        continue;
+                    }
+                    $parts = array_map('trim', explode('|', $line, 2));
+                    if ($parts[0] === '') {
+                        continue;
+                    }
+                    $items[] = ['code' => $parts[0], 'label' => $parts[1] ?? $parts[0]];
+                }
+                $source = (string)($row['loop_source'] ?? 'fixed');
+                if (!in_array($source, ['fixed', 'choices', 'number'], true)) {
+                    $source = 'fixed';
+                }
+                $options['loop'] = [
+                    'source' => $source,
+                    'field_key' => trim((string)($row['loop_field_key'] ?? '')),
+                    'max' => max(0, (int)($row['loop_max'] ?? 0)),
+                    'min' => max(0, (int)($row['loop_min'] ?? 0)),
+                    'items' => $items,
+                    'randomise' => !empty($row['loop_randomise']),
+                    'show' => trim((string)($row['loop_show'] ?? '')) === '' ? null : max(0, (int)$row['loop_show']),
+                ];
+            }
+            $field->options_json = json_encode($options, JSON_UNESCAPED_UNICODE);
+        }
         $field->setActions($row['actions'] ?? []);
         $role = trim((string)($row['instrument_role'] ?? ''));
         if ($role !== '') {

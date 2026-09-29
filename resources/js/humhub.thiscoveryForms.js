@@ -4364,15 +4364,18 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
             });
             $root.find('[data-cf-current-page]').val(String(idx));
+            var instanceKey = String($targetPage.attr('data-cf-instance') || '');
+            $root.find('[data-cf-current-instance]').val(instanceKey);
             if (pageChanged && idx > 0) {
                 scheduleAutosave();
             }
 
             var label = module.config.pageLabel || 'Page {current} of {total}';
             var pageText = label.replace('{current}', String(idx + 1)).replace('{total}', String(pagesConfig.length));
+            var loopHeading = $.trim($targetPage.find('.cf-loop-instance').first().text() || '');
             $root.find('[data-cf-page-indicator]').text(pageText);
             if (pageChanged && options.scroll !== false) {
-                announceLive(pageText);
+                announceLive(loopHeading || pageText);
                 if (!$targetPage.attr('tabindex')) {
                     $targetPage.attr('tabindex', '-1');
                 }

@@ -193,11 +193,39 @@ humhub.module('thiscoveryForms.dashboard', function (module, require, $) {
         }));
     };
 
+    var paintLoops = function ($root) {
+        var $panel = $root.find('[data-cf-loop-split]');
+        if (!$panel.length) {
+            return;
+        }
+        var paint = function () {
+            var key = String($panel.find('[data-cf-loop-instance]').val() || '*');
+            $panel.find('[data-cf-loop-row]').each(function () {
+                var row = this;
+                var counts = {};
+                var values = {};
+                try {
+                    counts = JSON.parse(row.getAttribute('data-cf-loop-counts') || '{}');
+                    values = JSON.parse(row.getAttribute('data-cf-loop-values') || '{}');
+                } catch (e) {}
+                var bag = values[key] || {};
+                var parts = Object.keys(bag).map(function (name) {
+                    return name + ' (' + bag[name] + ')';
+                });
+                $(row).find('[data-cf-loop-count]').text(String(counts[key] || 0));
+                $(row).find('[data-cf-loop-values-cell]').text(parts.join(', '));
+            });
+        };
+        $panel.find('[data-cf-loop-instance]').off('change.cfLoops').on('change.cfLoops', paint);
+        paint();
+    };
+
     module.init = function (root) {
         var $root = $(root || document);
         if (!$root.length) {
             return;
         }
+        paintLoops($root);
 
         if (typeof window.Chart === 'undefined') {
             if (module.logError) {
@@ -223,7 +251,12 @@ humhub.module('thiscoveryForms.dashboard', function (module, require, $) {
         });
     };
 
+    module.paintLoops = function (root) {
+        paintLoops($(root || document));
+    };
+
     module.export = {
-        init: module.init
+        init: module.init,
+        paintLoops: module.paintLoops
     };
 });
