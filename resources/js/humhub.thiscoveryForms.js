@@ -2774,13 +2774,34 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return bad;
         };
 
+        var fieldControls = function ($field) {
+            return $field.find('input, select, textarea').not('[type="hidden"]');
+        };
+
+        var fieldErrorId = function ($field) {
+            return 'cf-field-error-' + String($field.attr('data-cf-field-id') || 'field');
+        };
+
+        var announceLive = function (text) {
+            var $live = $root.find('[data-cf-page-live]');
+            if (!$live.length) {
+                $live = $('<div class="visually-hidden" data-cf-page-live aria-live="polite" aria-atomic="true"/>');
+                $root.prepend($live);
+            }
+            $live.text('');
+            window.setTimeout(function () {
+                $live.text(text || '');
+            }, 30);
+        };
+
         var setFieldMessage = function ($field, msg) {
             var $err = $field.find('[data-cf-field-error]').first();
+            var $controls = fieldControls($field);
             if (!msg) {
                 $field.removeClass('cf-page-error');
                 $err.addClass('d-none').text('');
                 $field.find('[data-cf-email-error]').addClass('d-none');
-                emailInputs($field).removeClass('is-invalid').attr('aria-invalid', 'false');
+                $controls.removeClass('is-invalid').attr('aria-invalid', 'false').removeAttr('aria-describedby');
                 return;
             }
             if (!$err.length) {
@@ -2788,10 +2809,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $control = $field.find('.cf-question__control');
                 ($control.length ? $control : $field).append($err);
             }
-            $err.removeClass('d-none').text(msg);
+            $err.attr('id', fieldErrorId($field)).removeClass('d-none').text(msg);
             $field.find('[data-cf-email-error]').addClass('d-none');
             $field.addClass('cf-page-error');
-            emailInputs($field).toggleClass('is-invalid', /email/i.test(msg)).attr('aria-invalid', 'true');
+            $controls.addClass('is-invalid').attr('aria-invalid', 'true').attr('aria-describedby', fieldErrorId($field));
         };
 
         var resetFillButtons = function () {
@@ -4258,9 +4279,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
 
             var label = module.config.pageLabel || 'Page {current} of {total}';
-            $root.find('[data-cf-page-indicator]').text(
-                label.replace('{current}', String(idx + 1)).replace('{total}', String(pagesConfig.length))
-            );
+            var pageText = label.replace('{current}', String(idx + 1)).replace('{total}', String(pagesConfig.length));
+            $root.find('[data-cf-page-indicator]').text(pageText);
+            if (pageChanged && options.scroll !== false) {
+                announceLive(pageText);
+                if (!$targetPage.attr('tabindex')) {
+                    $targetPage.attr('tabindex', '-1');
+                }
+                $targetPage.trigger('focus');
+            }
 
             var shouldScroll = options.scroll === true || (options.scroll !== false && pageChanged);
             if (shouldScroll) {
@@ -4366,6 +4393,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $first = $page.find('.cf-page-error').first();
                 if ($first.length && $first[0].scrollIntoView) {
                     $first[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+                var $focus = $first.find('input, select, textarea').not('[type="hidden"]').filter(':visible').first();
+                if ($focus.length) {
+                    $focus.trigger('focus');
                 }
                 return false;
             }
@@ -4530,6 +4561,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             syncGridOverflow();
             if (newlyShown.length) {
+                var shownLabels = newlyShown.map(function (el) {
+                    return $.trim($(el).find('.cf-question__label, legend, .cf-label').first().text());
+                }).filter(Boolean);
+                if (shownLabels.length) {
+                    announceLive(shownLabels.join('. '));
+                }
                 window.requestAnimationFrame(function () {
                     try {
                         newlyShown[0].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -4537,6 +4574,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 });
             }
         };
+
+        $('#search-menu').attr('aria-label', module.config.searchLabel || 'Search');
+        $('button.btn-icon-only, a.btn-icon-only').each(function () {
+            var $el = $(this);
+            if ($.trim($el.attr('aria-label') || '') || $.trim($el.attr('title') || '') || $.trim($el.text())) {
+                return;
+            }
+            $el.attr('aria-label', module.config.menuLabel || 'Menu');
+        });
 
         initRanking();
         initDrilldown();

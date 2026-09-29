@@ -4835,3 +4835,18 @@ body.cf-fill-standalone #topbar-second {
 .cf-turnstile-wrap {
     margin-bottom: .75rem;
 }
+
+/* The space chrome sits on the fill page when the header is shown.
+   Breadcrumb blue on grey is just under 4.5:1, and a light space colour
+   behind white initials is under 3:1. */
+.tn-breadcrumb__link,
+.tn-breadcrumb__link .tn-breadcrumb__label {
+    color: #0b3d73;
+}
+[class*="space-profile-acronym"] {
+    background-color: #1e4d16 !important;
+    color: #fff;
+}
+[class*="space-profile-acronym"] > span {
+    color: #fff;
+}
