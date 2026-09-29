@@ -1601,8 +1601,23 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
         $this->persistProgrammeSettings();
         $this->persistRandomisationFromRequest();
+        $this->persistEconsentFromRequest();
 
         return true;
+    }
+
+    protected function persistEconsentFromRequest(): void
+    {
+        $request = Yii::$app->request;
+        if (!$request->isPost || $request->post('econsent_present') === null) {
+            return;
+        }
+        (new \humhub\modules\thiscoveryForms\services\ConsentService())->saveFormSettings($this, [
+            'enabled' => $request->post('econsent_enabled', '0'),
+            'reconsent' => $request->post('econsent_reconsent', 'off'),
+            'store_client_hashes' => $request->post('consent_store_client_hashes', '0'),
+            'not_consented_message' => $request->post('not_consented_message', ''),
+        ]);
     }
 
     protected function persistRandomisationFromRequest(): void
@@ -2225,6 +2240,18 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 $field->required = false;
             } elseif ($type === FormField::TYPE_RAND_BLOCK_END) {
                 $field->required = false;
+            } elseif ($type === FormField::TYPE_CONSENT) {
+                $signature = (string)($row['consent_signature'] ?? 'typed');
+                if (!in_array($signature, ['typed', 'checkbox', 'drawn'], true)) {
+                    $signature = 'typed';
+                }
+                $field->options_json = json_encode([
+                    'document_id' => (int)($row['consent_document_id'] ?? 0),
+                    'must_read' => !empty($row['consent_must_read']),
+                    'signature' => $signature,
+                    'witness' => !empty($row['consent_witness']),
+                ], JSON_UNESCAPED_UNICODE);
+                $field->required = false;
             } elseif ($type === FormField::TYPE_QUESTION_GROUP && !empty($row['randomise_enabled'])) {
                 $show = trim((string)($row['randomise_show'] ?? ''));
                 $field->options_json = json_encode([
@@ -2541,6 +2568,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 'label' => $backward,
             ]));
             return false;
+        }
+        foreach ((new \humhub\modules\thiscoveryForms\services\ConsentService())->authoringErrors($this) as $message) {
+            $this->addError('title', $message);
+            $ok = false;
         }
         foreach ((new \humhub\modules\thiscoveryForms\services\RandomisationService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);

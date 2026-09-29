@@ -39,6 +39,9 @@ class SubmitForm extends Model
     /** @var int|null */
     public $panelMemberId;
 
+    /** @var int|null Sort order of a consent question that was refused. Later questions are not required. */
+    public $consentRefusedSort;
+
     /** @var float */
     public $weight = 1;
 
@@ -295,7 +298,11 @@ class SubmitForm extends Model
 
     public function validateFields(): void
     {
+        (new \humhub\modules\thiscoveryForms\services\ConsentService())->validateSubmit($this);
         foreach ($this->form->fields as $field) {
+            if ($this->consentRefusedSort !== null && (int)$field->sort_order > (int)$this->consentRefusedSort) {
+                continue;
+            }
             if (!$field->collectsAnswer()) {
                 continue;
             }
@@ -648,6 +655,7 @@ class SubmitForm extends Model
                 $this->values['arm'] = (string)$assigned['arm_code'];
             }
             $this->onPathFieldIds = null;
+            (new \humhub\modules\thiscoveryForms\services\ConsentService())->applySubmit($this, $answer, $asDraft, (bool)$stripIdentity);
 
             $existingFields = [];
             foreach ($answer->answerFields as $af) {
@@ -685,6 +693,12 @@ class SubmitForm extends Model
                         }
                         continue;
                     }
+                }
+                if ($this->consentRefusedSort !== null && (int)$field->sort_order > (int)$this->consentRefusedSort) {
+                    if (isset($existingFields[$fieldId])) {
+                        $existingFields[$fieldId]->delete();
+                    }
+                    continue;
                 }
                 $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
                 $value = $visible ? ($this->values[$fieldId] ?? null) : null;
@@ -1056,6 +1070,9 @@ class SubmitForm extends Model
 
     private function terminalOutcome(FormAnswer $answer): string
     {
+        if ((string)$answer->outcome === FormAnswer::OUTCOME_NOT_CONSENTED) {
+            return FormAnswer::OUTCOME_NOT_CONSENTED;
+        }
         if (!\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
             return (string)$answer->outcome;
         }

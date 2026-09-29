@@ -237,6 +237,9 @@ class EmailTemplateService
 
     public function sendCompletionEmail(CustomForm $form, FormAnswer $answer, ?FormPanelMember $member = null): bool
     {
+        if ((string)$answer->outcome === FormAnswer::OUTCOME_NOT_CONSENTED) {
+            return false;
+        }
         $template = $this->templateForForm($form, 'completion_email_template_id');
         if (!$template) {
             return false;
@@ -286,6 +289,9 @@ class EmailTemplateService
                 continue;
             }
             foreach ($panel->getActiveMembers()->all() as $member) {
+                if ((new ConsentService())->blocksContact((int)$member->id)) {
+                    continue;
+                }
                 $where = [
                     'form_id' => $form->id,
                     'member_id' => $member->id,

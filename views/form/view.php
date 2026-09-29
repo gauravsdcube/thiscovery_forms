@@ -501,6 +501,9 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         <?php if ($field->type === FormField::TYPE_RAND_BLOCK || $field->type === FormField::TYPE_RAND_BLOCK_END): ?>
                             <?php continue; ?>
                         <?php endif; ?>
+                        <?php if ($field->type === FormField::TYPE_CONSENT && !\humhub\modules\thiscoveryForms\services\ConsentService::active($formModel)): ?>
+                            <?php continue; ?>
+                        <?php endif; ?>
                         <?php if ($field->type === FormField::TYPE_GROUP_END): ?>
                             <?php if ($groupDepth > 0): ?>
                                 </div>

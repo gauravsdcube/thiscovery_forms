@@ -281,44 +281,45 @@ class IntegrityService
         }
 
         $flags = [];
+        $skipScores = in_array((string)$answer->outcome, [FormAnswer::OUTCOME_NOT_CONSENTED, FormAnswer::OUTCOME_SCREENED_OUT], true);
         $scores = [
             'bot' => 0.0, 'duplicate' => 0.0, 'speed' => 0.0, 'straightline' => 0.0,
             'attention' => 0.0, 'consistency' => 0.0, 'freetext' => 0.0, 'similarity' => 0.0,
         ];
 
-        if (IntegritySettings::isOn($cfg, 'bot_protection')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'bot_protection')) {
             [$scores['bot'], $botFlags] = $this->analyseBot($meta, $cfg);
             $flags = array_merge($flags, $botFlags);
         }
-        if (IntegritySettings::isOn($cfg, 'duplicate_detection')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'duplicate_detection')) {
             [$scores['duplicate'], $dupFlags] = $this->analyseDuplicate($form, $answer, $meta, $cfg);
             $flags = array_merge($flags, $dupFlags);
         }
         $values = $answer->getValuesMap();
         $shown = $this->shownFieldIds($form, $values);
         $meta->shown_question_count = count($shown);
-        if (IntegritySettings::isOn($cfg, 'speed_detection')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'speed_detection')) {
             $meta->median_seconds = $this->medianSecondsPerQuestion($form, (int)$answer->id);
             [$scores['speed'], $speedFlags] = $this->analyseSpeed($meta, $cfg);
             $flags = array_merge($flags, $speedFlags);
         }
-        if (IntegritySettings::isOn($cfg, 'straightline_detection')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'straightline_detection')) {
             [$scores['straightline'], $slFlags] = $this->analyseStraightline($form, $values, $cfg, $shown);
             $flags = array_merge($flags, $slFlags);
         }
-        if (IntegritySettings::isOn($cfg, 'attention_checks')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'attention_checks')) {
             [$scores['attention'], $attFlags] = $this->analyseAttention($form, $values, $shown);
             $flags = array_merge($flags, $attFlags);
         }
-        if (IntegritySettings::isOn($cfg, 'consistency_checks')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'consistency_checks')) {
             [$scores['consistency'], $conFlags] = $this->analyseConsistency($form, $values, $cfg);
             $flags = array_merge($flags, $conFlags);
         }
-        if (IntegritySettings::isOn($cfg, 'freetext_checks')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'freetext_checks')) {
             [$scores['freetext'], $ftFlags] = $this->analyseFreetext($form, $values, $cfg, $shown);
             $flags = array_merge($flags, $ftFlags);
         }
-        if (IntegritySettings::isOn($cfg, 'similarity_detection')) {
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'similarity_detection')) {
             [$scores['similarity'], $simFlags, $similarIds] = $this->analyseSimilarity($form, $answer, $values, $cfg);
             $flags = array_merge($flags, $simFlags);
             $meta->similar_answer_ids_json = $similarIds ? json_encode($similarIds) : null;
@@ -334,7 +335,10 @@ class IntegrityService
         $meta->similarity_score = $scores['similarity'];
         $meta->setFlags($flags);
 
-        if (IntegritySettings::isOn($cfg, 'integrity_scoring')) {
+        if ($skipScores) {
+            $meta->analysis_status = FormIntegrityMeta::ANALYSIS_EXCLUDED;
+            $meta->exclusion_reason = (string)$answer->outcome;
+        } elseif (IntegritySettings::isOn($cfg, 'integrity_scoring')) {
             $meta->overall_score = $this->overallScore($scores, $cfg);
             $autoStatus = $this->statusFromScore((float)$meta->overall_score, $scores, $cfg);
             if (!$meta->status_override) {

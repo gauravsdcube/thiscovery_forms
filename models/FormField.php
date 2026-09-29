@@ -53,6 +53,7 @@ class FormField extends ActiveRecord
     public const TYPE_GROUP_END = 'group_end';
     public const TYPE_RAND_BLOCK = 'rand_block';
     public const TYPE_RAND_BLOCK_END = 'rand_block_end';
+    public const TYPE_CONSENT = 'consent';
     public const TYPE_RICH_TEXT = 'rich_text';
     public const TYPE_HTML = 'html';
     public const TYPE_GRID_SINGLE = 'grid_single';
@@ -176,6 +177,7 @@ class FormField extends ActiveRecord
             self::TYPE_GROUP_END => Yii::t('ThiscoveryFormsModule.base', 'Group end'),
             self::TYPE_RAND_BLOCK => Yii::t('ThiscoveryFormsModule.base', 'Randomisation block'),
             self::TYPE_RAND_BLOCK_END => Yii::t('ThiscoveryFormsModule.base', 'Randomisation block end'),
+            self::TYPE_CONSENT => Yii::t('ThiscoveryFormsModule.base', 'Consent'),
             self::TYPE_RICH_TEXT => Yii::t('ThiscoveryFormsModule.base', 'Rich text section'),
             self::TYPE_HTML => Yii::t('ThiscoveryFormsModule.base', 'HTML / custom block'),
             self::TYPE_GRID_SINGLE => Yii::t('ThiscoveryFormsModule.base', 'Grid (single)'),
@@ -375,7 +377,7 @@ class FormField extends ActiveRecord
         if ($this->type === self::TYPE_HTML) {
             return (bool)$this->getHtmlConfig()['collect'];
         }
-        if ($this->type === self::TYPE_RICH_TEXT) {
+        if ($this->type === self::TYPE_RICH_TEXT || $this->type === self::TYPE_CONSENT) {
             return false;
         }
         return true;
@@ -879,6 +881,25 @@ class FormField extends ActiveRecord
             'pinLast' => array_values(array_filter(array_map('strval', is_array($cfg['pinLast'] ?? null) ? $cfg['pinLast'] : []))),
             'show' => ($show === null || $show === '') ? null : max(0, (int)$show),
             'blockKey' => trim((string)($decoded['blockKey'] ?? $cfg['blockKey'] ?? '')),
+        ];
+    }
+
+    /**
+     * @return array{document_id:int,must_read:bool,signature:string,witness:bool}
+     */
+    public function getConsentConfig(): array
+    {
+        $decoded = json_decode((string)$this->options_json, true);
+        $decoded = is_array($decoded) ? $decoded : [];
+        $signature = (string)($decoded['signature'] ?? 'typed');
+        if (!in_array($signature, ['typed', 'checkbox', 'drawn'], true)) {
+            $signature = 'typed';
+        }
+        return [
+            'document_id' => (int)($decoded['document_id'] ?? 0),
+            'must_read' => !empty($decoded['must_read']),
+            'signature' => $signature,
+            'witness' => !empty($decoded['witness']),
         ];
     }
 
@@ -2210,6 +2231,10 @@ class FormField extends ActiveRecord
             'randomise_show' => $this->getRandomiseConfig()['show'] === null ? '' : (string)$this->getRandomiseConfig()['show'],
             'randomise_pin_first' => implode(',', $this->getRandomiseConfig()['pinFirst']),
             'randomise_pin_last' => implode(',', $this->getRandomiseConfig()['pinLast']),
+            'consent_document_id' => $this->type === self::TYPE_CONSENT ? $this->getConsentConfig()['document_id'] : '',
+            'consent_must_read' => $this->type === self::TYPE_CONSENT && $this->getConsentConfig()['must_read'] ? '1' : '',
+            'consent_signature' => $this->type === self::TYPE_CONSENT ? $this->getConsentConfig()['signature'] : '',
+            'consent_witness' => $this->type === self::TYPE_CONSENT && $this->getConsentConfig()['witness'] ? '1' : '',
             'max_select' => $this->getMaxSelect(),
             'min_select' => $this->getMinSelect(),
             'min_select_all' => $this->isMinSelectAll() ? '1' : '',

@@ -85,6 +85,58 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
     <div class="cf-rich-block richtext-output" data-cf-pipe-html="<?= Html::encode($field->getRichTextContent()) ?>">
         <?= $richHtml ?>
     </div>
+<?php elseif ($field->type === FormField::TYPE_CONSENT): ?>
+    <?php
+    $consent = new \humhub\modules\thiscoveryForms\services\ConsentService();
+    $consentDoc = $consent->resolveDocument($formModel, $field, $existingAnswer ?? null);
+    $consentCfg = $field->getConsentConfig();
+    $consentItems = $consentDoc ? $consent->items((int)$consentDoc['id']) : [];
+    $consentBody = $consentDoc ? (string)$consentDoc['body_html'] : '';
+    ?>
+    <fieldset class="cf-consent" data-cf-consent="<?= (int)$field->id ?>"<?= $consentCfg['must_read'] ? ' data-cf-consent-must-read="1"' : '' ?>>
+        <legend class="cf-question__label"><?= Html::encode($field->label) ?></legend>
+        <?php if ($consentDoc): ?>
+            <div class="cf-consent__sheet" tabindex="0" role="region" aria-label="<?= Html::encode((string)$consentDoc['title']) ?>">
+                <h3><?= Html::encode((string)$consentDoc['title']) ?></h3>
+                <div class="cf-consent__body richtext-output"><?= (new HtmlSanitizer())->sanitize($consentBody) ?></div>
+                <span tabindex="0" data-cf-consent-end><?= Yii::t('ThiscoveryFormsModule.base', 'End of the information sheet') ?></span>
+            </div>
+            <?php foreach ($consentItems as $item): ?>
+                <div class="cf-consent__item">
+                    <p id="cf-consent-<?= (int)$field->id ?>-<?= Html::encode((string)$item['code']) ?>"><?= Html::encode((string)$item['label']) ?></p>
+                    <?php if (($item['input'] ?? '') === 'checkbox'): ?>
+                        <?= Html::checkbox('consent[' . (int)$field->id . '][items][' . $item['code'] . ']', false, [
+                            'value' => 'yes',
+                            'uncheck' => 'no',
+                            'aria-describedby' => 'cf-consent-' . (int)$field->id . '-' . $item['code'],
+                        ]) ?>
+                    <?php else: ?>
+                        <label><input type="radio" name="consent[<?= (int)$field->id ?>][items][<?= Html::encode((string)$item['code']) ?>]" value="yes"> <?= Yii::t('ThiscoveryFormsModule.base', 'Yes') ?></label>
+                        <label><input type="radio" name="consent[<?= (int)$field->id ?>][items][<?= Html::encode((string)$item['code']) ?>]" value="no"> <?= Yii::t('ThiscoveryFormsModule.base', 'No') ?></label>
+                    <?php endif; ?>
+                </div>
+            <?php endforeach; ?>
+            <?php if ($consentCfg['signature'] === 'checkbox'): ?>
+                <label><input type="checkbox" name="consent[<?= (int)$field->id ?>][attestation]" value="1"> <?= Yii::t('ThiscoveryFormsModule.base', 'I confirm this is my decision.') ?></label>
+                <input type="hidden" name="consent[<?= (int)$field->id ?>][signature_method]" value="checkbox">
+            <?php else: ?>
+                <label for="cf-consent-name-<?= (int)$field->id ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Type your name') ?></label>
+                <input id="cf-consent-name-<?= (int)$field->id ?>" class="form-control" name="consent[<?= (int)$field->id ?>][signature_name]" autocomplete="name">
+                <input type="hidden" name="consent[<?= (int)$field->id ?>][signature_method]" value="<?= $consentCfg['signature'] === 'drawn' ? 'drawn' : 'typed' ?>">
+                <?php if ($consentCfg['signature'] === 'drawn'): ?>
+                    <canvas class="cf-consent__draw" width="320" height="120" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Draw a signature, or type your name instead')) ?>"></canvas>
+                    <input type="hidden" name="consent[<?= (int)$field->id ?>][signature_image]" data-cf-consent-image>
+                <?php endif; ?>
+            <?php endif; ?>
+            <?php if ($consentCfg['witness']): ?>
+                <label><?= Yii::t('ThiscoveryFormsModule.base', 'Witness name') ?></label>
+                <input class="form-control" name="consent[<?= (int)$field->id ?>][witness_name]">
+                <label><?= Yii::t('ThiscoveryFormsModule.base', 'Witness role') ?></label>
+                <input class="form-control" name="consent[<?= (int)$field->id ?>][witness_role]">
+            <?php endif; ?>
+            <input type="hidden" name="consent[<?= (int)$field->id ?>][scrolled_to_end]" value="0" data-cf-consent-scrolled>
+        <?php endif; ?>
+    </fieldset>
 <?php elseif ($field->type === FormField::TYPE_HTML):
     $htmlCfg = $field->getHtmlConfig();
     $html = (new VariableSubstitutor())->substitute(

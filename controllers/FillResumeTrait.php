@@ -670,9 +670,6 @@ trait FillResumeTrait
         if ($anonymous && !$isTest) {
             $form->markGuestAnswered($ctx->wave->id ?? null, $ctx->round->id ?? null);
         }
-        if ($ctx->member && !$isTest) {
-            $ctx->member->markConsent();
-        }
         if ($form->isProject() && $answer instanceof FormAnswer && !$anonymous && !$isTest) {
             (new \humhub\modules\thiscoveryForms\services\ApprovalWorkflowService())->submitForReview($answer);
         }

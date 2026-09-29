@@ -2508,6 +2508,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         if (!$root.length) {
             return;
         }
+        $root.find('[data-cf-consent-must-read]').each(function () {
+            var box = this;
+            var scrolled = box.querySelector('[data-cf-consent-scrolled]');
+            var end = box.querySelector('[data-cf-consent-end]');
+            if (!end || !scrolled) {
+                return;
+            }
+            end.addEventListener('focus', function () {
+                scrolled.value = '1';
+            });
+        });
 
         var clearUnsavedChoicePrefill = function () {
             $root.find('.cf-choice-list, [data-cf-rating], .cf-grid, .cf-best-worst, .cf-maxdiff').each(function () {

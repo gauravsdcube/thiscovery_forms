@@ -55,13 +55,24 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <?php endif; ?>
         <?php endif; ?>
         <div class="cf-thankyou__body">
+            <?php $notConsented = Yii::$app->session->getFlash('cf-not-consented'); ?>
+            <?php $withdrawToken = (string)Yii::$app->session->get('cf-consent-withdraw', ''); ?>
+            <?php if ($withdrawToken !== ''): ?>
+                <?php Yii::$app->session->remove('cf-consent-withdraw'); ?>
+            <?php endif; ?>
+            <?php if (is_string($notConsented) && $notConsented !== ''): ?>
+                <div class="cf-thankyou__default"><p><?= nl2br(Html::encode($notConsented)) ?></p></div>
+            <?php elseif ($withdrawToken !== ''): ?>
+                <p><?= Yii::t('ThiscoveryFormsModule.base', 'Keep this withdrawal code. It is shown once: {code}', ['code' => $withdrawToken]) ?></p>
+            <?php endif; ?>
             <?php
             $screenMessage = '';
             if ($answer && (string)$answer->outcome === \humhub\modules\thiscoveryForms\models\FormAnswer::OUTCOME_SCREENED_OUT) {
                 $screenMessage = trim((string)(new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['screen_out_message']);
             }
             ?>
-            <?php if ($screenMessage !== ''): ?>
+            <?php if (is_string($notConsented) && $notConsented !== ''): ?>
+            <?php elseif ($screenMessage !== ''): ?>
                 <div class="cf-thankyou__default">
                     <p><?= nl2br(Html::encode($screenMessage)) ?></p>
                 </div>
