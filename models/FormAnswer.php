@@ -11,6 +11,7 @@ use yii\db\ActiveQuery;
  * @property int $id
  * @property int $form_id
  * @property int $status
+ * @property string $outcome
  * @property int $is_test
  * @property string|null $resume_code
  * @property string|null $resume_email
@@ -43,6 +44,11 @@ class FormAnswer extends ActiveRecord
     public const STATUS_IN_PROGRESS = 0;
     public const STATUS_COMPLETE = 1;
 
+    public const OUTCOME_COMPLETE = 'complete';
+    public const OUTCOME_SCREENED_OUT = 'screened_out';
+    public const OUTCOME_NOT_CONSENTED = 'not_consented';
+    public const OUTCOME_OVER_QUOTA = 'over_quota';
+
     public const WORKFLOW_NONE = 'none';
     public const WORKFLOW_IN_REVIEW = 'in_review';
     public const WORKFLOW_CHANGES_REQUESTED = 'changes_requested';
@@ -64,6 +70,8 @@ class FormAnswer extends ActiveRecord
             [['form_id', 'created_by', 'updated_by', 'status', 'is_test', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id', 'edition_id'], 'integer'],
             [['status'], 'default', 'value' => self::STATUS_COMPLETE],
             [['status'], 'in', 'range' => [self::STATUS_IN_PROGRESS, self::STATUS_COMPLETE]],
+            [['outcome'], 'default', 'value' => ''],
+            [['outcome'], 'in', 'range' => ['', self::OUTCOME_COMPLETE, self::OUTCOME_SCREENED_OUT, self::OUTCOME_NOT_CONSENTED, self::OUTCOME_OVER_QUOTA]],
             [['is_test'], 'default', 'value' => 0],
             [['is_test'], 'boolean'],
             [['workflow_status'], 'default', 'value' => self::WORKFLOW_NONE],
@@ -95,6 +103,19 @@ class FormAnswer extends ActiveRecord
     public function isComplete(): bool
     {
         return (int)$this->status === self::STATUS_COMPLETE;
+    }
+
+    /**
+     * A closed response that still counts as a finished questionnaire.
+     * Blank outcome is the 1.28.7 row.
+     */
+    public function countsAsComplete(): bool
+    {
+        if ((int)$this->status !== self::STATUS_COMPLETE) {
+            return false;
+        }
+        $outcome = (string)$this->outcome;
+        return $outcome === '' || $outcome === self::OUTCOME_COMPLETE;
     }
 
     public function isTest(): bool
@@ -202,6 +223,9 @@ class FormAnswer extends ActiveRecord
         if ($this->forceAnonymous) {
             $this->created_by = null;
             $this->updated_by = null;
+        }
+        if ($this->outcome === null) {
+            $this->outcome = '';
         }
         return true;
     }
