@@ -497,6 +497,14 @@ class LogicEngine
                 }
                 return false;
             }
+            if ($op === FormField::OP_BETWEEN) {
+                foreach ($list as $item) {
+                    if ($this->valueBetween($item, $expected)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
             return false;
         }
 
@@ -515,9 +523,32 @@ class LogicEngine
             case FormField::OP_LT:
             case FormField::OP_LTE:
                 return $this->compareNumeric($value, $op, $expected);
+            case FormField::OP_BETWEEN:
+                return $this->valueBetween($value, $expected);
             default:
                 return false;
         }
+    }
+
+    /**
+     * Inclusive range. The expected value is "min,max".
+     */
+    private function valueBetween(string $value, string $expected): bool
+    {
+        if ($value === '' || !is_numeric($value)) {
+            return false;
+        }
+        $parts = array_map('trim', explode(',', $expected, 2));
+        if (count($parts) !== 2 || !is_numeric($parts[0]) || !is_numeric($parts[1])) {
+            return false;
+        }
+        $low = (float)$parts[0];
+        $high = (float)$parts[1];
+        if ($low > $high) {
+            [$low, $high] = [$high, $low];
+        }
+        $number = (float)$value;
+        return $number >= $low && $number <= $high;
     }
 
     private function compareNumeric(string $value, string $op, string $expected): bool

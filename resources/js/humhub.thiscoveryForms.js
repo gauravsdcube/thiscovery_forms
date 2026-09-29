@@ -3947,6 +3947,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (op === 'contains') {
                     return list.some(function (v) { return String(v).indexOf(expected) !== -1; });
                 }
+                if (op === 'between') {
+                    return list.some(function (v) { return numberBetween(v, expected); });
+                }
                 return false;
             }
             var val = String(raw);
@@ -3979,7 +3982,35 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 return left <= right;
             }
+            if (op === 'between') {
+                return numberBetween(val, expected);
+            }
             return false;
+        };
+
+        var numberBetween = function (value, expected) {
+            var text = String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
+            if (!/^-?\d+(\.\d+)?$/.test(text)) {
+                return false;
+            }
+            var parts = String(expected || '').split(',');
+            if (parts.length < 2) {
+                return false;
+            }
+            var lowText = parts[0].replace(/^\s+|\s+$/g, '');
+            var highText = parts[1].replace(/^\s+|\s+$/g, '');
+            if (!/^-?\d+(\.\d+)?$/.test(lowText) || !/^-?\d+(\.\d+)?$/.test(highText)) {
+                return false;
+            }
+            var low = parseFloat(lowText);
+            var high = parseFloat(highText);
+            if (low > high) {
+                var swap = low;
+                low = high;
+                high = swap;
+            }
+            var number = parseFloat(text);
+            return number >= low && number <= high;
         };
 
         var pageHistory = [0];

@@ -79,6 +79,7 @@ class FormField extends ActiveRecord
     public const OP_GTE = 'gte';
     public const OP_LT = 'lt';
     public const OP_LTE = 'lte';
+    public const OP_BETWEEN = 'between';
 
     public static function tableName()
     {
@@ -196,6 +197,7 @@ class FormField extends ActiveRecord
             self::OP_GTE => Yii::t('ThiscoveryFormsModule.base', 'Greater than or equal'),
             self::OP_LT => Yii::t('ThiscoveryFormsModule.base', 'Less than'),
             self::OP_LTE => Yii::t('ThiscoveryFormsModule.base', 'Less than or equal'),
+            self::OP_BETWEEN => Yii::t('ThiscoveryFormsModule.base', 'Between (min,max)'),
         ];
     }
 
