@@ -205,7 +205,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['title'], 'string', 'max' => 255],
             [['kind'], 'default', 'value' => self::KIND_SURVEY],
             [['kind'], 'in', 'range' => array_keys(self::getKindLabels())],
-            [['description', 'thank_you_content', 'already_submitted_message', 'custom_css', 'settings_json'], 'string'],
+            [['description', 'thank_you_content', 'already_submitted_message', 'custom_css'], 'string'],
             [['custom_css'], 'validateCustomCss'],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
             [['status'], 'validatePublishedBeforeOpen'],
@@ -227,6 +227,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['folder_id'], 'default', 'value' => null],
             [['folder_id'], 'integer'],
             [['folder_id'], 'exist', 'skipOnEmpty' => true, 'targetClass' => FormFolder::class, 'targetAttribute' => 'id'],
+            [['title'], 'validateOwnedReferences', 'skipOnEmpty' => false],
             [['consensus_threshold'], 'integer', 'min' => 1, 'max' => 100],
             [['source_language', 'identity_mode'], 'string', 'max' => 32],
             [['identity_mode'], 'in', 'range' => array_keys(self::getIdentityModeLabels())],
@@ -469,6 +470,77 @@ class CustomForm extends ContentActiveRecord implements Searchable
     {
         $value = $this->getSetting('email_on_wave_open', true);
         return $value === true || $value === 1 || $value === '1';
+    }
+
+    public function containerId(): ?int
+    {
+        if ($this->isGlobal()) {
+            return null;
+        }
+        $id = (int)($this->content->contentcontainer_id ?? 0);
+        return $id > 0 ? $id : null;
+    }
+
+    /**
+     * A record with no container is global and may be used from a space.
+     * A record with a container may be used only from that same container.
+     */
+    public function referenceAllowed(?int $contentcontainerId): bool
+    {
+        $other = $contentcontainerId ? (int)$contentcontainerId : null;
+        $mine = $this->containerId();
+        if ($other === null || $other === $mine) {
+            return true;
+        }
+        return false;
+    }
+
+    private function emailTemplateAllowed(\humhub\modules\thiscoveryForms\services\EmailTemplateService $mail, int $templateId): bool
+    {
+        if ($mail->findOwned($templateId, $this->containerId())) {
+            return true;
+        }
+        return $this->containerId() !== null && (bool)$mail->findOwned($templateId, null);
+    }
+
+    public function validateOwnedReferences(): void
+    {
+        if ($this->folder_id) {
+            $folder = FormFolder::findOne((int)$this->folder_id);
+            $folderContainer = $folder && $folder->contentcontainer_id ? (int)$folder->contentcontainer_id : null;
+            if (!$folder || $folderContainer !== $this->containerId()) {
+                $this->addError('folder_id', Yii::t('ThiscoveryFormsModule.base', 'That folder is not in this space.'));
+            }
+        }
+        if ((int)$this->enrol_panel_id > 0) {
+            $panel = FormPanel::findOne((int)$this->enrol_panel_id);
+            $panelContainer = $panel && $panel->contentcontainer_id ? (int)$panel->contentcontainer_id : null;
+            if (!$panel || $panelContainer !== $this->containerId()) {
+                $this->addError('enrol_panel_id', Yii::t('ThiscoveryFormsModule.base', 'That panel is not in this space.'));
+            }
+        }
+        $templates = [
+            'invite_email_template_id',
+            'wave_email_template_id',
+            'reminder_email_template_id',
+            'completion_email_template_id',
+        ];
+        $mail = new \humhub\modules\thiscoveryForms\services\EmailTemplateService();
+        foreach ($templates as $attribute) {
+            $templateId = (int)$this->$attribute;
+            if ($templateId > 0 && !$this->emailTemplateAllowed($mail, $templateId)) {
+                $this->addError($attribute, Yii::t('ThiscoveryFormsModule.base', 'That email template is not in this space.'));
+            }
+        }
+        if ((int)$this->source_template_id > 0) {
+            $template = static::findOne((int)$this->source_template_id);
+            $templateContainer = $template && $template->content && $template->content->contentcontainer_id
+                ? (int)$template->content->contentcontainer_id
+                : null;
+            if (!$template || !$template->isTemplate() || !$this->referenceAllowed($templateContainer)) {
+                $this->addError('source_template_id', Yii::t('ThiscoveryFormsModule.base', 'That template is not available here.'));
+            }
+        }
     }
 
     public function isGlobal(): bool
@@ -1637,6 +1709,14 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
         $title = trim((string)$this->enrol_panel_title);
         $panelId = (int)$this->enrol_panel_id;
+        if ($panelId > 0) {
+            $panel = FormPanel::findOne($panelId);
+            $panelContainer = $panel && $panel->contentcontainer_id ? (int)$panel->contentcontainer_id : null;
+            if (!$panel || $panelContainer !== $this->containerId()) {
+                $panelId = 0;
+                $this->enrol_panel_id = 0;
+            }
+        }
 
         if ($mode === self::ENROL_PANEL_CREATE && !$this->isTemplate()) {
             $panel = (new PanelService())->createPanel(
@@ -1683,6 +1763,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
         $this->display = DisplaySettings::normalizeOverlay(is_array($this->display) ? $this->display : []);
         $this->setSetting('display', $this->display);
+        $mail = new \humhub\modules\thiscoveryForms\services\EmailTemplateService();
+        foreach ([
+            'invite_email_template_id',
+            'wave_email_template_id',
+            'reminder_email_template_id',
+            'completion_email_template_id',
+        ] as $attribute) {
+            if ((int)$this->$attribute > 0 && !$this->emailTemplateAllowed($mail, (int)$this->$attribute)) {
+                $this->$attribute = 0;
+            }
+        }
         $this->setSetting('invite_email_template_id', (int)$this->invite_email_template_id);
         $this->setSetting('wave_email_template_id', (int)$this->wave_email_template_id);
         $this->setSetting('reminder_email_template_id', (int)$this->reminder_email_template_id);

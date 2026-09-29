@@ -52,8 +52,9 @@ trait ProgrammeTrait
         $panelId = (int)Yii::$app->request->post('panel_id', 0);
         if ($panelId) {
             $panel = FormPanel::findOne($panelId);
-            if (!$panel) {
-                throw new NotFoundHttpException();
+            $panelContainer = $panel && $panel->contentcontainer_id ? (int)$panel->contentcontainer_id : null;
+            if (!$panel || $panelContainer !== $form->containerId()) {
+                throw new ForbiddenHttpException();
             }
         } else {
             $panel = $panelService->ensurePanel($form);

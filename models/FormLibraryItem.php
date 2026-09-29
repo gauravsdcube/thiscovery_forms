@@ -88,6 +88,15 @@ class FormLibraryItem extends ActiveRecord
         return empty($this->contentcontainer_id);
     }
 
+    public function isAvailableIn(?int $containerId): bool
+    {
+        $mine = $this->contentcontainer_id ? (int)$this->contentcontainer_id : null;
+        if (!$containerId) {
+            return $mine === null;
+        }
+        return $mine === null || $mine === $containerId;
+    }
+
     public function canManage($user = null): bool
     {
         $user = $user ?: Yii::$app->user->getIdentity();

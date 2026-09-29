@@ -499,7 +499,7 @@ trait StudioTrait
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
         $item = FormLibraryItem::findOne((int)$itemId);
-        if (!$item) {
+        if (!$item || !$item->isAvailableIn($this->studioContainerId())) {
             throw new NotFoundHttpException();
         }
 
