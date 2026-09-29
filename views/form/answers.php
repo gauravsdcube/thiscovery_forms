@@ -105,10 +105,12 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
                 <ul class="dropdown-menu dropdown-menu-end">
                     <?php foreach (\humhub\modules\thiscoveryForms\services\ExportService::headerModeLabels() as $mode => $label): ?>
                         <li>
-                            <a class="dropdown-item<?= $headerMode === $mode ? ' active' : '' ?>"
-                               href="<?= Html::encode(Url::toExport($formModel, array_merge($exportParams, ['header_mode' => $mode]))) ?>">
-                                <?= Html::encode($label) ?>
-                            </a>
+                            <?= Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'd-inline']) ?>
+                            <?php foreach (array_merge($exportParams, ['header_mode' => $mode]) as $key => $value): ?>
+                                <?= Html::hiddenInput((string)$key, (string)$value) ?>
+                            <?php endforeach; ?>
+                            <?= Html::submitButton($label, ['class' => 'dropdown-item' . ($headerMode === $mode ? ' active' : '')]) ?>
+                            <?= Html::endForm() ?>
                         </li>
                     <?php endforeach; ?>
                 </ul>
@@ -176,9 +178,12 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
         <?php if ($hasFilters): ?>
             <a class="btn btn-link btn-sm" href="<?= Html::encode($clearUrl) ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Clear') ?></a>
         <?php endif; ?>
-        <a class="btn btn-link btn-sm" href="<?= Html::encode(Url::toExport($formModel, $exportParams + ['include_excluded' => 1])) ?>">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Export including excluded') ?>
-        </a>
+        <?= Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'd-inline']) ?>
+        <?php foreach ($exportParams + ['include_excluded' => 1] as $key => $value): ?>
+            <?= Html::hiddenInput((string)$key, (string)$value) ?>
+        <?php endforeach; ?>
+        <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Export including excluded'), ['class' => 'btn btn-link btn-sm']) ?>
+        <?= Html::endForm() ?>
     </form>
 
     <?php if (!$dataProvider->getCount()): ?>

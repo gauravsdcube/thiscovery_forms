@@ -3,7 +3,6 @@
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\services\ExportSettings;
-use humhub\widgets\bootstrap\Button;
 use yii\helpers\Html;
 
 /** @var CustomForm $formModel */
@@ -18,12 +17,13 @@ $scrub = ExportSettings::isPiiScrub($formModel);
 $label = $scrub
     ? Yii::t('ThiscoveryFormsModule.base', 'Export CSV (PII scrubbed)')
     : Yii::t('ThiscoveryFormsModule.base', 'Export CSV');
-$btn = $style === 'primary' ? Button::primary($label) : Button::info($label);
-$btn = $btn->link(Url::toExport($formModel, $exportParams))->sm()->loader(false);
-if ($showIcon) {
-    $btn = $btn->icon('download');
+$btnClass = 'btn btn-sm ' . ($style === 'primary' ? 'btn-primary' : 'btn-info');
+echo Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'd-inline']);
+foreach ($exportParams as $key => $value) {
+    echo Html::hiddenInput((string)$key, (string)$value);
 }
-echo $btn;
+echo Html::submitButton($label, ['class' => $btnClass]);
+echo Html::endForm();
 if ($scrub) {
     $settingsUrl = Url::toEdit($formModel, ['tab' => 'settings', 'section' => 'export']);
     echo ' ' . Html::a(

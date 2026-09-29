@@ -195,6 +195,9 @@ class FormController extends ContentContainerController
         $this->applyFillLayout($form);
         $preview = $this->isPreviewMode($form);
         $this->applyEditionForFill($form, $existing, !empty($extra['editingAnswer']) ? true : null);
+        if ($blocked = $this->refuseUnavailableEdition($form)) {
+            return $blocked;
+        }
         $submit->form = $form;
         $openCaptchaError = null;
         if (!$preview) {
@@ -397,11 +400,9 @@ class FormController extends ContentContainerController
     public function actionExport($id)
     {
         $form = $this->findForm($id);
-        if (!$form->canViewAnswers()) {
-            throw new ForbiddenHttpException();
-        }
-
-        $csv = (new ExportService())->toCsv($form, Yii::$app->request->queryParams);
+        \humhub\modules\thiscoveryForms\services\ExportAudit::authorize($form);
+        $csv = (new ExportService())->toCsv($form, Yii::$app->request->post());
+        \humhub\modules\thiscoveryForms\services\ExportAudit::record($form, $csv);
         $filename = ExportSettings::downloadFilename($form);
 
         Yii::$app->response->format = Response::FORMAT_RAW;

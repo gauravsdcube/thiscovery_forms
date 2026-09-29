@@ -12,6 +12,7 @@ use Yii;
 class ExportSettings
 {
     public const KEY_ANSWER_ID = 'meta.answer_id';
+    public const KEY_EDITION_ID = 'meta.edition_id';
     public const KEY_STATUS = 'meta.status';
     public const KEY_USER = 'meta.user';
     public const KEY_SUBMITTED_AT = 'meta.submitted_at';
@@ -58,7 +59,16 @@ class ExportSettings
 
     public static function isPiiScrub(CustomForm $form): bool
     {
-        return self::get($form)['pii_scrub'];
+        $export = $form->getSetting('export', []);
+        if (is_array($export) && array_key_exists('pii_scrub', $export)) {
+            return !empty($export['pii_scrub']);
+        }
+        foreach ($form->getAllFields()->all() as $field) {
+            if ($field->collectsAnswer() && $field->isContainsPii()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -174,6 +184,7 @@ class ExportSettings
         };
 
         $pushMeta(self::KEY_ANSWER_ID, Yii::t('ThiscoveryFormsModule.base', 'Answer ID'));
+        $pushMeta(self::KEY_EDITION_ID, Yii::t('ThiscoveryFormsModule.base', 'Edition ID'));
         $pushMeta(self::KEY_STATUS, Yii::t('ThiscoveryFormsModule.base', 'Status'));
         $pushMeta(self::KEY_USER, Yii::t('ThiscoveryFormsModule.base', 'User'), true);
         $pushMeta(self::KEY_SUBMITTED_AT, Yii::t('ThiscoveryFormsModule.base', 'Submitted at'));
