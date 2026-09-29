@@ -185,7 +185,7 @@ class IntegrityService
     public function gateSubmit(CustomForm $form, array $post, FillContext $ctx): ?string
     {
         $cfg = $this->settings($form);
-        $accessError = $this->gateAccess($form, $cfg, $ctx);
+        $accessError = $this->gateAccess($form, $cfg, $ctx, true);
         if ($accessError) {
             $this->discardCaptchaResult($form);
             return $accessError;
@@ -221,9 +221,11 @@ class IntegrityService
     public function onComplete(CustomForm $form, FormAnswer $answer, array $post, FillContext $ctx): ?FormIntegrityMeta
     {
         $cfg = $this->settings($form);
-        $rawToken = trim((string)Yii::$app->request->post('access_token', Yii::$app->request->get('access', Yii::$app->request->post('panel_token', Yii::$app->request->get('token', '')))));
+        $rawToken = $ctx->accessToken;
         if (!IntegritySettings::isOn($cfg, 'enabled')) {
-            $this->consumeAccessToken($form, $rawToken, $cfg);
+            if (!$ctx->accessTokenConsumed) {
+                $ctx->accessTokenConsumed = $this->consumeAccessToken($form, $rawToken);
+            }
             Yii::$app->session->remove(self::START_PREFIX . (int)$form->id);
             Yii::$app->session->remove($this->captchaResultKey($form));
             return null;
@@ -368,7 +370,9 @@ class IntegrityService
             }
         }
 
-        $this->consumeAccessToken($form, $rawToken, $cfg);
+        if (!$ctx->accessTokenConsumed) {
+            $ctx->accessTokenConsumed = $this->consumeAccessToken($form, $rawToken);
+        }
         $meta->save(false);
         $this->clearCaptchaRequired($form);
         $this->clearOpenCaptchaRequired($form);
@@ -661,23 +665,28 @@ class IntegrityService
         return ['tokens' => $created, 'plaintext' => $plain];
     }
 
-    private function gateAccess(CustomForm $form, array $cfg, FillContext $ctx): ?string
+    private function gateAccess(CustomForm $form, array $cfg, FillContext $ctx, bool $consume = false): ?string
     {
         $mode = (string)($cfg['access_mode'] ?? IntegritySettings::ACCESS_PUBLIC);
         $user = Yii::$app->user;
         if ($mode === IntegritySettings::ACCESS_PUBLIC) {
             return null;
         }
-        $raw = trim((string)Yii::$app->request->get('access', Yii::$app->request->post('access_token', Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')))));
         if ($mode === IntegritySettings::ACCESS_UNIQUE) {
             if ($ctx->tokenAccess && $ctx->member) {
                 return null;
             }
-            $token = $this->findAccessToken($form, $raw);
-            if ($token && $token->isUsable()) {
-                return null;
+            $token = $this->findAccessToken($form, $ctx->accessToken);
+            if (!$token || !$token->isUsable()) {
+                return Yii::t('ThiscoveryFormsModule.base', 'This survey needs a unique invitation link.');
             }
-            return Yii::t('ThiscoveryFormsModule.base', 'This survey needs a unique invitation link.');
+            if ($consume) {
+                if (!$this->consumeAccessToken($form, $ctx->accessToken)) {
+                    return Yii::t('ThiscoveryFormsModule.base', 'This survey needs a unique invitation link.');
+                }
+                $ctx->accessTokenConsumed = true;
+            }
+            return null;
         }
         if ($mode === IntegritySettings::ACCESS_LOGGED_IN || $mode === IntegritySettings::ACCESS_RESTRICTED || $mode === IntegritySettings::ACCESS_EMAIL) {
             if ($user->isGuest) {
@@ -1380,18 +1389,24 @@ class IntegrityService
         return (int)round(((int)$rows[$mid - 1] + (int)$rows[$mid]) / 2);
     }
 
-    private function consumeAccessToken(CustomForm $form, string $raw, array $cfg): void
+    public function consumeAccessToken(CustomForm $form, string $raw): bool
     {
+        $raw = trim($raw);
         if ($raw === '') {
-            return;
+            return false;
         }
-        $token = $this->findAccessToken($form, $raw);
-        if (!$token) {
-            return;
-        }
-        $token->use_count = (int)$token->use_count + 1;
-        $token->last_used_at = date('Y-m-d H:i:s');
-        $token->save(false);
+        $now = date('Y-m-d H:i:s');
+        $updated = Yii::$app->db->createCommand()->update('{{%custom_form_access_token}}', [
+            'use_count' => new \yii\db\Expression('use_count + 1'),
+            'last_used_at' => $now,
+        ], [
+            'and',
+            ['form_id' => (int)$form->id],
+            ['token_hash' => IntegritySettings::hashValue('tok:' . $raw)],
+            ['<', 'use_count', new \yii\db\Expression('max_uses')],
+            ['or', ['expires_at' => null], ['>=', 'expires_at', $now]],
+        ])->execute();
+        return $updated > 0;
     }
 
     private function answerSignature(CustomForm $form, array $values): string

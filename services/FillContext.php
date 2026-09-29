@@ -23,6 +23,8 @@ class FillContext
     /** @var int[] */
     public array $frozenFieldIds = [];
     public bool $tokenAccess = false;
+    public string $accessToken = '';
+    public bool $accessTokenConsumed = false;
     public ?string $blockReason = null;
 
     public function __construct(CustomForm $form)

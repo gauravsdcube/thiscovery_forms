@@ -13,6 +13,7 @@ class FillContextService
     {
         $ctx = new FillContext($form);
         $ctx->language = (new TranslationService())->resolve($form);
+        $ctx->accessToken = self::readAccessToken();
 
         $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
         $panel = new PanelService();
@@ -27,6 +28,19 @@ class FillContextService
         }
 
         return $ctx;
+    }
+
+    /**
+     * Invitation links use ?access=. The fill form posts that value back as
+     * access_token. Panel member tokens are a different parameter.
+     */
+    public static function readAccessToken(): string
+    {
+        $access = trim((string)Yii::$app->request->get('access', ''));
+        if ($access !== '') {
+            return $access;
+        }
+        return trim((string)Yii::$app->request->post('access_token', ''));
     }
 
     private function resolveWaves(FillContext $ctx, PanelService $panel, string $token): void
