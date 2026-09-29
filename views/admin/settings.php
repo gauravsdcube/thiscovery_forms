@@ -70,6 +70,18 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         </div>
 
         <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn randomisation on before the server shuffles pages, questions, or options, or assigns an arm.') ?>
+        </p>
+        <div class="checkbox">
+            <label>
+                <?= Html::checkbox('ModuleSettings[randomisationEnabled]', !empty($model->randomisationEnabled), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('randomisationEnabled')) ?>
+            </label>
+        </div>
+
+        <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Create from brief / document') ?></h4>
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Lets creators start a Draft survey from a pasted brief or a Word/PDF questionnaire. LLM assist is optional; when enabled, brief text may be sent to the configured provider. Usage is logged with estimated cost (warnings only — no hard spend caps yet).') ?>

@@ -2,6 +2,15 @@
 
 All notable changes to this module are documented in this file.
 
+## Unreleased (1.29 randomisation)
+
+The module version stays 1.28.7 until the 1.29.0 release. Randomisation is off unless an administrator turns it on and the form turns it on.
+
+- Server-side shuffle, rotate, and show-N for options, questions in a group, and pages inside a randomisation block. The order is stored on the response. A later view uses that order, including after the feature is turned off for a response that already has one.
+- Arm assignment: simple weighted, block, least filled, and stratified block. Definitions live on the form. The assigned code and name are copied onto the response. Test responses are not assigned. A fully anonymous form cannot stratify on a panel attribute.
+- Screened-out closes the response and is not counted as a completed questionnaire.
+- Export adds the outcome, the arm, and the stored orders. The dashboard can download a codebook and an allocation log.
+
 ## 1.28.7 (September 29, 2026)
 
 1.28.7 follows 1.28.6. Migrations are unchanged.

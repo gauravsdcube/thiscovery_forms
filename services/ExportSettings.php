@@ -14,6 +14,12 @@ class ExportSettings
     public const KEY_ANSWER_ID = 'meta.answer_id';
     public const KEY_EDITION_ID = 'meta.edition_id';
     public const KEY_STATUS = 'meta.status';
+    public const KEY_OUTCOME = 'meta.outcome';
+    public const KEY_ARM_CODE = 'meta.arm_code';
+    public const KEY_ARM_NAME = 'meta.arm_name';
+    public const KEY_ARM_METHOD = 'meta.arm_method';
+    public const KEY_ARM_ASSIGNED_AT = 'meta.arm_assigned_at';
+    public const KEY_ARM_STRATUM = 'meta.arm_stratum';
     public const KEY_USER = 'meta.user';
     public const KEY_SUBMITTED_AT = 'meta.submitted_at';
     public const KEY_UPDATED_AT = 'meta.updated_at';
@@ -186,6 +192,12 @@ class ExportSettings
         $pushMeta(self::KEY_ANSWER_ID, Yii::t('ThiscoveryFormsModule.base', 'Answer ID'));
         $pushMeta(self::KEY_EDITION_ID, Yii::t('ThiscoveryFormsModule.base', 'Edition ID'));
         $pushMeta(self::KEY_STATUS, Yii::t('ThiscoveryFormsModule.base', 'Status'));
+        $pushMeta(self::KEY_OUTCOME, Yii::t('ThiscoveryFormsModule.base', 'Outcome'));
+        $pushMeta(self::KEY_ARM_CODE, 'arm_code');
+        $pushMeta(self::KEY_ARM_NAME, 'arm_name');
+        $pushMeta(self::KEY_ARM_METHOD, 'arm_method');
+        $pushMeta(self::KEY_ARM_ASSIGNED_AT, 'arm_assigned_at');
+        $pushMeta(self::KEY_ARM_STRATUM, 'arm_stratum');
         $pushMeta(self::KEY_USER, Yii::t('ThiscoveryFormsModule.base', 'User'), true);
         $pushMeta(self::KEY_SUBMITTED_AT, Yii::t('ThiscoveryFormsModule.base', 'Submitted at'));
         $pushMeta(self::KEY_UPDATED_AT, Yii::t('ThiscoveryFormsModule.base', 'Updated at'));
@@ -203,6 +215,23 @@ class ExportSettings
         if ($form->isConsensus()) {
             $pushMeta(self::KEY_ROUND, Yii::t('ThiscoveryFormsModule.base', 'Round'));
             $pushMeta(self::KEY_WEIGHT, Yii::t('ThiscoveryFormsModule.base', 'Weight'));
+        }
+        if (RandomisationService::formEnabled($form)) {
+            foreach ($form->getAllFields()->all() as $field) {
+                if ($field->isRandomizeOptions()) {
+                    $key = trim((string)$field->variable) ?: ('q' . (int)$field->id);
+                    $pushMeta('rand.' . $key . '.order', 'rand.' . $key . '.order');
+                }
+                if ($field->type === FormField::TYPE_QUESTION_GROUP && $field->getRandomiseConfig()['enabled']) {
+                    $key = trim((string)$field->variable) ?: ('group' . (int)$field->id);
+                    $pushMeta('rand.' . $key . '.order', 'rand.' . $key . '.order');
+                    $pushMeta('rand.' . $key . '.shown', 'rand.' . $key . '.shown');
+                }
+                if ($field->type === FormField::TYPE_RAND_BLOCK) {
+                    $key = $field->getRandomiseConfig()['blockKey'] ?: ('block' . (int)$field->id);
+                    $pushMeta('rand.' . $key . '.order', 'rand.' . $key . '.order');
+                }
+            }
         }
 
         $svc = new ExportService();

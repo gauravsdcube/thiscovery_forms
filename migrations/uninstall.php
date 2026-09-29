@@ -6,6 +6,11 @@ class uninstall extends Migration
 {
     public function up()
     {
+        $this->dropTable('custom_form_arm_override');
+        $this->dropTable('custom_form_arm_assignment');
+        $this->dropTable('custom_form_arm_allocation');
+        $this->dropTable('custom_form_presentation');
+        $this->dropTable('custom_form_rotate_seq');
         $this->dropTable('custom_form_llm_usage');
         $this->dropTable('custom_form_theme');
         $this->dropTable('custom_form_access_token');

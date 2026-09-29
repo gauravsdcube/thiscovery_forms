@@ -25,6 +25,12 @@ class ExportService
 
     public function toCsv(CustomForm $form, array $params = []): string
     {
+        if (!empty($params['codebook'])) {
+            return $this->codebookCsv($form);
+        }
+        if (!empty($params['allocation'])) {
+            return $this->allocationCsv($form);
+        }
         $params['forExport'] = 1;
         [$query] = AnswerListService::query($form, $params);
         $query->with(['answerFields', 'user', 'wave', 'round', 'panelMember', 'integrityMeta']);
@@ -123,6 +129,7 @@ class ExportService
             ExportSettings::KEY_ANSWER_ID => (string)$answer->id,
             ExportSettings::KEY_EDITION_ID => $answer->edition_id ? (string)$answer->edition_id : '',
             ExportSettings::KEY_STATUS => $status,
+            ExportSettings::KEY_OUTCOME => (string)$answer->outcome,
             ExportSettings::KEY_USER => (string)$answer->getSubmitterDisplayName($form),
             ExportSettings::KEY_SUBMITTED_AT => (string)$answer->created_at,
             ExportSettings::KEY_UPDATED_AT => (string)$answer->updated_at,
@@ -144,6 +151,26 @@ class ExportService
         if ($form->isConsensus()) {
             $cells[ExportSettings::KEY_ROUND] = $answer->round ? $answer->round->getDisplayTitle() : '';
             $cells[ExportSettings::KEY_WEIGHT] = (string)$answer->weight;
+        }
+        $rand = new RandomisationService();
+        $assigned = $rand->assignment($answer);
+        $cells[ExportSettings::KEY_ARM_CODE] = (string)($assigned['arm_code'] ?? '');
+        $cells[ExportSettings::KEY_ARM_NAME] = (string)($assigned['arm_name'] ?? '');
+        $cells[ExportSettings::KEY_ARM_METHOD] = (string)($assigned['method'] ?? '');
+        $cells[ExportSettings::KEY_ARM_ASSIGNED_AT] = (string)($assigned['assigned_at'] ?? '');
+        $cells[ExportSettings::KEY_ARM_STRATUM] = (string)($assigned['stratum_key'] ?? '');
+        $orders = $rand->orders($answer);
+        foreach (['options', 'questions', 'pages', 'shown'] as $bucket) {
+            foreach ($orders[$bucket] as $key => $list) {
+                $suffix = $bucket === 'shown' ? 'shown' : 'order';
+                if ($bucket === 'questions' && $suffix === 'order') {
+                    $cells['rand.' . $key . '.order'] = implode('|', array_map('strval', $list));
+                } elseif ($bucket === 'shown') {
+                    $cells['rand.' . $key . '.shown'] = implode('|', array_map('strval', $list));
+                } elseif ($bucket !== 'questions') {
+                    $cells['rand.' . $key . '.order'] = implode('|', array_map('strval', $list));
+                }
+            }
         }
         foreach ($fields as $field) {
             $val = $map[$field->id] ?? '';
@@ -185,6 +212,56 @@ class ExportService
             $header .= ' (' . Yii::t('ThiscoveryFormsModule.base', 'removed') . ')';
         }
         return $header;
+    }
+
+    public function codebookCsv(CustomForm $form): string
+    {
+        $fh = fopen('php://temp', 'r+');
+        fputcsv($fh, ['variable', 'label', 'type', 'codes', 'notes']);
+        foreach ($form->getAllFields()->all() as $field) {
+            if (!$field->collectsAnswer() && !in_array($field->type, [FormField::TYPE_RAND_BLOCK, FormField::TYPE_QUESTION_GROUP], true)) {
+                continue;
+            }
+            $codes = [];
+            foreach ($field->getChoicePairs() as $pair) {
+                $codes[] = $pair['code'] . '=' . $pair['label'];
+            }
+            fputcsv($fh, [
+                trim((string)$field->variable),
+                trim(strip_tags((string)$field->label)),
+                (string)$field->type,
+                implode('; ', $codes),
+                '',
+            ]);
+        }
+        $rand = new RandomisationService();
+        foreach ($rand->config($form)['arms'] as $arm) {
+            fputcsv($fh, ['arm', (string)$arm['name'], 'arm', (string)$arm['code'] . '=' . (string)$arm['weight'], '']);
+        }
+        fputcsv($fh, ['outcome', 'Response outcome', 'meta', 'complete; screened_out; not_consented; over_quota', 'Blank means the 1.28 status column applies.']);
+        rewind($fh);
+        $csv = stream_get_contents($fh);
+        fclose($fh);
+        return $csv === false ? '' : $csv;
+    }
+
+    public function allocationCsv(CustomForm $form): string
+    {
+        $fh = fopen('php://temp', 'r+');
+        fputcsv($fh, ['arm_code', 'arm_name', 'stratum', 'assigned', 'completed']);
+        foreach ((new RandomisationService())->allocationSummary($form) as $row) {
+            fputcsv($fh, [
+                $row['arm_code'],
+                $row['arm_name'],
+                $row['stratum_key'],
+                $row['assigned'],
+                $row['completed'],
+            ]);
+        }
+        rewind($fh);
+        $csv = stream_get_contents($fh);
+        fclose($fh);
+        return $csv === false ? '' : $csv;
     }
 
     private function formatCell($val): string

@@ -105,12 +105,14 @@ class DashboardService
     {
         $formId = (int)$form->id;
         $completeQ = FormAnswer::find()->alias('a')
-            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0]);
+            ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]]);
         FormIntegrityMeta::scopeIncludedInAnalysis($completeQ);
         $totalAnswers = (int)(clone $completeQ)->count();
 
         $uniqueQ = FormAnswer::find()->alias('a')
             ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]])
             ->select('a.created_by')
             ->distinct();
         FormIntegrityMeta::scopeIncludedInAnalysis($uniqueQ);
@@ -118,6 +120,7 @@ class DashboardService
 
         $last7Q = FormAnswer::find()->alias('a')
             ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]])
             ->andWhere(['>=', 'a.created_at', date('Y-m-d H:i:s', strtotime('-7 days'))]);
         FormIntegrityMeta::scopeIncludedInAnalysis($last7Q);
         $answersLast7 = (int)$last7Q->count();
@@ -144,6 +147,7 @@ class DashboardService
             ->from(['af' => FormAnswerField::tableName()])
             ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
             ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
+            ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]])
             ->andWhere(['af.field_id' => $fieldIds ?: [0]])
             ->andWhere(['and',
                 ['IS NOT', 'af.value', null],
@@ -174,6 +178,7 @@ class DashboardService
             'fieldResponseRates' => $this->getFieldResponseRates($form, $totalAnswers),
             'waves' => $form->usesWaves() ? $this->getWaveStats($form) : [],
             'rounds' => $form->isConsensus() ? $this->getRoundStats($form) : [],
+            'arms' => (new RandomisationService())->allocationSummary($form),
         ];
     }
 

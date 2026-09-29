@@ -44,6 +44,8 @@ $palette = [
     ['type' => FormField::TYPE_HTML, 'icon' => 'fa-code', 'group' => 'content'],
     ['type' => FormField::TYPE_PAGE_BREAK, 'icon' => 'fa-files-o', 'group' => 'content'],
     ['type' => FormField::TYPE_QUESTION_GROUP, 'icon' => 'fa-object-group', 'group' => 'content'],
+    ['type' => FormField::TYPE_RAND_BLOCK, 'icon' => 'fa-random', 'group' => 'content'],
+    ['type' => FormField::TYPE_RAND_BLOCK_END, 'icon' => 'fa-random', 'group' => 'content'],
     ['type' => FormField::TYPE_TEXT, 'icon' => 'fa-font', 'group' => 'input'],
     ['type' => FormField::TYPE_TEXTAREA, 'icon' => 'fa-align-left', 'group' => 'input'],
     ['type' => FormField::TYPE_NUMBER, 'icon' => 'fa-hashtag', 'group' => 'input'],

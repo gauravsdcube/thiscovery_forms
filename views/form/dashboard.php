@@ -61,6 +61,20 @@ JS
                     'style' => 'info',
                     'showIcon' => false,
                 ]) ?>
+                <?= $this->render('_export_csv_button', [
+                    'formModel' => $formModel,
+                    'exportParams' => ['codebook' => 1],
+                    'style' => 'info',
+                    'showIcon' => false,
+                    'label' => Yii::t('ThiscoveryFormsModule.base', 'Codebook'),
+                ]) ?>
+                <?= $this->render('_export_csv_button', [
+                    'formModel' => $formModel,
+                    'exportParams' => ['allocation' => 1],
+                    'style' => 'info',
+                    'showIcon' => false,
+                    'label' => Yii::t('ThiscoveryFormsModule.base', 'Allocation log'),
+                ]) ?>
             <?php else: ?>
                 <span class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Shared dashboard') ?></span>
             <?php endif; ?>
@@ -103,6 +117,32 @@ JS
             <div class="cf-stat-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Avg. field completion') ?></div>
         </div>
     </div>
+
+    <?php if (!empty($stats['arms'])): ?>
+        <div class="cf-dash-panel">
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Arms') ?></h3>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Arm') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Stratum') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Assigned') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Completed') ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($stats['arms'] as $arm): ?>
+                    <tr>
+                        <td><?= Html::encode($arm['arm_name'] !== '' ? $arm['arm_name'] : $arm['arm_code']) ?></td>
+                        <td><?= Html::encode((string)$arm['stratum_key']) ?></td>
+                        <td><?= (int)$arm['assigned'] ?></td>
+                        <td><?= (int)$arm['completed'] ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 
     <?php if (!empty($stats['waves'])): ?>
         <div class="cf-dash-panel">

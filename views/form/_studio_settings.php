@@ -106,6 +106,60 @@ $activeSection = $activeSection ?? 'basics';
                         <?= Html::activeDropDownList($formModel, 'answers_visibility', CustomForm::getAnswersVisibilityLabels(), ['class' => 'form-control']) ?>
                     </div>
                 </div>
+                <?php $rand = new \humhub\modules\thiscoveryForms\services\RandomisationService(); ?>
+                <input type="hidden" name="randomisation_present" value="1">
+                <div class="row g-3 mt-2">
+                    <div class="col-md-12">
+                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h4>
+                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned randomisation on for the module. The server draws the order and the arm, and stores both on the response. Guests do not share an order.') ?></p>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use randomisation on this form') ?></label>
+                        <?= Html::dropDownList('randomisation_enabled', $rand->formEnabled($formModel) ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Arm method') ?></label>
+                        <?= Html::dropDownList('randomisation_method', $rand->config($formModel)['method'], [
+                            'simple' => Yii::t('ThiscoveryFormsModule.base', 'Simple weighted'),
+                            'block' => Yii::t('ThiscoveryFormsModule.base', 'Block'),
+                            'least_filled' => Yii::t('ThiscoveryFormsModule.base', 'Least filled'),
+                            'stratified' => Yii::t('ThiscoveryFormsModule.base', 'Stratified block'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-2 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Block size') ?></label>
+                        <?= Html::textInput('randomisation_block_size', (string)$rand->config($formModel)['block_size'], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-6 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Arms') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'One arm per line: code|name|weight. Example: usual|Usual leaflet|1')]) ?>
+                        <?= Html::textarea('randomisation_arms', $rand->armsText($formModel), ['class' => 'form-control', 'rows' => 4]) ?>
+                    </div>
+                    <div class="col-md-6 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stratify by') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'One factor per line: field:variable or panel:attribute. A fully anonymous form cannot use a panel attribute.')]) ?>
+                        <?= Html::textarea('randomisation_strata', $rand->strataText($formModel), ['class' => 'form-control', 'rows' => 4]) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign') ?></label>
+                        <?= Html::dropDownList('randomisation_assign', $rand->config($formModel)['assign'], [
+                            'start' => Yii::t('ThiscoveryFormsModule.base', 'When the response starts'),
+                            'after_page' => Yii::t('ThiscoveryFormsModule.base', 'After a page'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Page key') ?></label>
+                        <?= Html::textInput('randomisation_assign_page', $rand->config($formModel)['assign_page'], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-12 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Screened-out message') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Shown when a question uses “End as screened out”. That response is closed and is not counted as a completed questionnaire.')]) ?>
+                        <?= Html::textInput('screen_out_message', $rand->config($formModel)['screen_out_message'], ['class' => 'form-control']) ?>
+                    </div>
+                </div>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'end' ? ' is-active' : '' ?>" data-cf-settings-pane="end" role="tabpanel"<?= $activeSection === 'end' ? '' : ' hidden' ?>>

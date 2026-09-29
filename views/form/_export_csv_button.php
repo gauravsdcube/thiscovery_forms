@@ -9,14 +9,15 @@ use yii\helpers\Html;
 /** @var array $exportParams */
 /** @var string $style info|primary */
 /** @var bool $showIcon */
+/** @var string|null $label */
 
 $exportParams = $exportParams ?? [];
 $style = $style ?? 'info';
 $showIcon = $showIcon ?? false;
 $scrub = ExportSettings::isPiiScrub($formModel);
-$label = $scrub
+$label = $label ?? ($scrub
     ? Yii::t('ThiscoveryFormsModule.base', 'Export CSV (PII scrubbed)')
-    : Yii::t('ThiscoveryFormsModule.base', 'Export CSV');
+    : Yii::t('ThiscoveryFormsModule.base', 'Export CSV'));
 $btnClass = 'btn btn-sm ' . ($style === 'primary' ? 'btn-primary' : 'btn-info');
 echo Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'd-inline']);
 foreach ($exportParams as $key => $value) {

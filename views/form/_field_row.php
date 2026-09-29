@@ -243,6 +243,39 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
             </div>
         </div>
 
+        <?php $randCfg = $field->getRandomiseConfig(); ?>
+        <?php $showRand = in_array($type, [FormField::TYPE_QUESTION_GROUP, FormField::TYPE_RAND_BLOCK], true); ?>
+        <div class="row g-3 mt-1<?= $showRand ? '' : ' d-none' ?>">
+            <div class="col-md-12">
+                <p class="cf-hint text-muted mb-1"><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation is decided on the server and stored with the response. A block cannot send people to a page outside the block.') ?></p>
+            </div>
+            <?php if ($type === FormField::TYPE_RAND_BLOCK): ?>
+            <div class="col-md-4">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Block key') ?></label>
+                <?= Html::textInput($namePrefix . '[block_key]', $randCfg['blockKey'], ['class' => 'form-control', 'placeholder' => 'leaflet']) ?>
+            </div>
+            <?php else: ?>
+            <div class="col-md-4">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Randomise the questions in this group') ?></label>
+                <?= Html::dropDownList($namePrefix . '[randomise_enabled]', $randCfg['enabled'] ? '1' : '', [
+                    '' => Yii::t('ThiscoveryFormsModule.base', 'No'),
+                    '1' => Yii::t('ThiscoveryFormsModule.base', 'Yes'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-2">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Show') ?></label>
+                <?= Html::textInput($namePrefix . '[randomise_show]', $randCfg['show'] === null ? '' : (string)$randCfg['show'], ['class' => 'form-control', 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'all')]) ?>
+            </div>
+            <?php endif; ?>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Method') ?></label>
+                <?= Html::dropDownList($namePrefix . '[randomise_method]', $randCfg['method'], [
+                    'shuffle' => Yii::t('ThiscoveryFormsModule.base', 'Shuffle'),
+                    'rotate' => Yii::t('ThiscoveryFormsModule.base', 'Rotate'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+        </div>
+
         <div class="row g-3 mt-1<?= $type === FormField::TYPE_NUMBER ? '' : ' d-none' ?>" data-cf-number-panel>
             <div class="col-md-4">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Minimum') ?>
