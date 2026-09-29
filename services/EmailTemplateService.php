@@ -75,7 +75,7 @@ class EmailTemplateService
     public function renderPart(string $content, array $vars): string
     {
         $html = EditorHtml::toHtml($content);
-        $html = $this->replaceVars($html, $vars);
+        $html = $this->replaceVars($html, $vars, true);
         return FormEmailLayout::emailSafeHtml($html);
     }
 
@@ -88,11 +88,14 @@ class EmailTemplateService
     /**
      * @param array<string,string> $vars
      */
-    public function replaceVars(string $text, array $vars): string
+    public function replaceVars(string $text, array $vars, bool $escapeHtml = false): string
     {
         $map = [];
         foreach ($vars as $key => $value) {
             $value = (string)$value;
+            if ($escapeHtml) {
+                $value = htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            }
             $map['{{' . $key . '}}'] = $value;
             $map['{' . $key . '}'] = $value;
         }
@@ -138,7 +141,7 @@ class EmailTemplateService
                 }
             }
         }
-        return array_merge($vars, $extra);
+        return array_merge($extra, $vars);
     }
 
     public function sendTemplate(

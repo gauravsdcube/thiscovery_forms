@@ -119,6 +119,79 @@ class FormActionService
         return substr($name, 0, 64);
     }
 
+    public static function acceptsRunTrigger(string $trigger): bool
+    {
+        return in_array($trigger, ['field', 'page'], true);
+    }
+
+    /**
+     * Names a respondent is allowed to post. Built-in mail tokens are never included.
+     *
+     * @return array<string, true>
+     */
+    public static function declaredVarNames(CustomForm $form): array
+    {
+        $names = [];
+        foreach ($form->fields as $field) {
+            $name = self::sanitizeName((string)$field->variable);
+            if ($name !== '') {
+                $names[$name] = true;
+            }
+        }
+        $functions = self::normalizeFunctions($form->custom_functions ?? $form->getSetting('custom_functions', []));
+        foreach ($functions as $fn) {
+            $names[$fn['name']] = true;
+        }
+        foreach (self::builtinVarNames() as $reserved) {
+            unset($names[$reserved]);
+        }
+        return $names;
+    }
+
+    /**
+     * @return string[]
+     */
+    public static function builtinVarNames(): array
+    {
+        return [
+            'firstName', 'lastName', 'first_name', 'last_name', 'email', 'displayName',
+            'formTitle', 'formUrl', 'panelName', 'waveTitle', 'response_language',
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $base
+     * @param array<string, mixed> $posted
+     * @return array<string, string>
+     */
+    public static function filterPostedVars(CustomForm $form, array $base, array $posted): array
+    {
+        $vars = [];
+        foreach ($base as $key => $value) {
+            $vars[(string)$key] = is_scalar($value) ? (string)$value : '';
+        }
+        $allowed = self::declaredVarNames($form);
+        foreach ($posted as $key => $value) {
+            $name = self::sanitizeName((string)$key);
+            if ($name === '' || !isset($allowed[$name])) {
+                continue;
+            }
+            $vars[$name] = is_scalar($value) ? (string)$value : '';
+        }
+        return $vars;
+    }
+
+    public static function tooManyRuns(int $formId, string $ip, int $limit = 60, int $window = 600): bool
+    {
+        $key = 'cf-run-actions-' . $formId . '-' . hash('sha256', $ip);
+        $count = (int)Yii::$app->cache->get($key);
+        if ($count >= $limit) {
+            return true;
+        }
+        Yii::$app->cache->set($key, $count + 1, $window);
+        return false;
+    }
+
     /**
      * @param array<int,array> $actions
      * @param array<int|string,mixed> $values

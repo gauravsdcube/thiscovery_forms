@@ -684,9 +684,8 @@ trait FillResumeTrait
         }
     }
 
-    protected function postedActionVars(?FormAnswer $answer = null): array
+    protected function postedActionVars(CustomForm $form, ?FormAnswer $answer = null): array
     {
-        $vars = $answer ? $answer->getVars() : [];
         $raw = Yii::$app->request->post('action_vars', '');
         if (is_array($raw)) {
             $extra = $raw;
@@ -696,13 +695,11 @@ trait FillResumeTrait
         } else {
             $extra = [];
         }
-        foreach ($extra as $key => $value) {
-            $name = \humhub\modules\thiscoveryForms\services\FormActionService::sanitizeName((string)$key);
-            if ($name !== '') {
-                $vars[$name] = is_scalar($value) ? (string)$value : '';
-            }
-        }
-        return $vars;
+        return \humhub\modules\thiscoveryForms\services\FormActionService::filterPostedVars(
+            $form,
+            $answer ? $answer->getVars() : [],
+            $extra
+        );
     }
 
     protected function runSubmitActions(CustomForm $form, FillContext $ctx, FormAnswer $answer): void
@@ -715,7 +712,7 @@ trait FillResumeTrait
             $form,
             is_array($actions) ? $actions : [],
             $answer->getValuesMap(),
-            $this->postedActionVars($answer),
+            $this->postedActionVars($form, $answer),
             $answer,
             $ctx->member,
             null,
@@ -733,6 +730,10 @@ trait FillResumeTrait
         }
         $trigger = (string)Yii::$app->request->post('trigger', '');
         $fieldId = (int)Yii::$app->request->post('field_id', 0);
+        $ip = (string)(Yii::$app->request->userIP ?? '');
+        if (\humhub\modules\thiscoveryForms\services\FormActionService::tooManyRuns((int)$form->id, $ip)) {
+            return ['ok' => false, 'error' => Yii::t('ThiscoveryFormsModule.base', 'Too many requests. Please wait and try again.')];
+        }
         $submit = new SubmitForm(['form' => $form]);
         $submit->scenario = SubmitForm::SCENARIO_DRAFT;
         $answer = $this->resolveFillExisting($form, $submit, false);
@@ -750,16 +751,14 @@ trait FillResumeTrait
             }
         }
         $actions = [];
-        if (in_array($trigger, ['field', 'page'], true) && $source) {
+        if (\humhub\modules\thiscoveryForms\services\FormActionService::acceptsRunTrigger($trigger) && $source) {
             $actions = $source->getActions();
-        } elseif ($trigger === 'submit') {
-            $actions = $form->submit_actions ?: $form->getSetting('submit_actions', []);
         }
         $result = (new \humhub\modules\thiscoveryForms\services\FormActionService())->run(
             $form,
             is_array($actions) ? $actions : [],
             $submit->values,
-            $this->postedActionVars($answer instanceof FormAnswer ? $answer : null),
+            $this->postedActionVars($form, $answer instanceof FormAnswer ? $answer : null),
             $answer instanceof FormAnswer ? $answer : null,
             $ctx->member,
             $source,
