@@ -668,6 +668,7 @@ class SubmitForm extends Model
             }
 
             $transaction->commit();
+            FormField::storeOptionOrder($this->form, $answer);
         } catch (\Throwable $e) {
             $transaction->rollBack();
             FormAnswerField::discardDeferredFiles();

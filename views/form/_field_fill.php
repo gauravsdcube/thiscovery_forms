@@ -44,7 +44,7 @@ $helpText = $field->help_text
     : '';
 $choicePairs = FormField::isCarryForwardType($field->type)
     ? $field->getEffectiveChoicePairs($allValues, $fieldsById, $userId)
-    : (FormField::isChoiceType($field->type) ? $field->getShuffledChoicePairs($userId) : []);
+    : (FormField::isChoiceType($field->type) ? $field->getShuffledChoicePairs($userId, $existingAnswer ?? null) : []);
 $choiceOptions = array_map(static fn($p) => $p['code'], $choicePairs);
 $choiceLabelFor = static function (string $code) use ($choicePairs, $field): string {
     foreach ($choicePairs as $pair) {

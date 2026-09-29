@@ -1209,13 +1209,25 @@ class FormField extends ActiveRecord
     /**
      * @return array<int, array{code:string,label:string}>
      */
-    public function getShuffledChoicePairs(?int $userId = null): array
+    public function getShuffledChoicePairs(?int $userId = null, ?FormAnswer $answer = null): array
     {
         $pairs = $this->getChoicePairs();
+        $perResponse = \humhub\modules\thiscoveryForms\Module::optionOrderPerResponse();
+        if ($perResponse && $answer && !$answer->isNewRecord) {
+            $decodedVars = json_decode((string)$answer->vars_json, true);
+            $stored = is_array($decodedVars) ? ($decodedVars['option_order'][(string)$this->id] ?? null) : null;
+            if (is_array($stored) && $stored) {
+                return $this->pairsInOrder($pairs, $stored);
+            }
+        }
+        $exclusive = $perResponse ? $this->shufflePinnedLabels() : [];
         $pinned = [];
         $rest = [];
         foreach ($pairs as $pair) {
-            if (self::isOtherOption($pair['code']) || self::isOtherOption($pair['label'])) {
+            $isOther = self::isOtherOption($pair['code']) || self::isOtherOption($pair['label']);
+            $isExclusive = in_array((string)$pair['code'], $exclusive, true)
+                || in_array((string)$pair['label'], $exclusive, true);
+            if ($isOther || $isExclusive) {
                 $pinned[] = $pair;
             } else {
                 $rest[] = $pair;
@@ -1225,8 +1237,19 @@ class FormField extends ActiveRecord
             return $pairs;
         }
 
-        $userId = $userId ?? (int)(Yii::$app->user->id ?? 0);
-        $seed = crc32($userId . ':' . (int)$this->id . ':' . (int)$this->form_id);
+        if ($perResponse) {
+            if ($answer && !$answer->isNewRecord) {
+                $seedKey = 'answer:' . (int)$answer->id;
+            } elseif ($answer && trim((string)$answer->resume_code) !== '') {
+                $seedKey = 'resume:' . trim((string)$answer->resume_code);
+            } else {
+                $seedKey = 'session:' . (string)(Yii::$app->session->id ?: '0');
+            }
+            $seed = crc32($seedKey . ':' . (int)$this->id);
+        } else {
+            $userId = $userId ?? (int)(Yii::$app->user->id ?? 0);
+            $seed = crc32($userId . ':' . (int)$this->id . ':' . (int)$this->form_id);
+        }
         $order = range(0, count($rest) - 1);
 
         $n = count($order);
@@ -1248,9 +1271,80 @@ class FormField extends ActiveRecord
     /**
      * Deterministic shuffle for a given user so reopen/edit keeps the same order.
      */
-    public function getShuffledOptions(?int $userId = null): array
+    public function getShuffledOptions(?int $userId = null, ?FormAnswer $answer = null): array
     {
-        return ChoiceOptions::codes($this->getShuffledChoicePairs($userId));
+        return ChoiceOptions::codes($this->getShuffledChoicePairs($userId, $answer));
+    }
+
+    /**
+     * @param array<int, array{code:string,label:string}> $pairs
+     * @param string[] $codes
+     * @return array<int, array{code:string,label:string}>
+     */
+    private function pairsInOrder(array $pairs, array $codes): array
+    {
+        $byCode = [];
+        foreach ($pairs as $pair) {
+            $byCode[(string)$pair['code']] = $pair;
+        }
+        $out = [];
+        foreach ($codes as $code) {
+            $code = (string)$code;
+            if (isset($byCode[$code])) {
+                $out[] = $byCode[$code];
+                unset($byCode[$code]);
+            }
+        }
+        foreach ($byCode as $pair) {
+            $out[] = $pair;
+        }
+        return $out;
+    }
+
+    public static function storeOptionOrder(CustomForm $form, FormAnswer $answer): void
+    {
+        if (!\humhub\modules\thiscoveryForms\Module::optionOrderPerResponse() || $answer->isNewRecord) {
+            return;
+        }
+        $vars = json_decode((string)$answer->vars_json, true);
+        if (!is_array($vars)) {
+            $vars = [];
+        }
+        $orders = is_array($vars['option_order'] ?? null) ? $vars['option_order'] : [];
+        $changed = false;
+        foreach ($form->fields as $field) {
+            if (!$field->isRandomizeOptions() || !FormField::isChoiceType($field->type)) {
+                continue;
+            }
+            $id = (string)$field->id;
+            if (!empty($orders[$id]) && is_array($orders[$id])) {
+                continue;
+            }
+            $orders[$id] = $field->getShuffledOptions(null, $answer);
+            $changed = true;
+        }
+        if (!$changed) {
+            return;
+        }
+        $vars['option_order'] = $orders;
+        $answer->vars_json = json_encode($vars, JSON_UNESCAPED_UNICODE);
+        $answer->save(false, ['vars_json', 'updated_at']);
+    }
+
+    /**
+     * @return string[]
+     */
+    private function shufflePinnedLabels(): array
+    {
+        $labels = $this->getExclusiveOptions();
+        $decoded = json_decode((string)$this->options_json, true);
+        if (is_array($decoded) && !array_is_list($decoded)) {
+            $extra = trim((string)($decoded['exclusiveOption'] ?? ''));
+            foreach (array_filter(array_map('trim', explode('|', $extra)), 'strlen') as $part) {
+                $labels[] = $part;
+            }
+        }
+        return array_values(array_unique($labels));
     }
 
     public static function getRatingDisplayLabels(): array

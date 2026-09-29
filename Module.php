@@ -50,6 +50,7 @@ class Module extends ContentContainerModule
      * is not capped at 80 steps. Set to 0 to restore the 1.28.2 walk.
      */
     public const SETTING_ROUTING_ALIGNMENT = 'routing_alignment';
+    public const SETTING_OPTION_ORDER = 'option_order_per_response';
     public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
     public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
     public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
@@ -267,6 +268,19 @@ class Module extends ContentContainerModule
         }
         $value = (string)$module->settings->get(self::SETTING_IDENTITY_ENFORCE, '1');
         return !in_array($value, ['0', 'false', 'off'], true);
+    }
+
+    /**
+     * Off unless an administrator turns it on. It changes the order respondents see.
+     */
+    public static function optionOrderPerResponse(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self) {
+            return false;
+        }
+        $value = (string)$module->settings->get(self::SETTING_OPTION_ORDER, '0');
+        return in_array($value, ['1', 'true', 'on'], true);
     }
 
     public static function routingAligned(): bool

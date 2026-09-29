@@ -557,6 +557,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 'frozen' => !empty($frozen),
                                 'fillRtl' => $fillRtl,
                                 'panelMember' => $fillContext->member ?? null,
+                                'existingAnswer' => $existing ?? null,
                                 'rewriteFileUrls' => $rewriteFileUrls,
                             ]) ?>
                         </div>
