@@ -154,7 +154,7 @@ class RoundService
             $justifications = [];
             foreach ($rows as $row) {
                 $val = (string)$row['value'];
-                $w = (float)($row['weight'] ?: 1);
+                $w = ($row['weight'] === null || $row['weight'] === '') ? 1.0 : (float)$row['weight'];
                 if ($val === '') {
                     continue;
                 }
@@ -232,7 +232,7 @@ class RoundService
                 if ($val === '') {
                     continue;
                 }
-                $w = (float)($row['weight'] ?: 1);
+                $w = ($row['weight'] === null || $row['weight'] === '') ? 1.0 : (float)$row['weight'];
                 $counts[$val] = ($counts[$val] ?? 0) + $w;
                 $total += $w;
             }

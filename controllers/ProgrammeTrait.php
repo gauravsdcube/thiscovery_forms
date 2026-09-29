@@ -91,7 +91,8 @@ trait ProgrammeTrait
         }
 
         $raw = trim((string)Yii::$app->request->post('member', ''));
-        $weight = (float)Yii::$app->request->post('weight', 1) ?: 1;
+        $postedWeight = Yii::$app->request->post('weight', null);
+        $weight = ($postedWeight === null || $postedWeight === '') ? 1.0 : (float)$postedWeight;
         if ($raw === '') {
             Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Enter a username or email address.'));
             return $this->redirectStudio($form, 'panel');

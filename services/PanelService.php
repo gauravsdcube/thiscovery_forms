@@ -234,7 +234,9 @@ class PanelService
         $email = strtolower(trim((string)($data['email'] ?? '')));
         $first = trim((string)($data['first'] ?? ''));
         $last = trim((string)($data['last'] ?? ''));
-        $weight = (float)($data['weight'] ?? 1) ?: 1;
+        $weight = array_key_exists('weight', $data) && $data['weight'] !== '' && $data['weight'] !== null
+            ? (float)$data['weight']
+            : null;
         $user = $data['user'] ?? null;
         if (!$user instanceof User && $email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $user = User::find()->where('LOWER(email) = :email', [':email' => $email])->one();
@@ -272,7 +274,11 @@ class PanelService
         if ($last !== '') {
             $member->last_name = $last;
         }
-        $member->weight = $weight;
+        if ($weight !== null) {
+            $member->weight = $weight;
+        } elseif ($member->isNewRecord) {
+            $member->weight = 1;
+        }
         $member->status = FormPanelMember::STATUS_ACTIVE;
         if (!$member->token) {
             $member->token = FormPanelMember::generateToken();
@@ -373,7 +379,14 @@ class PanelService
                 $user = User::find()->where(['email' => $email])->one();
                 $before = $user && FormPanelMember::find()->where(['panel_id' => $panel->id, 'user_id' => $user->id])->exists();
             }
-            $this->upsertMember($panel, ['email' => $email, 'first' => $first, 'last' => $last, 'attrs' => $attrs]);
+            $payload = ['email' => $email, 'first' => $first, 'last' => $last, 'attrs' => $attrs];
+            if (isset($header['weight']) && $header['weight'] !== null) {
+                $rawWeight = trim((string)($cols[$header['weight']] ?? ''));
+                if ($rawWeight !== '') {
+                    $payload['weight'] = (float)$rawWeight;
+                }
+            }
+            $this->upsertMember($panel, $payload);
             if ($before) {
                 $updated++;
             } else {
@@ -412,6 +425,7 @@ class PanelService
             'email' => $norm['email'] ?? $norm['e_mail'],
             'first' => $norm['first_name'] ?? $norm['firstname'] ?? $norm['first'] ?? $norm['given_name'] ?? 1,
             'last' => $norm['last_name'] ?? $norm['lastname'] ?? $norm['last'] ?? $norm['surname'] ?? $norm['family_name'] ?? 2,
+            'weight' => $norm['weight'] ?? null,
             'attrs' => $attrs,
         ];
     }
@@ -543,6 +557,12 @@ class PanelService
     {
         if ($answer->isTest()) {
             return;
+        }
+        if ($knownMember && !$knownMember->isNewRecord) {
+            $answer->weight = (float)$knownMember->weight;
+            if (!$answer->isNewRecord) {
+                $answer->updateAttributes(['weight' => $answer->weight]);
+            }
         }
         if (\humhub\modules\thiscoveryForms\Module::identityEnforced() && $form->hidesIdentityFromManagers()) {
             $this->recordAnonymousCompletion($form, $answer, $knownMember);

@@ -255,7 +255,7 @@ class FormsDataProvider implements DataProviderInterface
         return [
             'id' => (int)$answer->id,
             'createdAt' => (string)$answer->created_at,
-            'weight' => (float)($answer->weight ?: 1),
+            'weight' => ($answer->weight === null || $answer->weight === '') ? 1.0 : (float)$answer->weight,
             'waveId' => $answer->wave_id ? (string)$answer->wave_id : '',
             'segments' => $segments,
             'values' => $values,
