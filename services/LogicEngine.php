@@ -270,10 +270,23 @@ class LogicEngine
 
     /**
      * Own logic plus any enclosing question group.
+     * A hidden question's answer is treated as empty before later rules run, and that
+     * pass repeats until the visible set stops changing.
      *
      * @param FormField[] $orderedFields
      */
     public function isFieldVisible(FormField $field, array $orderedFields, array $values): bool
+    {
+        if ($orderedFields) {
+            $values = $this->valuesIgnoringHidden($orderedFields, $values);
+        }
+        return $this->fieldShown($field, $orderedFields, $values);
+    }
+
+    /**
+     * @param FormField[] $orderedFields
+     */
+    private function fieldShown(FormField $field, array $orderedFields, array $values): bool
     {
         if (!$this->isVisible($field, $values, $orderedFields)) {
             return false;
@@ -301,6 +314,56 @@ class LogicEngine
     }
 
     /**
+     * Drop answers for questions that are hidden, then judge again, until stable.
+     *
+     * @param FormField[] $fields
+     */
+    private function valuesIgnoringHidden(array $fields, array $values): array
+    {
+        $fields = array_values(array_filter($fields, static fn ($field) => $field instanceof FormField));
+        if (!$fields) {
+            return $values;
+        }
+        $limit = count($fields) + 1;
+        for ($pass = 0; $pass < $limit; $pass++) {
+            $changed = false;
+            foreach ($fields as $field) {
+                if ($this->fieldShown($field, $fields, $values)) {
+                    continue;
+                }
+                foreach ($this->answerKeys($field) as $key) {
+                    if (!array_key_exists($key, $values)) {
+                        continue;
+                    }
+                    if ($values[$key] === null || $values[$key] === '' || $values[$key] === []) {
+                        continue;
+                    }
+                    $values[$key] = null;
+                    $changed = true;
+                }
+            }
+            if (!$changed) {
+                break;
+            }
+        }
+        return $values;
+    }
+
+    /**
+     * @return array<int, int|string>
+     */
+    private function answerKeys(FormField $field): array
+    {
+        $keys = [(int)$field->id];
+        $variable = trim((string)$field->variable);
+        if ($variable !== '' && $variable !== (string)$field->id) {
+            $keys[] = $variable;
+        }
+        $keys[] = 'id' . (int)$field->id;
+        return $keys;
+    }
+
+    /**
      * First matching navigation action on fields of the current page.
      * @param FormField[] $fieldsOnPage
      * @param FormField[] $allFields Full form fields so coded options resolve against labels
@@ -309,6 +372,7 @@ class LogicEngine
     public function pageNavigation(array $fieldsOnPage, array $values, array $allFields = []): ?array
     {
         $lookup = $allFields ?: $fieldsOnPage;
+        $values = $this->valuesIgnoringHidden($lookup, $values);
         foreach ($fieldsOnPage as $field) {
             $logic = $field->getLogic();
             $action = $logic['action'] ?? '';
@@ -336,6 +400,7 @@ class LogicEngine
             return true;
         }
         $lookup = $allFields ?: $fieldsOnPage;
+        $values = $this->valuesIgnoringHidden($lookup, $values);
         foreach ($fieldsOnPage as $field) {
             $logic = $field->getLogic();
             if (($logic['action'] ?? '') !== self::ACTION_SKIP_PAGE) {

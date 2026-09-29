@@ -4540,12 +4540,27 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 $field.find('input, select, textarea').prop('disabled', !visible);
             };
-            $root.find('.cf-question-group[data-cf-conditional]').each(function () {
-                applyVisibility($(this));
+            var guard = 0;
+            var changed = true;
+            while (changed && guard < 24) {
+                guard++;
+                changed = false;
+                values = readAnswers();
+                var noteChange = function () {
+                    var $field = $(this);
+                    var before = $field.hasClass('cf-hidden');
+                    applyVisibility($field);
+                    if ($field.hasClass('cf-hidden') !== before) {
+                        changed = true;
+                    }
+                };
+                $root.find('.cf-question-group[data-cf-conditional]').each(noteChange);
+                $root.find('[data-cf-conditional]').not('.cf-question-group').each(noteChange);
+            }
+            newlyShown = newlyShown.filter(function (el) {
+                return el && !el.classList.contains('cf-hidden');
             });
-            $root.find('[data-cf-conditional]').not('.cf-question-group').each(function () {
-                applyVisibility($(this));
-            });
+            values = readAnswers();
             applyPiping(values);
             applyCarryForward(values);
             syncOtherSpecify();
