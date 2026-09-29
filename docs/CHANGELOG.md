@@ -2,6 +2,30 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.5 (September 29, 2026)
+
+1.28.5 follows 1.28.4. It does not replace the 1.28.4 fixes.
+
+- Fix (SEC-1, SEC-9, SEC-14): a panel, folder, email template, or library item is kept only when it belongs to this form's container. A global template may still be used from a space. `settings_json` is no longer mass-assignable.
+
+- Fix (SEC-5): run-actions no longer runs submit actions. Posted variables cannot replace built-in mail tokens and must be names declared on the form. Email HTML escapes substituted values. The endpoint is rate limited by address.
+
+- Fix (SEC-6): the invitation token is read once, from `access` and then `access_token`. A panel token is not an access token. The use count increases only while the token is still under its limit and has not expired.
+
+- Fix (SEC-7, SEC-8): JSON submit is only accepted for polls, and it uses the same submit gate as the fill page. The submit rate-limit key is the network address, so a new session does not reset it.
+
+- Fix (SEC-10): answer, question, and translation CSV exports prefix a cell that starts with `=`, `+`, `-`, `@`, tab, or a carriage return. Import strips that prefix.
+
+- Fix (SEC-12): frozen questions keep the previous round's answer. Hidden questions keep their default. Panel-attribute questions keep the member's value. A posted value for those fields is discarded.
+
+- Fix (SEC-13): each question accepts at most 10 files and 50 MB, and one file must be 10 MB or smaller. Guest uploads from one network are limited to 20 in 10 minutes.
+
+- Fix (LOG-7): run-actions saves a draft before an action email. The duplicate check stores an actor key, so one anonymous respondent does not block another. Migration `m260929_100000_email_send_actor`.
+
+- Fix (SCO-6): completing a response or importing a panel again does not replace a weight the file did not set. A weight of 0 stays 0, including on a fully anonymous form.
+
+- Fix (LOG-6): per-response option order is off unless `option_order_per_response` is `1`, `true`, or `on`. When it is on, the order is seeded from the answer or resume code, exclusive options and Other stay in place, and the order shown is stored on the response.
+
 ## 1.28.4 (September 28, 2026)
 
 1.28.4 replaces 1.28.3 for production. It keeps the 1.28.3 fixes and adds the following.
