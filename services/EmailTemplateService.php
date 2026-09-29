@@ -185,6 +185,7 @@ class EmailTemplateService
         $row->wave_id = $meta['wave_id'] ?? null;
         $row->field_id = $meta['field_id'] ?? null;
         $row->kind = (string)($meta['kind'] ?? FormEmailSend::KIND_INVITE);
+        $row->actor_key = isset($meta['actor_key']) ? substr((string)$meta['actor_key'], 0, 64) : null;
         $row->email = $to;
         $row->save(false);
     }
@@ -192,7 +193,7 @@ class EmailTemplateService
     public function hasSent(string $kind, array $where): bool
     {
         $query = FormEmailSend::find()->where(['kind' => $kind]);
-        foreach (['form_id', 'member_id', 'answer_id', 'wave_id', 'field_id', 'template_id'] as $col) {
+        foreach (['form_id', 'member_id', 'answer_id', 'wave_id', 'field_id', 'template_id', 'actor_key'] as $col) {
             if (array_key_exists($col, $where)) {
                 $query->andWhere([$col => $where[$col]]);
             }

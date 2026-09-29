@@ -744,6 +744,14 @@ trait FillResumeTrait
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
+        if (!$answer instanceof FormAnswer && !$this->isPreviewMode($form)) {
+            $created = $submit->save(null, $form->submitAsAnonymous(false, (bool)$ctx->tokenAccess), true, false);
+            if ($created instanceof FormAnswer) {
+                $answer = $created;
+                $submit->editingAnswer = $created;
+                $this->rememberProgressDraft($form, $created);
+            }
+        }
         $source = null;
         if ($fieldId) {
             foreach ($form->fields as $candidate) {

@@ -15,6 +15,7 @@ use yii\db\ActiveQuery;
  * @property int|null $field_id
  * @property string $kind
  * @property string|null $email
+ * @property string|null $actor_key
  * @property string|null $created_at
  */
 class FormEmailSend extends ActiveRecord

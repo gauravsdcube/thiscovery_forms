@@ -113,6 +113,18 @@ class FormActionService
         return $out;
     }
 
+    public static function actorKey(?FormAnswer $answer, ?FormPanelMember $member): string
+    {
+        if ($answer && !$answer->isNewRecord) {
+            return 'answer:' . (int)$answer->id;
+        }
+        if ($member && !$member->isNewRecord) {
+            return 'member:' . (int)$member->id;
+        }
+        $session = (string)(Yii::$app->session->id ?: 'none');
+        return 'session:' . substr(hash('sha256', $session), 0, 32);
+    }
+
     public static function sanitizeName(string $name): string
     {
         $name = preg_replace('/[^a-zA-Z0-9_]/', '', trim($name)) ?? '';
@@ -319,10 +331,13 @@ class FormActionService
         }
         $where = [
             'form_id' => $form->id,
-            'answer_id' => $answer->id ?? null,
             'field_id' => $sourceField->id ?? null,
             'template_id' => $templateId,
+            'actor_key' => self::actorKey($answer, $member),
         ];
+        if ($answer && !$answer->isNewRecord) {
+            $where['answer_id'] = (int)$answer->id;
+        }
         if ($emails->hasSent(FormEmailSend::KIND_ACTION, $where)) {
             return;
         }
@@ -345,6 +360,7 @@ class FormActionService
                 'field_id' => $sourceField->id ?? null,
                 'template_id' => $templateId,
                 'kind' => FormEmailSend::KIND_ACTION,
+                'actor_key' => self::actorKey($answer, $member),
             ]
         );
     }
