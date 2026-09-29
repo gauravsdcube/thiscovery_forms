@@ -44,6 +44,9 @@ trait FillResumeTrait
         $submit->roundId = $ctx->round->id ?? null;
         $submit->panelMemberId = $ctx->member->id ?? null;
         $submit->weight = $ctx->member ? (float)$ctx->member->weight : 1;
+        $submit->frozenFieldIds = $ctx->frozenFieldIds;
+        $submit->previousValues = $ctx->previousRoundAnswer ? $ctx->previousRoundAnswer->getValuesMap() : [];
+        $submit->applyServerOwnedValues();
     }
 
     /**

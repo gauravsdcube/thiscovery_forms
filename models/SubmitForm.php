@@ -42,6 +42,12 @@ class SubmitForm extends Model
     /** @var float */
     public $weight = 1;
 
+    /** @var int[] */
+    public $frozenFieldIds = [];
+
+    /** @var array<int|string, mixed> */
+    public $previousValues = [];
+
     public function rules()
     {
         return [
@@ -184,27 +190,37 @@ class SubmitForm extends Model
 
     protected function applyHiddenDefaultsAndMeta(): void
     {
+        $this->applyServerOwnedValues();
+    }
+
+    /**
+     * Frozen, hidden, and panel-attribute answers come from the server.
+     * A posted value for those fields is discarded.
+     */
+    public function applyServerOwnedValues(): void
+    {
         $meta = new \humhub\modules\thiscoveryForms\services\RespondentMetaService();
         $member = $this->panelMemberId ? FormPanelMember::findOne((int)$this->panelMemberId) : null;
+        $frozen = array_map('intval', $this->frozenFieldIds);
         foreach ($this->form->fields as $field) {
+            $id = (int)$field->id;
+            if (in_array($id, $frozen, true)) {
+                $this->values[$id] = $this->previousValues[$id] ?? $this->previousValues[(string)$id] ?? '';
+                continue;
+            }
             if ($field->type === FormField::TYPE_RESPONDENT_META) {
-                $this->values[$field->id] = $meta->valueFor($field->getRespondentMetaKey(), $this->values[$field->id] ?? null);
+                $this->values[$id] = $meta->valueFor($field->getRespondentMetaKey(), $this->values[$id] ?? null);
                 continue;
             }
             if ($field->type === FormField::TYPE_PANEL_ATTR) {
                 $key = $field->getPanelAttrKey();
-                $posted = $this->values[$field->id] ?? null;
-                if ($this->isEmptyValue($posted) && $member && $key !== '') {
-                    $this->values[$field->id] = \humhub\modules\thiscoveryForms\services\PanelFieldService::memberValue($member, $key);
-                }
+                $this->values[$id] = ($member && $key !== '')
+                    ? \humhub\modules\thiscoveryForms\services\PanelFieldService::memberValue($member, $key)
+                    : '';
                 continue;
             }
-            if (!$field->isHiddenFromRespondent()) {
-                continue;
-            }
-            $value = $this->values[$field->id] ?? null;
-            if ($this->isEmptyValue($value) && $field->getDefaultValue() !== '') {
-                $this->values[$field->id] = $field->getDefaultValue();
+            if ($field->isHiddenFromRespondent()) {
+                $this->values[$id] = $field->getDefaultValue();
             }
         }
     }
