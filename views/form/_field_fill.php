@@ -585,7 +585,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                     'single' => true,
                     'multiple' => false,
                     'hideInStream' => true,
-                    'url' => Url::toFillUpload($formModel),
+                    'url' => Url::toFillUpload($formModel, (int)$field->id),
                     'submitName' => $inputName,
                     'progress' => '#' . $uploadId . '_progress',
                     'preview' => '#' . $uploadId . '_preview',

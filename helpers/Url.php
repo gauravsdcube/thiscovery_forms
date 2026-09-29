@@ -81,13 +81,17 @@ class Url
         return $form->content->container->createUrl('/thiscovery-forms/form/save-progress', ['id' => $form->id]);
     }
 
-    public static function toFillUpload(CustomForm $form): string
+    public static function toFillUpload(CustomForm $form, ?int $fieldId = null): string
     {
+        $params = ['id' => $form->id];
+        if ($fieldId) {
+            $params['field_id'] = (int)$fieldId;
+        }
         if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/upload', 'id' => $form->id]);
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/upload'], $params));
         }
 
-        return $form->content->container->createUrl('/thiscovery-forms/form/upload', ['id' => $form->id]);
+        return $form->content->container->createUrl('/thiscovery-forms/form/upload', $params);
     }
 
     public static function toFillDeleteFile(CustomForm $form): string

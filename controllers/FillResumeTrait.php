@@ -792,8 +792,27 @@ trait FillResumeTrait
             throw new ForbiddenHttpException();
         }
 
+        $fieldId = (int)Yii::$app->request->post('field_id', Yii::$app->request->get('field_id', 0));
+        $guest = Yii::$app->user->isGuest;
+        $ip = (string)(Yii::$app->request->userIP ?? '');
         $files = [];
         foreach (UploadedFile::getInstancesByName('files') as $uploaded) {
+            $reason = \humhub\modules\thiscoveryForms\services\UploadQuota::allows(
+                (int)$form->id,
+                $fieldId,
+                (int)$uploaded->size,
+                $guest,
+                $ip
+            );
+            if ($reason !== null) {
+                $files[] = [
+                    'error' => true,
+                    'errors' => [$reason],
+                    'name' => Html::encode((string)$uploaded->name),
+                    'size' => Html::encode((string)$uploaded->size),
+                ];
+                continue;
+            }
             $file = new FileUpload();
             $file->setUploadedFile($uploaded);
             $file->show_in_stream = false;
@@ -804,6 +823,7 @@ trait FillResumeTrait
             if ($file->save()) {
                 ImageHelper::downscaleImage($file);
                 UploadGrant::remember((int)$form->id, (string)$file->guid);
+                \humhub\modules\thiscoveryForms\services\UploadQuota::record((int)$form->id, $fieldId, (int)$uploaded->size);
                 $files[] = array_merge(['error' => false], FileHelper::getFileInfos($file));
             } else {
                 $errorMessage = $file->getErrors('uploadedFile');
