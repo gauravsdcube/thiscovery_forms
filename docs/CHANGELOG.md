@@ -2,7 +2,17 @@
 
 All notable changes to this module are documented in this file.
 
-## Unreleased (1.29 quotas)
+## 1.29.0
+
+### Loops
+
+Loops are off unless an administrator turns them on and the form turns them on. A question group can repeat once, from a fixed list, from selected options, or from a number. Nested loops and rosters are not in this version.
+
+- Each repeat is stored on its own answer cell. Unselected repeats stay in the table. The default export leaves them blank. “These answers are kept but not shown.”
+- Wide export columns look like `symptom__asthma`. The codebook lists the same names. Logic can use any, all, count, or sum. An unknown aggregate cannot be published.
+- Reducing a number hides the later repeats and does not renumber the ones that remain.
+
+### Quotas
 
 Quotas are off unless an administrator turns them on and the form turns them on. The counter is locked when a response is submitted, so two people cannot take the last place. Partial answers are kept and the outcome is over quota.
 
@@ -10,7 +20,7 @@ Quotas are off unless an administrator turns them on and the form turns them on.
 - A required full cell can end the survey, redirect to an allowlisted address, go to another page, or mark the response and let it finish without taking a place.
 - `quota.full` is not sent. Webhooks are still deferred. The audit row is written when the target is reached.
 
-## Unreleased (1.29 consent)
+### Consent
 
 Electronic consent is off unless an administrator turns it on and the form turns it on. Completing a form no longer stamps a panel member’s consent time.
 
@@ -19,7 +29,7 @@ Electronic consent is off unless an administrator turns it on and the form turns
 - Fully anonymous consent is not linked to the answer. Withdrawal uses a one-time code. Asking to delete data opens an admin task and does not delete answers.
 - Older consent timestamps are listed as legacy and do not count as consent for a new version.
 
-## Unreleased (1.29 randomisation)
+### Randomisation
 
 The module version stays 1.28.7 until the 1.29.0 release. Randomisation is off unless an administrator turns it on and the form turns it on.
 
