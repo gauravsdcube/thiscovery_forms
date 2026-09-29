@@ -71,6 +71,8 @@ class FormAnswer extends ActiveRecord
             [['form_id', 'created_by', 'updated_by', 'status', 'is_test', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id', 'edition_id', 'quota_marker'], 'integer'],
             [['status'], 'default', 'value' => self::STATUS_COMPLETE],
             [['status'], 'in', 'range' => [self::STATUS_IN_PROGRESS, self::STATUS_COMPLETE]],
+            [['current_instance_key'], 'string', 'max' => 64],
+            [['current_instance_key'], 'default', 'value' => ''],
             [['outcome'], 'default', 'value' => ''],
             [['outcome'], 'in', 'range' => ['', self::OUTCOME_COMPLETE, self::OUTCOME_SCREENED_OUT, self::OUTCOME_NOT_CONSENTED, self::OUTCOME_OVER_QUOTA]],
             [['is_test'], 'default', 'value' => 0],
@@ -347,22 +349,75 @@ class FormAnswer extends ActiveRecord
 
     public function getValuesMap(): array
     {
+        $loopFields = [];
+        $form = $this->form;
+        if ($form && \humhub\modules\thiscoveryForms\services\LoopService::active($form)) {
+            $loopFields = (new \humhub\modules\thiscoveryForms\services\LoopService())->loopFieldIds($form);
+        }
+        $keyed = \humhub\modules\thiscoveryForms\services\LoopService::columnReady();
         $map = [];
         foreach ($this->getAnswerFields()->all() as $af) {
             $decoded = json_decode((string)$af->value, true);
-            $map[$af->field_id] = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : $af->value;
+            $value = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : $af->value;
+            $instance = $keyed ? (string)($af->instance_key ?? '') : '';
+            if (isset($loopFields[(int)$af->field_id])) {
+                if (!isset($map[$af->field_id]) || !is_array($map[$af->field_id])) {
+                    $map[$af->field_id] = [];
+                }
+                $map[$af->field_id][$instance] = $value;
+                continue;
+            }
+            if ($instance !== '') {
+                continue;
+            }
+            $map[$af->field_id] = $value;
         }
         return $map;
     }
 
+    /**
+     * @return mixed
+     */
+    public function getValue(int $fieldId, string $instanceKey = '')
+    {
+        $map = $this->getValuesMap();
+        $value = $map[$fieldId] ?? null;
+        $form = $this->form;
+        if ($form && \humhub\modules\thiscoveryForms\services\LoopService::active($form)) {
+            $loopFields = (new \humhub\modules\thiscoveryForms\services\LoopService())->loopFieldIds($form);
+            if (isset($loopFields[$fieldId])) {
+                return is_array($value) ? ($value[$instanceKey] ?? null) : null;
+            }
+        }
+        return $instanceKey === '' ? $value : null;
+    }
+
     public function getJustificationsMap(): array
     {
+        $loopFields = [];
+        $form = $this->form;
+        if ($form && \humhub\modules\thiscoveryForms\services\LoopService::active($form)) {
+            $loopFields = (new \humhub\modules\thiscoveryForms\services\LoopService())->loopFieldIds($form);
+        }
+        $keyed = \humhub\modules\thiscoveryForms\services\LoopService::columnReady();
         $map = [];
         foreach ($this->answerFields as $af) {
             $just = trim((string)$af->justification);
-            if ($just !== '') {
-                $map[$af->field_id] = $just;
+            if ($just === '') {
+                continue;
             }
+            $instance = $keyed ? (string)($af->instance_key ?? '') : '';
+            if (isset($loopFields[(int)$af->field_id])) {
+                if (!isset($map[$af->field_id]) || !is_array($map[$af->field_id])) {
+                    $map[$af->field_id] = [];
+                }
+                $map[$af->field_id][$instance] = $just;
+                continue;
+            }
+            if ($instance !== '') {
+                continue;
+            }
+            $map[$af->field_id] = $just;
         }
         return $map;
     }

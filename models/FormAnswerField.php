@@ -12,6 +12,7 @@ use yii\helpers\Html;
  * @property int $answer_id
  * @property int $field_id
  * @property string|null $value
+ * @property string $instance_key
  * @property string|null $justification
  *
  * @property-read FormAnswer $answer
@@ -29,6 +30,8 @@ class FormAnswerField extends ActiveRecord
         return [
             [['answer_id', 'field_id'], 'required'],
             [['answer_id', 'field_id'], 'integer'],
+            [['instance_key'], 'string', 'max' => 64],
+            [['instance_key'], 'default', 'value' => ''],
             [['value', 'justification'], 'string'],
         ];
     }
