@@ -2,6 +2,18 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.7 (September 29, 2026)
+
+1.28.7 follows 1.28.6. Migrations are unchanged.
+
+- Fix (LOG-4): a hidden question's answer is treated as empty before later rules run, on the server and on the fill page. A leftover answer cannot keep the next question visible.
+
+- Fix (SCO-1): MaxDiff sets walk the item list instead of repeating the first slice. Existing stored sets are left as they are.
+
+- Fix: the between operator matches an inclusive min,max range. The value is written as `1,10`. A list matches when any value is inside the range. Text that is not a number does not match.
+
+- Fix (SCO-2): a MaxDiff score is (best − worst) / times shown. The result includes how many sets included the item. A stored answer that only has best and worst counts those items as shown.
+
 ## 1.28.6 (September 29, 2026)
 
 1.28.6 follows 1.28.5.
