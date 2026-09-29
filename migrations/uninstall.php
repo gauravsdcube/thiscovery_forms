@@ -6,6 +6,13 @@ class uninstall extends Migration
 {
     public function up()
     {
+        $this->dropTable('custom_form_quota_i18n');
+        $this->dropTable('custom_form_quota_accept');
+        $this->dropTable('custom_form_quota_allowhost');
+        $this->dropTable('custom_form_quota_audit');
+        $this->dropTable('custom_form_quota_reservation');
+        $this->dropTable('custom_form_quota_counter');
+        $this->dropTable('custom_form_quota');
         $this->dropTable('custom_form_consent_audit');
         $this->dropTable('custom_form_admin_task');
         $this->dropTable('custom_form_consent_withdrawal');

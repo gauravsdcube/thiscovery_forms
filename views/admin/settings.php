@@ -82,6 +82,18 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         </div>
 
         <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Quotas') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn quotas on. A full cell keeps the partial answers.') ?>
+        </p>
+        <div class="checkbox">
+            <label>
+                <?= Html::checkbox('ModuleSettings[quotasEnabled]', !empty($model->quotasEnabled), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('quotasEnabled')) ?>
+            </label>
+        </div>
+
+        <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h4>
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn randomisation on before the server shuffles pages, questions, or options, or assigns an arm.') ?>
