@@ -9,6 +9,8 @@ use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormIntegrityAudit;
 use humhub\modules\thiscoveryForms\models\FormIntegrityMeta;
 use humhub\modules\thiscoveryForms\services\FillContext;
+use humhub\modules\thiscoveryForms\services\FormPager;
+use humhub\modules\thiscoveryForms\services\LogicEngine;
 use Yii;
 
 /**
@@ -167,10 +169,11 @@ class IntegrityService
             return;
         }
         $meta = $this->ensureMeta($form, $answer);
-        $this->applyClientTimings($meta, $post);
         if (!$meta->started_at) {
-            $meta->started_at = Yii::$app->session->get(self::START_PREFIX . (int)$form->id) ?: $answer->created_at;
+            $meta->started_at = Yii::$app->session->get(self::START_PREFIX . (int)$form->id)
+                ?: ($answer->created_at ?: date('Y-m-d H:i:s'));
         }
+        $this->applyClientTimings($meta, $post);
         $meta->session_established = Yii::$app->session->get($this->sessionKey($form)) ? 1 : (int)$meta->session_established;
         $meta->save(false);
     }
@@ -290,18 +293,20 @@ class IntegrityService
             [$scores['duplicate'], $dupFlags] = $this->analyseDuplicate($form, $answer, $meta, $cfg);
             $flags = array_merge($flags, $dupFlags);
         }
+        $values = $answer->getValuesMap();
+        $shown = $this->shownFieldIds($form, $values);
+        $meta->shown_question_count = count($shown);
         if (IntegritySettings::isOn($cfg, 'speed_detection')) {
-            $meta->median_seconds = $this->medianDuration($form, (int)$answer->id);
+            $meta->median_seconds = $this->medianSecondsPerQuestion($form, (int)$answer->id);
             [$scores['speed'], $speedFlags] = $this->analyseSpeed($meta, $cfg);
             $flags = array_merge($flags, $speedFlags);
         }
-        $values = $answer->getValuesMap();
         if (IntegritySettings::isOn($cfg, 'straightline_detection')) {
-            [$scores['straightline'], $slFlags] = $this->analyseStraightline($form, $values, $cfg);
+            [$scores['straightline'], $slFlags] = $this->analyseStraightline($form, $values, $cfg, $shown);
             $flags = array_merge($flags, $slFlags);
         }
         if (IntegritySettings::isOn($cfg, 'attention_checks')) {
-            [$scores['attention'], $attFlags] = $this->analyseAttention($form, $values);
+            [$scores['attention'], $attFlags] = $this->analyseAttention($form, $values, $shown);
             $flags = array_merge($flags, $attFlags);
         }
         if (IntegritySettings::isOn($cfg, 'consistency_checks')) {
@@ -309,7 +314,7 @@ class IntegrityService
             $flags = array_merge($flags, $conFlags);
         }
         if (IntegritySettings::isOn($cfg, 'freetext_checks')) {
-            [$scores['freetext'], $ftFlags] = $this->analyseFreetext($form, $values, $cfg);
+            [$scores['freetext'], $ftFlags] = $this->analyseFreetext($form, $values, $cfg, $shown);
             $flags = array_merge($flags, $ftFlags);
         }
         if (IntegritySettings::isOn($cfg, 'similarity_detection')) {
@@ -848,15 +853,6 @@ class IntegrityService
         if (!empty($data['questions']) && is_array($data['questions'])) {
             $meta->question_timings_json = json_encode($data['questions'], JSON_UNESCAPED_UNICODE);
         }
-        if (!empty($data['startedAt']) && !$meta->started_at) {
-            $ts = (int)$data['startedAt'];
-            if ($ts > 1000000000000) {
-                $ts = (int)floor($ts / 1000);
-            }
-            if ($ts > 0) {
-                $meta->started_at = date('Y-m-d H:i:s', $ts);
-            }
-        }
     }
 
     private function analyseBot(FormIntegrityMeta $meta, array $cfg): array
@@ -961,34 +957,76 @@ class IntegrityService
     {
         $weight = (float)($cfg['weight_speed'] ?? 15);
         $duration = (int)$meta->duration_seconds;
-        $min = max(5, (int)($cfg['speed_min_seconds'] ?? 15));
+        $shown = max(1, (int)$meta->shown_question_count);
+        $perQuestion = $duration / $shown;
+        $minPer = $this->secondsPerQuestionFloor($cfg);
         $percent = max(5, min(90, (int)($cfg['speed_percent'] ?? 40)));
         $median = (int)$meta->median_seconds;
         $flags = [];
         $score = 0.0;
-        if ($duration > 0 && $duration < $min) {
+        if ($duration > 0 && $perQuestion < $minPer) {
             $score = $weight * 0.7;
-            $flags[] = $this->flag('speed', 'absolute', Yii::t('ThiscoveryFormsModule.base', 'Completed in {n} seconds (threshold {min}s)', [
-                'n' => $duration,
-                'min' => $min,
+            $flags[] = $this->flag('speed', 'absolute', Yii::t('ThiscoveryFormsModule.base', 'Completed in {n} seconds per question (threshold {min}s)', [
+                'n' => round($perQuestion, 1),
+                'min' => $minPer,
             ]));
-        } elseif ($median >= $min && $duration > 0 && $duration < ($median * $percent / 100)) {
+        } elseif ($median >= $minPer && $duration > 0 && $perQuestion < ($median * $percent / 100)) {
             $score = $weight * 0.55;
-            $flags[] = $this->flag('speed', 'relative', Yii::t('ThiscoveryFormsModule.base', 'Completed in {n}s versus typical {median}s', [
-                'n' => $duration,
+            $flags[] = $this->flag('speed', 'relative', Yii::t('ThiscoveryFormsModule.base', 'Completed in {n}s per question versus typical {median}s', [
+                'n' => round($perQuestion, 1),
                 'median' => $median,
             ]));
         }
         return [$score, $flags];
     }
 
-    private function analyseStraightline(CustomForm $form, array $values, array $cfg): array
+    /**
+     * The stored default of 15 was a total-seconds floor. That flags a short
+     * legitimate route. 15 is read as 2 seconds per question shown.
+     */
+    private function secondsPerQuestionFloor(array $cfg): int
+    {
+        $configured = (int)($cfg['speed_min_seconds'] ?? 2);
+        if ($configured === 15 || $configured < 1) {
+            return 2;
+        }
+        return max(1, $configured);
+    }
+
+    /**
+     * Field ids on the respondent's route that were visible.
+     *
+     * @return array<int, true>
+     */
+    public function shownFieldIds(CustomForm $form, array $values): array
+    {
+        $fields = array_values($form->getAllFields()->all());
+        $onRoute = (new FormPager())->visitedFieldIds($fields, $values);
+        $engine = new LogicEngine();
+        $ids = [];
+        foreach ($fields as $field) {
+            $id = (int)$field->id;
+            if ($id < 1 || !isset($onRoute[$id]) || !$field->collectsAnswer() || $field->isHiddenFromRespondent()) {
+                continue;
+            }
+            if (!$engine->isFieldVisible($field, $fields, $values)) {
+                continue;
+            }
+            $ids[$id] = true;
+        }
+        return $ids;
+    }
+
+    private function analyseStraightline(CustomForm $form, array $values, array $cfg, array $shown): array
     {
         $weight = (float)($cfg['weight_straightline'] ?? 10);
         $minItems = max(3, (int)($cfg['straightline_min_items'] ?? 5));
         $flags = [];
         $score = 0.0;
         foreach ($form->getAllFields()->all() as $field) {
+            if (!isset($shown[(int)$field->id])) {
+                continue;
+            }
             if (!in_array($field->type, [FormField::TYPE_GRID_SINGLE, FormField::TYPE_GRID_MULTI], true)) {
                 continue;
             }
@@ -1010,7 +1048,7 @@ class IntegrityService
         }
         $ratings = [];
         foreach ($form->getAllFields()->all() as $field) {
-            if ($field->type !== FormField::TYPE_RATING) {
+            if (!isset($shown[(int)$field->id]) || $field->type !== FormField::TYPE_RATING) {
                 continue;
             }
             $v = $values[$field->id] ?? '';
@@ -1076,7 +1114,7 @@ class IntegrityService
             $run = [];
         };
         foreach ($form->getAllFields()->all() as $field) {
-            if (!$field->collectsAnswer() || $field->isHiddenFromRespondent() || $field->isAttentionCheck()) {
+            if (!isset($shown[(int)$field->id]) || !$field->collectsAnswer() || $field->isHiddenFromRespondent() || $field->isAttentionCheck()) {
                 $flush();
                 continue;
             }
@@ -1110,13 +1148,13 @@ class IntegrityService
         return [$score, $flags];
     }
 
-    private function analyseAttention(CustomForm $form, array $values): array
+    private function analyseAttention(CustomForm $form, array $values, array $shown): array
     {
         $flags = [];
         $failed = 0;
         $total = 0;
         foreach ($form->getAllFields()->all() as $field) {
-            if (!$field->isAttentionCheck()) {
+            if (!isset($shown[(int)$field->id]) || !$field->isAttentionCheck()) {
                 continue;
             }
             $total++;
@@ -1179,7 +1217,7 @@ class IntegrityService
         return [$score, $flags];
     }
 
-    private function analyseFreetext(CustomForm $form, array $values, array $cfg): array
+    private function analyseFreetext(CustomForm $form, array $values, array $cfg, array $shown): array
     {
         $weight = (float)($cfg['weight_freetext'] ?? 10);
         $minChars = max(3, (int)($cfg['freetext_min_chars'] ?? 8));
@@ -1188,6 +1226,9 @@ class IntegrityService
         $textTypes = [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_HTML];
         $seenNorm = [];
         foreach ($form->getAllFields()->all() as $field) {
+            if (!isset($shown[(int)$field->id])) {
+                continue;
+            }
             if (!in_array($field->type, $textTypes, true) || !$field->collectsAnswer() || $field->isHiddenFromRespondent()) {
                 continue;
             }
@@ -1373,25 +1414,37 @@ class IntegrityService
         };
     }
 
-    private function medianDuration(CustomForm $form, int $excludeId): int
+    private function medianSecondsPerQuestion(CustomForm $form, int $excludeId): int
     {
         $rows = FormIntegrityMeta::find()->alias('m')
             ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
             ->andWhere(['m.form_id' => $form->id, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
             ->andWhere(['>', 'm.duration_seconds', 0])
+            ->andWhere(['>', 'm.shown_question_count', 0])
             ->andWhere(['<>', 'm.answer_id', $excludeId])
-            ->select('m.duration_seconds')
-            ->orderBy(['m.duration_seconds' => SORT_ASC])
-            ->column();
-        $n = count($rows);
+            ->andWhere(['not in', 'm.integrity_status', [FormIntegrityMeta::STATUS_SUSPICIOUS, FormIntegrityMeta::STATUS_EXCLUDED]])
+            ->andWhere(['or', ['m.speed_score' => null], ['m.speed_score' => 0]])
+            ->select(['m.duration_seconds', 'm.shown_question_count'])
+            ->asArray()
+            ->all();
+        $rates = [];
+        foreach ($rows as $row) {
+            $shown = (int)$row['shown_question_count'];
+            if ($shown < 1) {
+                continue;
+            }
+            $rates[] = (int)$row['duration_seconds'] / $shown;
+        }
+        sort($rates);
+        $n = count($rates);
         if ($n < 3) {
             return 0;
         }
         $mid = (int)floor($n / 2);
         if ($n % 2) {
-            return (int)$rows[$mid];
+            return (int)round($rates[$mid]);
         }
-        return (int)round(((int)$rows[$mid - 1] + (int)$rows[$mid]) / 2);
+        return (int)round(($rates[$mid - 1] + $rates[$mid]) / 2);
     }
 
     public function consumeAccessToken(CustomForm $form, string $raw): bool

@@ -14,6 +14,7 @@ use yii\db\ActiveQuery;
  * @property string|null $started_at
  * @property string|null $completed_at
  * @property int|null $duration_seconds
+ * @property int|null $shown_question_count
  * @property int|null $median_seconds
  * @property string|null $page_timings_json
  * @property string|null $question_timings_json
@@ -71,7 +72,7 @@ class FormIntegrityMeta extends ActiveRecord
     {
         return [
             [['answer_id', 'form_id'], 'required'],
-            [['answer_id', 'form_id', 'duration_seconds', 'median_seconds', 'session_established', 'honeypot_triggered', 'rate_limited', 'captcha_shown', 'captcha_passed'], 'integer'],
+            [['answer_id', 'form_id', 'duration_seconds', 'shown_question_count', 'median_seconds', 'session_established', 'honeypot_triggered', 'rate_limited', 'captcha_shown', 'captcha_passed'], 'integer'],
             [['bot_score', 'duplicate_score', 'speed_score', 'straightline_score', 'attention_score', 'consistency_score', 'freetext_score', 'similarity_score', 'overall_score'], 'number'],
             [['integrity_status'], 'in', 'range' => array_keys(self::statusLabels())],
             [['analysis_status'], 'in', 'range' => array_keys(self::analysisLabels())],

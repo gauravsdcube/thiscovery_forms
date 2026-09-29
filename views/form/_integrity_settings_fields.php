@@ -253,11 +253,11 @@ $siteDefaultOn = !empty($defaults['enabled']);
         ],
         'speed_percent' => [
             Yii::t('ThiscoveryFormsModule.base', 'Speeding: percent of typical time'),
-            Yii::t('ThiscoveryFormsModule.base', 'Flag when completion is faster than this percent of the survey’s median time (once enough completions exist). 40 means under 40% of typical time.'),
+            Yii::t('ThiscoveryFormsModule.base', 'Flag when seconds per question shown are under this percent of the median seconds per question. Responses already flagged for speeding, or marked suspicious or excluded, are left out of that median.'),
         ],
         'speed_min_seconds' => [
-            Yii::t('ThiscoveryFormsModule.base', 'Speeding: minimum seconds'),
-            Yii::t('ThiscoveryFormsModule.base', 'Also flag completions shorter than this many seconds, even before a median is known. Set this to a floor a real person could not beat.'),
+            Yii::t('ThiscoveryFormsModule.base', 'Speeding: minimum seconds per question'),
+            Yii::t('ThiscoveryFormsModule.base', 'Flag when the time per question shown is shorter than this, even before a median is known. A short route is not compared with the total time of a long one. The old default of 15 is treated as 2 seconds per question.'),
         ],
         'straightline_min_items' => [
             Yii::t('ThiscoveryFormsModule.base', 'Straight-line: minimum items'),
