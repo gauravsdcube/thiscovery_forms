@@ -580,6 +580,9 @@ trait StudioTrait
         if (!Yii::$app->request->isPost) {
             return ['success' => false, 'errors' => [Yii::t('ThiscoveryFormsModule.base', 'Invalid form data.')]];
         }
+        if (!$form->isPoll()) {
+            return ['success' => false, 'errors' => [Yii::t('ThiscoveryFormsModule.base', 'This form cannot be submitted this way.')]];
+        }
 
         $submit = new SubmitForm(['form' => $form]);
         $existing = $this->resolveFillExisting($form, $submit);
@@ -596,6 +599,10 @@ trait StudioTrait
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
+        $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx);
+        if ($gate) {
+            return ['success' => false, 'errors' => [$gate]];
+        }
         $anonymous = $form->submitAsAnonymous(false, (bool)$ctx->tokenAccess);
         $wasNewComplete = !$existing || $existing->isInProgress();
         $answer = $submit->save($existing, $anonymous);

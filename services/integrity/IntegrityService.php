@@ -810,11 +810,16 @@ class IntegrityService
         }
     }
 
+    public static function rateLimitKey(int $formId, string $ip): string
+    {
+        $hashes = IntegritySettings::hashIp($ip);
+        $identity = $hashes['ip_network_hash'] ?: $hashes['ip_hash'] ?: hash('sha256', 'none');
+        return 'cf-int-rate-' . $formId . '-' . $identity;
+    }
+
     private function isRateLimited(CustomForm $form, array $cfg, bool $increment): bool
     {
-        $ip = (string)Yii::$app->request->userIP;
-        $session = Yii::$app->session->id ?: 'none';
-        $key = 'cf-int-rate-' . $form->id . '-' . IntegritySettings::hashValue($ip . '|' . $session);
+        $key = self::rateLimitKey((int)$form->id, (string)Yii::$app->request->userIP);
         $limit = max(1, (int)($cfg['rate_limit_count'] ?? 8));
         $window = max(1, (int)($cfg['rate_limit_window'] ?? 10)) * 60;
         $cache = Yii::$app->cache;
