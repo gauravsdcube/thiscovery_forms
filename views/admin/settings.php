@@ -70,6 +70,18 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         </div>
 
         <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Consent') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn consent on. Completing a form no longer records consent by itself.') ?>
+        </p>
+        <div class="checkbox">
+            <label>
+                <?= Html::checkbox('ModuleSettings[econsentEnabled]', !empty($model->econsentEnabled), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('econsentEnabled')) ?>
+            </label>
+        </div>
+
+        <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h4>
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn randomisation on before the server shuffles pages, questions, or options, or assigns an arm.') ?>

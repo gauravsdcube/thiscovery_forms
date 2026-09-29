@@ -6,6 +6,15 @@ class uninstall extends Migration
 {
     public function up()
     {
+        $this->dropTable('custom_form_consent_audit');
+        $this->dropTable('custom_form_admin_task');
+        $this->dropTable('custom_form_consent_withdrawal');
+        $this->dropTable('custom_form_consent_requirement');
+        $this->dropTable('custom_form_consent_record');
+        $this->dropTable('custom_form_consent_i18n');
+        $this->dropTable('custom_form_consent_file');
+        $this->dropTable('custom_form_consent_item');
+        $this->dropTable('custom_form_consent_document');
         $this->dropTable('custom_form_arm_override');
         $this->dropTable('custom_form_arm_assignment');
         $this->dropTable('custom_form_arm_allocation');
