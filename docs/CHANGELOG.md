@@ -2,6 +2,20 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.28.6 (September 29, 2026)
+
+1.28.6 follows 1.28.5.
+
+- Fix (DAT-7, DAT-8): the fill posts a signed edition id, and that is the edition stored on the response. If the edition cannot be loaded, the working draft is not shown. The answers CSV has an Edition ID column and includes questions from the editions responses used. Migrations are unchanged for this fix.
+
+- Fix (INT-2, INT-4, INT-5): attention, straight-lining, and free-text checks score only questions on the respondent's route. Speeding is seconds per question shown. A stored minimum of 15 seconds, the old total-time default, is treated as 2 seconds per question. The browser cannot set the start time. Migration `m260929_140000_shown_question_count`.
+
+- Fix (SCO-5): a Delphi item freezes when the agree band reaches the threshold. Codes in the disagree band do not freeze the item when that band also reaches the threshold. Excluded codes are left out of the share. With no band set, the single most common code is still used.
+
+- Fix (GOV-6): the answers CSV is a POST, and only someone allowed to export can download it. A respondent who can see answers only because they submitted one cannot export the file. Each download is written to `custom_form_export_log`. Scrubbing is on when a question is marked personal, unless the form turns it off. Migration `m260929_141000_export_log`.
+
+- Fix (A11Y-4, A11Y-5): a field error is linked to its control and focus moves to the first error. Page changes and newly shown questions are announced. On the fill page, the unnamed menu and search controls have names, and the breadcrumb and space initials meet the contrast check.
+
 ## 1.28.5 (September 29, 2026)
 
 1.28.5 follows 1.28.4. It does not replace the 1.28.4 fixes.
