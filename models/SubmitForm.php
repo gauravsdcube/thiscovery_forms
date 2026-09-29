@@ -42,6 +42,18 @@ class SubmitForm extends Model
     /** @var int|null Sort order of a consent question that was refused. Later questions are not required. */
     public $consentRefusedSort;
 
+    /** @var string end, redirect, or goto when a quota stops or diverts this response */
+    public $quotaHalt = '';
+
+    /** @var string */
+    public $quotaMessage = '';
+
+    /** @var string */
+    public $quotaUrl = '';
+
+    /** @var int|null */
+    public $quotaPage = null;
+
     /** @var float */
     public $weight = 1;
 
@@ -656,6 +668,17 @@ class SubmitForm extends Model
             }
             $this->onPathFieldIds = null;
             (new \humhub\modules\thiscoveryForms\services\ConsentService())->applySubmit($this, $answer, $asDraft, (bool)$stripIdentity);
+            $previewOutcome = (string)$answer->outcome === FormAnswer::OUTCOME_NOT_CONSENTED
+                ? FormAnswer::OUTCOME_NOT_CONSENTED
+                : $this->terminalOutcome($answer);
+            if (!in_array($previewOutcome, [FormAnswer::OUTCOME_NOT_CONSENTED, FormAnswer::OUTCOME_SCREENED_OUT], true)) {
+                (new \humhub\modules\thiscoveryForms\services\QuotaService())->apply(
+                    $this,
+                    $answer,
+                    $asDraft,
+                    ($postedPage === null || $postedPage === '') ? null : (int)$postedPage
+                );
+            }
 
             $existingFields = [];
             foreach ($answer->answerFields as $af) {
@@ -736,7 +759,21 @@ class SubmitForm extends Model
                 }
             }
 
-            if (!$asDraft) {
+            if ($this->quotaHalt === 'goto') {
+                $answer->status = FormAnswer::STATUS_IN_PROGRESS;
+                $answer->current_page = $this->quotaPage;
+                $answer->outcome = '';
+                $answer->save(false, ['status', 'outcome', 'current_page', 'updated_at']);
+            } elseif (in_array($this->quotaHalt, ['end', 'redirect'], true)) {
+                $answer->status = FormAnswer::STATUS_COMPLETE;
+                $answer->resume_code = null;
+                $answer->current_page = null;
+                if ($anonymous) {
+                    $answer->resume_email = null;
+                }
+                $answer->outcome = FormAnswer::OUTCOME_OVER_QUOTA;
+                $answer->save(false, ['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
+            } elseif (!$asDraft) {
                 $answer->status = FormAnswer::STATUS_COMPLETE;
                 $answer->resume_code = null;
                 $answer->current_page = null;
@@ -771,7 +808,14 @@ class SubmitForm extends Model
             UploadGrant::forgetAll((int)$this->form->id);
         }
 
-        if (!$asDraft && !$isTest && Yii::$app->hasModule('thiscovery-dashboard')) {
+        if ($this->quotaMessage !== '' && ($this->quotaHalt === 'end' || $this->quotaHalt === 'redirect')) {
+            Yii::$app->session->setFlash('cf-over-quota', $this->quotaMessage);
+        }
+        if ($this->quotaUrl !== '') {
+            Yii::$app->session->set('cf-quota-redirect', $this->quotaUrl);
+        }
+
+        if (!$asDraft && !$isTest && $answer->countsAsComplete() && Yii::$app->hasModule('thiscovery-dashboard')) {
             $dash = Yii::$app->getModule('thiscovery-dashboard');
             if ($dash instanceof \humhub\modules\thiscoveryDashboard\Module) {
                 $dash->enqueueIncrement('forms', (string)$this->form->id, (int)$answer->id);
@@ -1072,6 +1116,9 @@ class SubmitForm extends Model
     {
         if ((string)$answer->outcome === FormAnswer::OUTCOME_NOT_CONSENTED) {
             return FormAnswer::OUTCOME_NOT_CONSENTED;
+        }
+        if ((string)$answer->outcome === FormAnswer::OUTCOME_OVER_QUOTA) {
+            return FormAnswer::OUTCOME_OVER_QUOTA;
         }
         if (!\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
             return (string)$answer->outcome;

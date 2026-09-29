@@ -595,7 +595,14 @@ class RandomisationService
                 $tx->commit();
                 return $again;
             }
-            $code = $this->drawArm($form, $cfg, $stratum, $answer);
+            $quotaChoice = (new QuotaService())->chooseArm($form, $answer, $values, $cfg['arms'], $this->seedFor($answer, 'arm-quota'));
+            if ($quotaChoice === false) {
+                $tx->rollBack();
+                return null;
+            }
+            $code = is_string($quotaChoice) && $quotaChoice !== ''
+                ? $quotaChoice
+                : $this->drawArm($form, $cfg, $stratum, $answer);
             if ($code === '') {
                 $tx->rollBack();
                 return null;

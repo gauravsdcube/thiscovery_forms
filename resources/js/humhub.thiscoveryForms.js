@@ -2601,6 +2601,14 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     return;
                 }
                 applyResumeCode(res.resume_code);
+                if (res.quota_message) {
+                    var $note = $form.find('[data-cf-quota-note]');
+                    if (!$note.length) {
+                        $note = $('<p data-cf-quota-note role="status"></p>');
+                        $form.prepend($note);
+                    }
+                    $note.text(res.quota_message);
+                }
             }).always(function () {
                 autosaveXhr = null;
                 if (autosaveQueued && !fillSubmitting) {

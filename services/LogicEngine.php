@@ -122,11 +122,16 @@ class LogicEngine
         if (!isset(FormField::getOperatorLabels()[$operator])) {
             $operator = FormField::OP_EQUALS;
         }
-        return [
+        $leaf = [
             'fieldKey' => $fieldKey,
             'operator' => $operator,
             'value' => self::normalizeRuleValue($rule['value'] ?? ''),
         ];
+        $source = (string)($rule['source'] ?? '');
+        if ($source === 'panel' || $source === 'arm') {
+            $leaf['source'] = $source;
+        }
+        return $leaf;
     }
 
     /**
@@ -225,8 +230,22 @@ class LogicEngine
             $id = substr($fieldKey, 2);
             $raw = $values[$id] ?? $values[(int)$id] ?? null;
         }
+        if ($raw === null && $fields) {
+            $named = $this->fieldByKey($fields, $fieldKey);
+            if ($named) {
+                $raw = $values[(int)$named->id] ?? $values[(string)$named->id] ?? null;
+            }
+        }
         $op = (string)($rule['operator'] ?? FormField::OP_EQUALS);
         $expected = self::normalizeRuleValue($rule['value'] ?? '');
+        $leafSource = (string)($rule['source'] ?? '');
+        if ($leafSource === 'panel' || str_starts_with($fieldKey, 'panel.')) {
+            $attr = str_starts_with($fieldKey, 'panel.') ? $fieldKey : 'panel.' . $fieldKey;
+            return $this->compare($values[$attr] ?? null, $op, $expected);
+        }
+        if ($leafSource === 'arm' || $fieldKey === 'arm') {
+            return $this->compare($values['arm'] ?? null, $op, $expected);
+        }
 
         $source = $this->fieldByKey($fields, $fieldKey);
         if ($source && FormField::isChoiceType($source->type) && in_array($op, [FormField::OP_EQUALS, FormField::OP_NOT_EQUALS], true)) {

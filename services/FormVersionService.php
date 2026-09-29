@@ -64,6 +64,11 @@ class FormVersionService
         if (!self::isAvailable() || !$form->id) {
             return null;
         }
+        $quotaErrors = (new QuotaService())->authoringErrors($form);
+        if ($quotaErrors) {
+            Yii::$app->session->setFlash('error', implode(' ', $quotaErrors));
+            return null;
+        }
         return $this->versions->publishRevision(
             FormVersionAdapter::OWNER_TYPE,
             (int)$form->id,

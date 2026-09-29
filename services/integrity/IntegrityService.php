@@ -281,7 +281,7 @@ class IntegrityService
         }
 
         $flags = [];
-        $skipScores = in_array((string)$answer->outcome, [FormAnswer::OUTCOME_NOT_CONSENTED, FormAnswer::OUTCOME_SCREENED_OUT], true);
+        $skipScores = in_array((string)$answer->outcome, [FormAnswer::OUTCOME_NOT_CONSENTED, FormAnswer::OUTCOME_SCREENED_OUT, FormAnswer::OUTCOME_OVER_QUOTA], true);
         $scores = [
             'bot' => 0.0, 'duplicate' => 0.0, 'speed' => 0.0, 'straightline' => 0.0,
             'attention' => 0.0, 'consistency' => 0.0, 'freetext' => 0.0, 'similarity' => 0.0,
@@ -384,6 +384,9 @@ class IntegrityService
             $ctx->accessTokenConsumed = $this->consumeAccessToken($form, $rawToken);
         }
         $meta->save(false);
+        if ((string)$meta->analysis_status === FormIntegrityMeta::ANALYSIS_EXCLUDED) {
+            (new \humhub\modules\thiscoveryForms\services\QuotaService())->releaseExcluded($form, $answer);
+        }
         $this->clearCaptchaRequired($form);
         $this->clearOpenCaptchaRequired($form);
         Yii::$app->session->remove(self::START_PREFIX . (int)$form->id);
@@ -409,6 +412,12 @@ class IntegrityService
             $meta->exclusion_reason = $reason !== '' ? $reason : null;
         }
         $meta->save(false);
+        if ($analysis === FormIntegrityMeta::ANALYSIS_EXCLUDED) {
+            $answer = FormAnswer::findOne((int)$meta->answer_id);
+            if ($answer) {
+                (new \humhub\modules\thiscoveryForms\services\QuotaService())->releaseExcluded($form, $answer);
+            }
+        }
         FormIntegrityAudit::record($form->id, $meta->answer_id, 'status_override', $fromStatus, $status, $reason);
         if ($fromAnalysis !== $analysis) {
             FormIntegrityAudit::record($form->id, $meta->answer_id, 'analysis_status', $fromAnalysis, $analysis, $reason);

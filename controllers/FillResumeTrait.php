@@ -537,6 +537,7 @@ trait FillResumeTrait
             return [
                 'success' => true,
                 'resume_code' => (string)$answer->resume_code,
+                'quota_message' => (string)$submit->quotaMessage,
             ];
         }
 

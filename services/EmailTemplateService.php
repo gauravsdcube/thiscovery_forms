@@ -219,6 +219,9 @@ class EmailTemplateService
         if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
             return false;
         }
+        if ((new QuotaService())->blocksInvite($form, $member, $wave)) {
+            return false;
+        }
         if ($template) {
             return $this->sendTemplate(
                 $template,
@@ -237,7 +240,7 @@ class EmailTemplateService
 
     public function sendCompletionEmail(CustomForm $form, FormAnswer $answer, ?FormPanelMember $member = null): bool
     {
-        if ((string)$answer->outcome === FormAnswer::OUTCOME_NOT_CONSENTED) {
+        if ((string)$answer->outcome === FormAnswer::OUTCOME_NOT_CONSENTED || (string)$answer->outcome === FormAnswer::OUTCOME_OVER_QUOTA) {
             return false;
         }
         $template = $this->templateForForm($form, 'completion_email_template_id');
@@ -290,6 +293,9 @@ class EmailTemplateService
             }
             foreach ($panel->getActiveMembers()->all() as $member) {
                 if ((new ConsentService())->blocksContact((int)$member->id)) {
+                    continue;
+                }
+                if ((new QuotaService())->blocksInvite($form, $member, $wave)) {
                     continue;
                 }
                 $where = [

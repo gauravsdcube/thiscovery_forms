@@ -1602,6 +1602,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->persistProgrammeSettings();
         $this->persistRandomisationFromRequest();
         $this->persistEconsentFromRequest();
+        $this->persistQuotasFromRequest();
 
         return true;
     }
@@ -1617,6 +1618,19 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'reconsent' => $request->post('econsent_reconsent', 'off'),
             'store_client_hashes' => $request->post('consent_store_client_hashes', '0'),
             'not_consented_message' => $request->post('not_consented_message', ''),
+        ]);
+    }
+
+    protected function persistQuotasFromRequest(): void
+    {
+        $request = Yii::$app->request;
+        if (!$request->isPost || $request->post('quotas_present') === null) {
+            return;
+        }
+        (new \humhub\modules\thiscoveryForms\services\QuotaService())->saveFormSettings($this, [
+            'enabled' => $request->post('quotas_enabled', '0'),
+            'assign_arm' => $request->post('quota_assign_arm', '0'),
+            'full_email' => $request->post('quota_full_email', ''),
         ]);
     }
 
@@ -2568,6 +2582,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 'label' => $backward,
             ]));
             return false;
+        }
+        foreach ((new \humhub\modules\thiscoveryForms\services\QuotaService())->authoringErrors($this) as $message) {
+            $this->addError('title', $message);
+            $ok = false;
         }
         foreach ((new \humhub\modules\thiscoveryForms\services\ConsentService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);

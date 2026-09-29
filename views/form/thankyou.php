@@ -60,7 +60,21 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <?php if ($withdrawToken !== ''): ?>
                 <?php Yii::$app->session->remove('cf-consent-withdraw'); ?>
             <?php endif; ?>
-            <?php if (is_string($notConsented) && $notConsented !== ''): ?>
+            <?php $overQuota = Yii::$app->session->getFlash('cf-over-quota'); ?>
+            <?php $quotaRedirect = (string)Yii::$app->session->get('cf-quota-redirect', ''); ?>
+            <?php if ($quotaRedirect !== ''): ?>
+                <?php Yii::$app->session->remove('cf-quota-redirect'); ?>
+            <?php endif; ?>
+            <?php if (is_string($overQuota) && $overQuota !== ''): ?>
+                <div class="cf-thankyou__default" role="status">
+                    <h2><?= Yii::t('ThiscoveryFormsModule.base', 'This group is full') ?></h2>
+                    <p><?= nl2br(Html::encode($overQuota)) ?></p>
+                    <?php if ($quotaRedirect !== ''): ?>
+                        <p><a href="<?= Html::encode($quotaRedirect) ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Continue') ?></a></p>
+                        <meta http-equiv="refresh" content="5;url=<?= Html::encode($quotaRedirect) ?>">
+                    <?php endif; ?>
+                </div>
+            <?php elseif (is_string($notConsented) && $notConsented !== ''): ?>
                 <div class="cf-thankyou__default"><p><?= nl2br(Html::encode($notConsented)) ?></p></div>
             <?php elseif ($withdrawToken !== ''): ?>
                 <p><?= Yii::t('ThiscoveryFormsModule.base', 'Keep this withdrawal code. It is shown once: {code}', ['code' => $withdrawToken]) ?></p>
@@ -71,7 +85,7 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
                 $screenMessage = trim((string)(new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['screen_out_message']);
             }
             ?>
-            <?php if (is_string($notConsented) && $notConsented !== ''): ?>
+            <?php if ((is_string($overQuota) && $overQuota !== '') || (is_string($notConsented) && $notConsented !== '')): ?>
             <?php elseif ($screenMessage !== ''): ?>
                 <div class="cf-thankyou__default">
                     <p><?= nl2br(Html::encode($screenMessage)) ?></p>
