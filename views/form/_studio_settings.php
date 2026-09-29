@@ -565,6 +565,29 @@ $activeSection = $activeSection ?? 'basics';
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The share of agreement needed before an item is treated as having reached consensus.')]) ?>
                         <?= Html::activeInput('number', $formModel, 'consensus_threshold', ['class' => 'form-control', 'min' => 1, 'max' => 100]) ?>
                     </div>
+                    <div class="col-md-3 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Agree from') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Codes inside this band are added together. Leave both boxes empty to keep using the single most common code.')]) ?>
+                        <?= Html::activeTextInput($formModel, 'consensus_agree_from', ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-3 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Agree to') ?></label>
+                        <?= Html::activeTextInput($formModel, 'consensus_agree_to', ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-3 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Disagree from') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'If the disagree band also reaches the threshold, the item is not frozen.')]) ?>
+                        <?= Html::activeTextInput($formModel, 'consensus_disagree_from', ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-3 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Disagree to') ?></label>
+                        <?= Html::activeTextInput($formModel, 'consensus_disagree_to', ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-6 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Codes to exclude') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Comma-separated codes left out of the share, such as N/A.')]) ?>
+                        <?= Html::activeTextInput($formModel, 'consensus_exclude_codes', ['class' => 'form-control']) ?>
+                    </div>
                 </div>
                 <div class="cf-checks mt-3">
                     <div class="cf-check-setting">

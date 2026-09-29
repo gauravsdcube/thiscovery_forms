@@ -225,11 +225,13 @@ class RoundService
                     'af.field_id' => $field->id,
                 ])
                 ->all();
+            $bands = $form->getConsensusBands();
+            $excluded = array_fill_keys($bands['exclude'], true);
             $counts = [];
             $total = 0.0;
             foreach ($rows as $row) {
                 $val = (string)$row['value'];
-                if ($val === '') {
+                if ($val === '' || isset($excluded[$val])) {
                     continue;
                 }
                 $w = ($row['weight'] === null || $row['weight'] === '') ? 1.0 : (float)$row['weight'];
@@ -239,11 +241,44 @@ class RoundService
             if ($total <= 0) {
                 continue;
             }
+            if ($bands['agree_from'] !== null && $bands['agree_to'] !== null) {
+                $agree = 0.0;
+                $disagree = 0.0;
+                foreach ($counts as $val => $weight) {
+                    if ($this->inConsensusBand((string)$val, $bands['agree_from'], $bands['agree_to'])) {
+                        $agree += $weight;
+                    }
+                    if ($bands['disagree_from'] !== null && $bands['disagree_to'] !== null
+                        && $this->inConsensusBand((string)$val, $bands['disagree_from'], $bands['disagree_to'])) {
+                        $disagree += $weight;
+                    }
+                }
+                $agreeShare = ($agree / $total) * 100;
+                $disagreeShare = ($disagree / $total) * 100;
+                if ($agreeShare >= $threshold && $disagreeShare < $threshold) {
+                    $frozen[] = (int)$field->id;
+                }
+                continue;
+            }
             $max = max($counts);
             if (($max / $total) * 100 >= $threshold) {
                 $frozen[] = (int)$field->id;
             }
         }
         return $frozen;
+    }
+
+    private function inConsensusBand(string $value, string $from, string $to): bool
+    {
+        if (is_numeric($value) && is_numeric($from) && is_numeric($to)) {
+            $n = (float)$value;
+            $a = (float)$from;
+            $b = (float)$to;
+            if ($a > $b) {
+                [$a, $b] = [$b, $a];
+            }
+            return $n >= $a && $n <= $b;
+        }
+        return $value === $from || $value === $to;
     }
 }
