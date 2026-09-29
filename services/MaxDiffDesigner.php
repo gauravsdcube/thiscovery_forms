@@ -3,7 +3,7 @@
 namespace humhub\modules\thiscoveryForms\services;
 
 /**
- * v1 MaxDiff: cyclic / BIBD-like sets and count scores (best minus worst).
+ * MaxDiff sets spread around the item list. Scores are best minus worst.
  */
 class MaxDiffDesigner
 {
@@ -13,48 +13,88 @@ class MaxDiffDesigner
      */
     public function generateSets(array $items, int $setSize, int $setCount): array
     {
-        $items = array_values(array_filter(array_map('strval', $items), 'strlen'));
+        $items = array_values(array_filter(array_map('strval', $items), static fn ($item) => $item !== ''));
         $n = count($items);
         if ($n < 2) {
             return [];
         }
         $setSize = max(2, min($setSize, $n));
         $setCount = max(1, $setCount);
-        $step = max(1, (int)floor($n / $setSize));
         $sets = [];
         $seen = [];
 
-        for ($s = 0; $s < $setCount * 4 && count($sets) < $setCount; $s++) {
-            $set = [];
-            for ($j = 0; $j < $setSize; $j++) {
-                $idx = ($s + ($j * $step)) % $n;
-                $set[] = $items[$idx];
-            }
-            $set = array_values(array_unique($set));
-            $cursor = $s % $n;
-            while (count($set) < $setSize) {
-                $candidate = $items[$cursor % $n];
-                if (!in_array($candidate, $set, true)) {
-                    $set[] = $candidate;
+        for ($step = 1; $step < $n && count($sets) < $setCount; $step++) {
+            for ($start = 0; $start < $n && count($sets) < $setCount; $start++) {
+                $set = [];
+                for ($j = 0; $j < $setSize; $j++) {
+                    $set[] = $items[($start + ($j * $step)) % $n];
                 }
-                $cursor++;
-                if ($cursor - $s > $n) {
-                    break;
+                $set = array_values(array_unique($set));
+                if (count($set) < $setSize || isset($seen[$this->setKey($set)])) {
+                    continue;
                 }
+                $seen[$this->setKey($set)] = true;
+                $sets[] = $set;
             }
-            $key = implode("\0", $set);
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $sets[] = $set;
         }
 
-        while (count($sets) < $setCount) {
-            $sets[] = array_slice($items, 0, $setSize);
+        if (count($sets) < $setCount && $n <= 16) {
+            $this->appendCombinations($items, $setSize, $setCount, $sets, $seen);
+        }
+
+        if ($sets !== [] && count($sets) < $setCount) {
+            $base = $sets;
+            $i = 0;
+            while (count($sets) < $setCount) {
+                $sets[] = $base[$i % count($base)];
+                $i++;
+            }
         }
 
         return array_slice($sets, 0, $setCount);
+    }
+
+    /**
+     * @param string[] $set
+     */
+    private function setKey(array $set): string
+    {
+        $copy = $set;
+        sort($copy);
+        return implode("\0", $copy);
+    }
+
+    /**
+     * @param string[] $items
+     * @param string[][] $sets
+     * @param array<string, true> $seen
+     */
+    private function appendCombinations(array $items, int $setSize, int $setCount, array &$sets, array &$seen): void
+    {
+        $n = count($items);
+        $index = range(0, $setSize - 1);
+        while (count($sets) < $setCount) {
+            $set = [];
+            foreach ($index as $at) {
+                $set[] = $items[$at];
+            }
+            $key = $this->setKey($set);
+            if (!isset($seen[$key])) {
+                $seen[$key] = true;
+                $sets[] = $set;
+            }
+            $pos = $setSize - 1;
+            while ($pos >= 0 && $index[$pos] === $n - $setSize + $pos) {
+                $pos--;
+            }
+            if ($pos < 0) {
+                break;
+            }
+            $index[$pos]++;
+            for ($k = $pos + 1; $k < $setSize; $k++) {
+                $index[$k] = $index[$k - 1] + 1;
+            }
+        }
     }
 
     /**
