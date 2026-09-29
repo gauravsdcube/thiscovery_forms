@@ -3,7 +3,7 @@
 namespace humhub\modules\thiscoveryForms\services;
 
 /**
- * MaxDiff sets spread around the item list. Scores are best minus worst.
+ * MaxDiff sets spread around the item list. The score is (best − worst) / times shown.
  */
 class MaxDiffDesigner
 {
@@ -99,15 +99,15 @@ class MaxDiffDesigner
 
     /**
      * @param string[] $items
-     * @param array $responses list of set answers: [['best' => x, 'worst' => y], ...]
-     * @return array<string, array{best:int,worst:int,score:int}>
+     * @param array $responses list of set answers: [['best' => x, 'worst' => y, 'items' => [...]], ...]
+     * @return array<string, array{best:int,worst:int,shown:int,score:float}>
      */
     public function scores(array $items, array $responses): array
     {
         $scores = [];
         foreach ($items as $item) {
             $item = (string)$item;
-            $scores[$item] = ['best' => 0, 'worst' => 0, 'score' => 0];
+            $scores[$item] = ['best' => 0, 'worst' => 0, 'shown' => 0, 'score' => 0.0];
         }
         foreach ($responses as $pair) {
             if (!is_array($pair)) {
@@ -121,9 +121,29 @@ class MaxDiffDesigner
             if (isset($scores[$worst])) {
                 $scores[$worst]['worst']++;
             }
+            $shown = [];
+            if (isset($pair['items']) && is_array($pair['items'])) {
+                foreach ($pair['items'] as $item) {
+                    $shown[] = (string)$item;
+                }
+            } else {
+                if ($best !== '') {
+                    $shown[] = $best;
+                }
+                if ($worst !== '' && $worst !== $best) {
+                    $shown[] = $worst;
+                }
+            }
+            foreach (array_unique($shown) as $item) {
+                if (isset($scores[$item])) {
+                    $scores[$item]['shown']++;
+                }
+            }
         }
         foreach ($scores as $item => $row) {
-            $scores[$item]['score'] = $row['best'] - $row['worst'];
+            $scores[$item]['score'] = $row['shown'] > 0
+                ? (float)(($row['best'] - $row['worst']) / $row['shown'])
+                : 0.0;
         }
         return $scores;
     }

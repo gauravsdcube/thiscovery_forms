@@ -690,10 +690,15 @@ class DashboardService
             if (!is_array($sets)) {
                 continue;
             }
-            foreach ($sets as $pair) {
-                if (is_array($pair)) {
-                    $pairs[] = $pair;
+            $setItems = $field->getItemsConfig()['sets'] ?? [];
+            foreach ($sets as $index => $pair) {
+                if (!is_array($pair)) {
+                    continue;
                 }
+                if (!isset($pair['items']) && isset($setItems[$index]) && is_array($setItems[$index])) {
+                    $pair['items'] = $setItems[$index];
+                }
+                $pairs[] = $pair;
             }
         }
         if ($n === 0) {
@@ -704,7 +709,7 @@ class DashboardService
         $data = [];
         foreach ($scores as $item => $row) {
             $labels[] = $item;
-            $data[] = (int)$row['score'];
+            $data[] = $row['score'];
         }
         return [
             'fieldId' => $field->id,
