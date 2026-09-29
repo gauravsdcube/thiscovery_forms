@@ -106,6 +106,27 @@ class CustomForm extends ContentActiveRecord implements Searchable
     /** @var int Consensus agreement threshold (percent) */
     public $consensus_threshold = 70;
 
+    /** @var string Inclusive start of the Delphi agree band. Empty keeps the single most common code. */
+    public $consensus_agree_from = '';
+
+    /** @var string Inclusive end of the Delphi agree band. */
+    public $consensus_agree_to = '';
+
+    /** @var string Inclusive start of the Delphi disagree band. */
+    public $consensus_disagree_from = '';
+
+    /** @var string Inclusive end of the Delphi disagree band. */
+    public $consensus_disagree_to = '';
+
+    /** @var string Comma-separated codes left out of the consensus share. */
+    public $consensus_exclude_codes = '';
+
+    /** @var int|null Edition hydrated onto this in-memory form. Not a column. */
+    public $fillEditionId;
+
+    /** @var bool The published edition could not be loaded. Not a column. */
+    public $editionLoadFailed = false;
+
     /** @var int|bool Freeze items that reached consensus */
     public $freeze_on_consensus = 1;
 
@@ -230,6 +251,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['title'], 'validateOwnedReferences', 'skipOnEmpty' => false],
             [['consensus_threshold'], 'integer', 'min' => 1, 'max' => 100],
             [['source_language', 'identity_mode'], 'string', 'max' => 32],
+            [['consensus_agree_from', 'consensus_agree_to', 'consensus_disagree_from', 'consensus_disagree_to', 'consensus_exclude_codes'], 'safe'],
             [['identity_mode'], 'in', 'range' => array_keys(self::getIdentityModeLabels())],
             [['enabled_languages', 'style', 'enrol_panel_mode', 'enrol_panel_title', 'submit_actions', 'custom_functions'], 'safe'],
             [['enrol_panel_id', 'invite_email_template_id', 'wave_email_template_id', 'reminder_email_template_id', 'reminder_days', 'completion_email_template_id'], 'integer'],
@@ -454,6 +476,35 @@ class CustomForm extends ContentActiveRecord implements Searchable
     {
         $n = (int)($this->consensus_threshold ?: $this->getSetting('consensus_threshold', 70));
         return max(1, min(100, $n ?: 70));
+    }
+
+    /**
+     * Agree and disagree bands for a Delphi round. An empty agree band keeps
+     * the single most common code. Exclude codes are dropped from the share.
+     *
+     * @return array{agree_from:?string,agree_to:?string,disagree_from:?string,disagree_to:?string,exclude:string[]}
+     */
+    public function getConsensusBands(): array
+    {
+        $clean = function (string $key): ?string {
+            $value = trim((string)$this->getSetting($key, ''));
+            return $value === '' ? null : $value;
+        };
+        $exclude = [];
+        foreach (preg_split('/\s*,\s*/', (string)$this->getSetting('consensus_exclude_codes', '')) ?: [] as $code) {
+            $code = trim((string)$code);
+            if ($code !== '') {
+                $exclude[] = $code;
+            }
+        }
+
+        return [
+            'agree_from' => $clean('consensus_agree_from'),
+            'agree_to' => $clean('consensus_agree_to'),
+            'disagree_from' => $clean('consensus_disagree_from'),
+            'disagree_to' => $clean('consensus_disagree_to'),
+            'exclude' => $exclude,
+        ];
     }
 
     public function freezesOnConsensus(): bool
@@ -1053,6 +1104,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $mode = (string)$this->getSetting('identity_mode', self::IDENTITY_IDENTIFIED);
         $this->identity_mode = isset(self::getIdentityModeLabels()[$mode]) ? $mode : self::IDENTITY_IDENTIFIED;
         $this->consensus_threshold = (int)$this->getSetting('consensus_threshold', 70) ?: 70;
+        $this->consensus_agree_from = (string)$this->getSetting('consensus_agree_from', '');
+        $this->consensus_agree_to = (string)$this->getSetting('consensus_agree_to', '');
+        $this->consensus_disagree_from = (string)$this->getSetting('consensus_disagree_from', '');
+        $this->consensus_disagree_to = (string)$this->getSetting('consensus_disagree_to', '');
+        $this->consensus_exclude_codes = (string)$this->getSetting('consensus_exclude_codes', '');
         $this->freeze_on_consensus = $this->getSetting('freeze_on_consensus', true) ? 1 : 0;
         $this->require_justification = $this->getSetting('require_justification', false) ? 1 : 0;
         $style = $this->getSetting('style', []);
@@ -1570,6 +1626,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
         $this->setSetting('identity_mode', $mode);
         $this->setSetting('consensus_threshold', max(1, min(100, (int)$this->consensus_threshold)));
+        $this->setSetting('consensus_agree_from', trim((string)$this->consensus_agree_from));
+        $this->setSetting('consensus_agree_to', trim((string)$this->consensus_agree_to));
+        $this->setSetting('consensus_disagree_from', trim((string)$this->consensus_disagree_from));
+        $this->setSetting('consensus_disagree_to', trim((string)$this->consensus_disagree_to));
+        $this->setSetting('consensus_exclude_codes', trim((string)$this->consensus_exclude_codes));
         $this->setSetting('freeze_on_consensus', !empty($this->freeze_on_consensus));
         $this->setSetting('require_justification', !empty($this->require_justification));
 
@@ -1815,6 +1876,29 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         return false;
+    }
+
+    /**
+     * CSV download is narrower than viewing answers. A respondent who can see
+     * responses only because they submitted one cannot export the file.
+     */
+    public function canExportAnswers($user = null): bool
+    {
+        $user = $user ?: Yii::$app->user->getIdentity();
+        if (!$user) {
+            return false;
+        }
+        if ($this->canManage($user)) {
+            return true;
+        }
+        if ($this->answers_visibility !== self::ANSWERS_PERMISSION) {
+            return false;
+        }
+        $container = $this->isGlobal() ? null : $this->content->getContainer();
+        if ($container instanceof Space) {
+            return $container->getPermissionManager($user)->can(ViewAnswers::class);
+        }
+        return (new PermissionManager(['subject' => $user]))->can(ViewGlobalAnswers::class);
     }
 
     /**

@@ -29,7 +29,7 @@ class ExportService
         [$query] = AnswerListService::query($form, $params);
         $query->with(['answerFields', 'user', 'wave', 'round', 'panelMember', 'integrityMeta']);
 
-        $fields = array_values(array_filter($form->getAllFields()->all(), static fn($f) => $f->collectsAnswer()));
+        $fields = $this->exportFields($form);
         $headerMode = (string)($params['header_mode'] ?? self::HEADER_LABEL);
         if (!isset(self::headerModeLabels()[$headerMode])) {
             $headerMode = self::HEADER_LABEL;
@@ -67,6 +67,43 @@ class ExportService
     }
 
     /**
+     * Columns follow the editions responses were filled against, plus the live
+     * definition for any response that has no edition.
+     *
+     * @return FormField[]
+     */
+    private function exportFields(CustomForm $form): array
+    {
+        $byId = [];
+        foreach ($form->getAllFields()->all() as $field) {
+            if ($field->collectsAnswer()) {
+                $byId[(int)$field->id] = $field;
+            }
+        }
+        $editionIds = (new \yii\db\Query())
+            ->select('edition_id')
+            ->distinct()
+            ->from(FormAnswer::tableName())
+            ->where(['form_id' => (int)$form->id])
+            ->andWhere(['not', ['edition_id' => null]])
+            ->column();
+        $versions = new FormVersionService();
+        foreach ($editionIds as $editionId) {
+            $editionFields = $versions->editionFields($form, (int)$editionId);
+            if ($editionFields === null) {
+                continue;
+            }
+            foreach ($editionFields as $field) {
+                $id = (int)$field->id;
+                if ($id > 0 && !isset($byId[$id]) && $field->collectsAnswer()) {
+                    $byId[$id] = $field;
+                }
+            }
+        }
+        return array_values($byId);
+    }
+
+    /**
      * @param FormField[] $fields
      * @return array<string, string>
      */
@@ -84,6 +121,7 @@ class ExportService
         }
         $cells = [
             ExportSettings::KEY_ANSWER_ID => (string)$answer->id,
+            ExportSettings::KEY_EDITION_ID => $answer->edition_id ? (string)$answer->edition_id : '',
             ExportSettings::KEY_STATUS => $status,
             ExportSettings::KEY_USER => (string)$answer->getSubmitterDisplayName($form),
             ExportSettings::KEY_SUBMITTED_AT => (string)$answer->created_at,

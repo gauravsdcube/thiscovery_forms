@@ -438,6 +438,10 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?php if (!empty($accessToken)): ?>
                 <?= Html::hiddenInput('access_token', $accessToken) ?>
             <?php endif; ?>
+            <?php if (!empty($formModel->fillEditionId)): ?>
+                <?= Html::hiddenInput('edition_token', (new \humhub\modules\thiscoveryForms\services\FormVersionService())->signEdition((int)$formModel->id, (int)$formModel->fillEditionId)) ?>
+            <?php endif; ?>
+            <div class="visually-hidden" data-cf-page-live aria-live="polite" aria-atomic="true"></div>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
             <?php if ($integrityEnabled): ?>
             <?= Html::hiddenInput(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::TIMING_NAME, '{}', ['data-cf-integrity-timing' => true]) ?>

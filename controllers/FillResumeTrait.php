@@ -103,7 +103,22 @@ trait FillResumeTrait
                 ->applyFillDefinition($form, $lock ? $existing : null, $this->isPreviewMode($form));
         } catch (\Throwable $e) {
             Yii::warning('Thiscovery Forms edition hydrate failed: ' . $e->getMessage(), 'thiscovery-forms');
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())->markEditionUnavailable($form);
         }
+    }
+
+    /**
+     * @return string|null rendered page when the published edition did not load
+     */
+    protected function refuseUnavailableEdition(CustomForm $form)
+    {
+        if (empty($form->editionLoadFailed)) {
+            return null;
+        }
+        $this->applyFillLayout($form);
+        return $this->render('@thiscovery-forms/views/form/_edition_unavailable', [
+            'formModel' => $form,
+        ]);
     }
 
     protected function previewAnswerSessionKey(CustomForm $form): string

@@ -502,6 +502,34 @@ class SubmitForm extends Model
     }
 
     /**
+     * The signed edition posted with the fill, or null when the page did not send one.
+     * False means the token was present and did not verify, or the edition failed to load.
+     *
+     * @return int|false|null
+     */
+    private function resolvePinnedEdition(bool $isTest)
+    {
+        if ($isTest || !$this->form) {
+            return null;
+        }
+        if (!empty($this->form->editionLoadFailed)) {
+            return false;
+        }
+        $token = '';
+        try {
+            $token = trim((string)Yii::$app->request->post('edition_token', ''));
+        } catch (\Throwable $e) {
+            $token = '';
+        }
+        if ($token === '') {
+            return null;
+        }
+        $editionId = (new \humhub\modules\thiscoveryForms\services\FormVersionService())
+            ->readSignedEdition($token, (int)$this->form->id);
+        return $editionId ?: false;
+    }
+
+    /**
      * Persist submission. Returns FormAnswer or null on failure.
      *
      * @param FormAnswer|null $existing
@@ -516,6 +544,12 @@ class SubmitForm extends Model
         }
 
         if (!$this->validate()) {
+            return null;
+        }
+
+        $pinnedEdition = $this->resolvePinnedEdition($isTest);
+        if ($pinnedEdition === false) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form edition could not be confirmed. Please reload the page and try again.'));
             return null;
         }
 
@@ -567,6 +601,14 @@ class SubmitForm extends Model
             $answer->updated_by = null;
         }
 
+        if (!$isTest && !$answer->edition_id) {
+            if (is_int($pinnedEdition) && $pinnedEdition > 0) {
+                $answer->edition_id = $pinnedEdition;
+            } elseif ($this->form && $this->form->current_edition_id) {
+                $answer->edition_id = (int)$this->form->current_edition_id;
+            }
+        }
+
         $fileGuids = [];
         $db = Yii::$app->db;
         FormAnswerField::$deferFileDeletes = true;
@@ -577,11 +619,6 @@ class SubmitForm extends Model
                 FormAnswerField::discardDeferredFiles();
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
                 return null;
-            }
-
-            if (!$isTest && !$answer->edition_id && $this->form->current_edition_id) {
-                $answer->updateAttributes(['edition_id' => (int)$this->form->current_edition_id]);
-                $answer->edition_id = (int)$this->form->current_edition_id;
             }
 
             $existingFields = [];

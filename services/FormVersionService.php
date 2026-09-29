@@ -115,15 +115,20 @@ class FormVersionService
         if ($isPreview && ($revisionId || $editionId)) {
             if ($editionId) {
                 $edition = $this->versions->findEdition($editionId);
-                if ($edition && (int)$edition->owner_id === (int)$form->id) {
-                    $this->snapshots->hydrateInMemory($form, $edition->getSnapshot());
+                if (!$edition || (int)$edition->owner_id !== (int)$form->id) {
+                    $this->markEditionUnavailable($form);
+                    return;
                 }
+                $this->snapshots->hydrateInMemory($form, $edition->getSnapshot());
+                $form->fillEditionId = (int)$edition->id;
                 return;
             }
             $rev = $this->versions->findRevision($revisionId);
-            if ($rev && (int)$rev->owner_id === (int)$form->id) {
-                $this->snapshots->hydrateInMemory($form, $rev->getSnapshot());
+            if (!$rev || (int)$rev->owner_id !== (int)$form->id) {
+                $this->markEditionUnavailable($form);
+                return;
             }
+            $this->snapshots->hydrateInMemory($form, $rev->getSnapshot());
             return;
         }
 
@@ -146,9 +151,78 @@ class FormVersionService
             return;
         }
         $edition = $this->versions->findEdition($targetEditionId);
-        if ($edition && (int)$edition->owner_id === (int)$form->id) {
-            $this->snapshots->hydrateInMemory($form, $edition->getSnapshot());
+        if (!$edition || (int)$edition->owner_id !== (int)$form->id) {
+            $this->markEditionUnavailable($form);
+            return;
         }
+        $this->snapshots->hydrateInMemory($form, $edition->getSnapshot());
+        $form->fillEditionId = (int)$edition->id;
+    }
+
+    /**
+     * A missing edition must not leave the working draft on the fill page.
+     */
+    public function markEditionUnavailable(CustomForm $form): void
+    {
+        $form->editionLoadFailed = true;
+        $form->fillEditionId = null;
+        $form->populateRelation('fields', []);
+    }
+
+    public function signEdition(int $formId, int $editionId): string
+    {
+        return Yii::$app->security->hashData($formId . ':' . $editionId, $this->editionKey());
+    }
+
+    public function readSignedEdition(string $token, int $formId): ?int
+    {
+        $token = trim($token);
+        if ($token === '') {
+            return null;
+        }
+        $data = Yii::$app->security->validateData($token, $this->editionKey());
+        if (!is_string($data) || !preg_match('/^(\d+):(\d+)$/', $data, $match)) {
+            return null;
+        }
+        if ((int)$match[1] !== $formId || (int)$match[2] < 1) {
+            return null;
+        }
+        return (int)$match[2];
+    }
+
+    private function editionKey(): string
+    {
+        $key = '';
+        if (Yii::$app->has('request')) {
+            $key = (string)Yii::$app->request->cookieValidationKey;
+        }
+        return $key !== '' ? $key : 'thiscovery-forms-edition';
+    }
+
+    /**
+     * Answerable questions from a published edition, or null when it cannot be loaded.
+     *
+     * @return FormField[]|null
+     */
+    public function editionFields(CustomForm $form, int $editionId): ?array
+    {
+        if (!self::isAvailable() || $editionId < 1 || !$form->id) {
+            return null;
+        }
+        $edition = $this->versions->findEdition($editionId);
+        if (!$edition || (int)$edition->owner_id !== (int)$form->id) {
+            return null;
+        }
+        $copy = new CustomForm();
+        $copy->id = (int)$form->id;
+        $this->snapshots->hydrateInMemory($copy, $edition->getSnapshot());
+        $fields = [];
+        foreach ($copy->fields as $field) {
+            if ($field->collectsAnswer()) {
+                $fields[] = $field;
+            }
+        }
+        return $fields;
     }
 
     public function stampAnswerEdition(CustomForm $form, FormAnswer $answer): void
