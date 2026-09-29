@@ -52,6 +52,7 @@ class Module extends ContentContainerModule
     public const SETTING_ROUTING_ALIGNMENT = 'routing_alignment';
     public const SETTING_OPTION_ORDER = 'option_order_per_response';
     public const SETTING_RANDOMISATION = 'randomisation_enabled';
+    public const SETTING_ECONSENT = 'econsent_enabled';
     public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
     public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
     public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
@@ -133,6 +134,7 @@ class Module extends ContentContainerModule
                 new ManageForm(),
                 new AnswerForm(),
                 new ViewAnswers(),
+                new \humhub\modules\thiscoveryForms\permissions\ViewConsentRecords(),
             ], $versionPerms);
         }
 
@@ -294,6 +296,19 @@ class Module extends ContentContainerModule
             return false;
         }
         $value = (string)$module->settings->get(self::SETTING_RANDOMISATION, '0');
+        return in_array($value, ['1', 'true', 'on'], true);
+    }
+
+    /**
+     * Off unless an administrator turns it on. A form also has to turn consent on.
+     */
+    public static function econsentEnabled(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        if (!$module instanceof self) {
+            return false;
+        }
+        $value = (string)$module->settings->get(self::SETTING_ECONSENT, '0');
         return in_array($value, ['1', 'true', 'on'], true);
     }
 

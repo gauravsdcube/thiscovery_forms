@@ -158,9 +158,9 @@ class FormPanelMember extends ActiveRecord
         $this->demographics_json = $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
     }
 
-    public function markConsent(): void
+    public function markConsent(?int $recordId = null): void
     {
-        if ($this->consent_at) {
+        if ($recordId === null || $recordId < 1 || $this->consent_at) {
             return;
         }
         $this->consent_at = date('Y-m-d H:i:s');
