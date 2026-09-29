@@ -3546,6 +3546,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var readAnswers = function () {
             var values = {};
+            var armCode = String($root.find('[data-cf-arm-code]').attr('data-cf-arm-code') || '');
+            if (armCode) {
+                values.arm = armCode;
+            }
             $root.find('[data-cf-field-id][data-cf-answerable]').each(function () {
                 var $field = $(this);
                 var id = String($field.data('cf-field-id'));

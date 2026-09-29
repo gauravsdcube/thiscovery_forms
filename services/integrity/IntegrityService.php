@@ -11,6 +11,7 @@ use humhub\modules\thiscoveryForms\models\FormIntegrityMeta;
 use humhub\modules\thiscoveryForms\services\FillContext;
 use humhub\modules\thiscoveryForms\services\FormPager;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
+use humhub\modules\thiscoveryForms\services\RandomisationService;
 use Yii;
 
 /**
@@ -1001,7 +1002,12 @@ class IntegrityService
     public function shownFieldIds(CustomForm $form, array $values): array
     {
         $fields = array_values($form->getAllFields()->all());
-        $onRoute = (new FormPager())->visitedFieldIds($fields, $values);
+        $pageOrders = [];
+        $current = RandomisationService::$current;
+        if ($current && (int)$current->form_id === (int)$form->id && RandomisationService::active($form)) {
+            $pageOrders = (new RandomisationService())->orders($current)['pages'];
+        }
+        $onRoute = (new FormPager())->visitedFieldIds($fields, $values, $pageOrders);
         $engine = new LogicEngine();
         $ids = [];
         foreach ($fields as $field) {

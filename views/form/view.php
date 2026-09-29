@@ -43,9 +43,22 @@ $accessToken = $accessToken ?? '';
 
 ThiscoveryFormsAsset::register($this);
 
-$pager = (new FormPager())->buildPages($formModel->fields);
-$pages = $pager['pages'];
-$pageKeyIndex = $pager['pageKeyIndex'];
+$randService = new \humhub\modules\thiscoveryForms\services\RandomisationService();
+if ($existing instanceof FormAnswer) {
+    $existing->populateRelation('form', $formModel);
+    \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $existing;
+    if (!empty($isPreview) && Yii::$app->request->get('rerand')) {
+        $randService->ensure($existing, true);
+    }
+    $randService->materialise($existing);
+}
+$builtPages = (new FormPager())->buildPages($formModel->fields);
+if ($existing instanceof FormAnswer) {
+    $builtPages = $randService->applyPageOrder($builtPages, $existing);
+}
+$pages = $builtPages['pages'];
+$pageKeyIndex = $builtPages['pageKeyIndex'];
+$armAssignment = ($existing instanceof FormAnswer) ? $randService->assignment($existing) : null;
 
 $pagePayload = [];
 $pipe = new VariableSubstitutor();
@@ -248,6 +261,17 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Edit'))
                         ->link(Url::toEdit($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('pencil') ?>
                 <?php endif; ?>
+                <?php if ($isPreview && $existing instanceof FormAnswer && \humhub\modules\thiscoveryForms\services\RandomisationService::active($formModel)): ?>
+                    <?php
+                    $rerandUrl = Url::toView($formModel);
+                    $rerandUrl .= (str_contains($rerandUrl, '?') ? '&' : '?')
+                        . 'preview=' . rawurlencode((string)Yii::$app->request->get('preview'))
+                        . '&rerand=1';
+                    ?>
+                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Re-randomise'))
+                        ->link($rerandUrl)
+                        ->sm()->icon('random') ?>
+                <?php endif; ?>
                 <?php if ($formModel->canViewAnswers()): ?>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Dashboard'))
                         ->link(Url::toDashboard($formModel))->pjax(!$formModel->hidesHumhubHeader())->sm()->icon('bar-chart') ?>
@@ -418,6 +442,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 'class' => 'cf-fill-form',
                 'novalidate' => true,
                 'data-cf-fill-form' => true,
+                'data-cf-arm-code' => $armAssignment['arm_code'] ?? '',
                 'data-cf-save-url' => Url::toSaveProgress($formModel),
                 'data-cf-run-actions-url' => Url::toRunActions($formModel),
                 'data-cf-autosave' => $formModel->keepsPartials() ? '1' : '0',
@@ -464,10 +489,18 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         <h2 class="cf-form-page__title" data-cf-pipe="<?= Html::encode((string)$page['title']) ?>"><?= $pageTitle ?></h2>
                     <?php endif; ?>
 
-                    <?php $pageItems = array_values($page['items']); ?>
+                    <?php
+                    $pageItems = array_values($page['items']);
+                    if ($existing instanceof FormAnswer) {
+                        $pageItems = $randService->orderPageItems($pageItems, $existing);
+                    }
+                    ?>
                     <?php $groupDepth = 0; ?>
                     <?php $openGroupIds = []; ?>
                     <?php foreach ($pageItems as $itemIndex => $field): ?>
+                        <?php if ($field->type === FormField::TYPE_RAND_BLOCK || $field->type === FormField::TYPE_RAND_BLOCK_END): ?>
+                            <?php continue; ?>
+                        <?php endif; ?>
                         <?php if ($field->type === FormField::TYPE_GROUP_END): ?>
                             <?php if ($groupDepth > 0): ?>
                                 </div>

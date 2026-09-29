@@ -15,6 +15,7 @@ class LogicEngine
     public const ACTION_SKIP_PAGE = 'skip_page';
     public const ACTION_GOTO_PAGE = 'goto_page';
     public const ACTION_GOTO_END = 'goto_end';
+    public const ACTION_SCREEN_OUT = 'screen_out';
 
     public static function actionLabels(): array
     {
@@ -25,6 +26,7 @@ class LogicEngine
             self::ACTION_SKIP_PAGE => \Yii::t('ThiscoveryFormsModule.base', 'Skip this page if'),
             self::ACTION_GOTO_PAGE => \Yii::t('ThiscoveryFormsModule.base', 'Go to page if'),
             self::ACTION_GOTO_END => \Yii::t('ThiscoveryFormsModule.base', 'Go to end if'),
+            self::ACTION_SCREEN_OUT => \Yii::t('ThiscoveryFormsModule.base', 'End as screened out if'),
         ];
     }
 
@@ -277,6 +279,9 @@ class LogicEngine
      */
     public function isFieldVisible(FormField $field, array $orderedFields, array $values): bool
     {
+        if (RandomisationService::hides($field)) {
+            return false;
+        }
         if ($orderedFields) {
             $values = $this->valuesIgnoringHidden($orderedFields, $values);
         }
@@ -376,7 +381,10 @@ class LogicEngine
         foreach ($fieldsOnPage as $field) {
             $logic = $field->getLogic();
             $action = $logic['action'] ?? '';
-            if (!in_array($action, [self::ACTION_GOTO_PAGE, self::ACTION_GOTO_END], true)) {
+            if (!in_array($action, [self::ACTION_GOTO_PAGE, self::ACTION_GOTO_END, self::ACTION_SCREEN_OUT], true)) {
+                continue;
+            }
+            if ($action === self::ACTION_SCREEN_OUT && !\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
                 continue;
             }
             if (empty($logic['rules']) || !$this->rulesMet($logic, $values, $lookup)) {

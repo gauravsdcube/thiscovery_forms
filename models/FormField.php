@@ -51,6 +51,8 @@ class FormField extends ActiveRecord
     public const TYPE_PAGE_BREAK = 'page_break';
     public const TYPE_QUESTION_GROUP = 'question_group';
     public const TYPE_GROUP_END = 'group_end';
+    public const TYPE_RAND_BLOCK = 'rand_block';
+    public const TYPE_RAND_BLOCK_END = 'rand_block_end';
     public const TYPE_RICH_TEXT = 'rich_text';
     public const TYPE_HTML = 'html';
     public const TYPE_GRID_SINGLE = 'grid_single';
@@ -172,6 +174,8 @@ class FormField extends ActiveRecord
             self::TYPE_PAGE_BREAK => Yii::t('ThiscoveryFormsModule.base', 'Page break'),
             self::TYPE_QUESTION_GROUP => Yii::t('ThiscoveryFormsModule.base', 'Question group'),
             self::TYPE_GROUP_END => Yii::t('ThiscoveryFormsModule.base', 'Group end'),
+            self::TYPE_RAND_BLOCK => Yii::t('ThiscoveryFormsModule.base', 'Randomisation block'),
+            self::TYPE_RAND_BLOCK_END => Yii::t('ThiscoveryFormsModule.base', 'Randomisation block end'),
             self::TYPE_RICH_TEXT => Yii::t('ThiscoveryFormsModule.base', 'Rich text section'),
             self::TYPE_HTML => Yii::t('ThiscoveryFormsModule.base', 'HTML / custom block'),
             self::TYPE_GRID_SINGLE => Yii::t('ThiscoveryFormsModule.base', 'Grid (single)'),
@@ -329,13 +333,15 @@ class FormField extends ActiveRecord
             self::TYPE_PAGE_BREAK,
             self::TYPE_QUESTION_GROUP,
             self::TYPE_GROUP_END,
+            self::TYPE_RAND_BLOCK,
+            self::TYPE_RAND_BLOCK_END,
             self::TYPE_RICH_TEXT,
         ], true);
     }
 
     public static function isDisplayOnlyType(?string $type): bool
     {
-        return in_array($type, [self::TYPE_PAGE_BREAK, self::TYPE_QUESTION_GROUP, self::TYPE_GROUP_END, self::TYPE_RICH_TEXT], true);
+        return in_array($type, [self::TYPE_PAGE_BREAK, self::TYPE_QUESTION_GROUP, self::TYPE_GROUP_END, self::TYPE_RAND_BLOCK, self::TYPE_RAND_BLOCK_END, self::TYPE_RICH_TEXT], true);
     }
 
     public static function isQuestionGroup(?string $type): bool
@@ -856,6 +862,27 @@ class FormField extends ActiveRecord
     }
 
     /**
+     * Presentation settings for a choice list, a question group, or a randomisation block.
+     *
+     * @return array{enabled:bool,method:string,pinFirst:string[],pinLast:string[],show:?int,blockKey:string}
+     */
+    public function getRandomiseConfig(): array
+    {
+        $decoded = json_decode((string)$this->options_json, true);
+        $decoded = is_array($decoded) ? $decoded : [];
+        $cfg = is_array($decoded['randomise'] ?? null) ? $decoded['randomise'] : [];
+        $show = $cfg['show'] ?? null;
+        return [
+            'enabled' => !empty($cfg['enabled']) || ($this->type === self::TYPE_RAND_BLOCK),
+            'method' => (($cfg['method'] ?? '') === 'rotate') ? 'rotate' : 'shuffle',
+            'pinFirst' => array_values(array_filter(array_map('strval', is_array($cfg['pinFirst'] ?? null) ? $cfg['pinFirst'] : []))),
+            'pinLast' => array_values(array_filter(array_map('strval', is_array($cfg['pinLast'] ?? null) ? $cfg['pinLast'] : []))),
+            'show' => ($show === null || $show === '') ? null : max(0, (int)$show),
+            'blockKey' => trim((string)($decoded['blockKey'] ?? $cfg['blockKey'] ?? '')),
+        ];
+    }
+
+    /**
      * Maximum number of checkbox selections, or null when unlimited.
      */
     public function getMaxSelect(): ?int
@@ -1214,6 +1241,12 @@ class FormField extends ActiveRecord
     public function getShuffledChoicePairs(?int $userId = null, ?FormAnswer $answer = null): array
     {
         $pairs = $this->getChoicePairs();
+        if ($answer && !$answer->isNewRecord && $this->isRandomizeOptions()) {
+            $order = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->optionOrder($this, $answer);
+            if ($order) {
+                return $this->pairsInOrder($pairs, $order);
+            }
+        }
         $perResponse = \humhub\modules\thiscoveryForms\Module::optionOrderPerResponse();
         if ($perResponse && $answer && !$answer->isNewRecord) {
             $decodedVars = json_decode((string)$answer->vars_json, true);
@@ -1336,7 +1369,7 @@ class FormField extends ActiveRecord
     /**
      * @return string[]
      */
-    private function shufflePinnedLabels(): array
+    public function shufflePinnedLabels(): array
     {
         $labels = $this->getExclusiveOptions();
         $decoded = json_decode((string)$this->options_json, true);
@@ -2171,6 +2204,12 @@ class FormField extends ActiveRecord
             'meta_key' => $this->getRespondentMetaKey(),
             'panel_key' => $this->getPanelAttrKey(),
             'randomize' => $this->isRandomizeOptions() ? '1' : '',
+            'block_key' => $this->getRandomiseConfig()['blockKey'],
+            'randomise_enabled' => $this->getRandomiseConfig()['enabled'] ? '1' : '',
+            'randomise_method' => $this->getRandomiseConfig()['method'],
+            'randomise_show' => $this->getRandomiseConfig()['show'] === null ? '' : (string)$this->getRandomiseConfig()['show'],
+            'randomise_pin_first' => implode(',', $this->getRandomiseConfig()['pinFirst']),
+            'randomise_pin_last' => implode(',', $this->getRandomiseConfig()['pinLast']),
             'max_select' => $this->getMaxSelect(),
             'min_select' => $this->getMinSelect(),
             'min_select_all' => $this->isMinSelectAll() ? '1' : '',

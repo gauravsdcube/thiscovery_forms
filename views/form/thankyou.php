@@ -55,7 +55,17 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <?php endif; ?>
         <?php endif; ?>
         <div class="cf-thankyou__body">
-            <?php if ($formModel->hasThankYouContent()): ?>
+            <?php
+            $screenMessage = '';
+            if ($answer && (string)$answer->outcome === \humhub\modules\thiscoveryForms\models\FormAnswer::OUTCOME_SCREENED_OUT) {
+                $screenMessage = trim((string)(new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['screen_out_message']);
+            }
+            ?>
+            <?php if ($screenMessage !== ''): ?>
+                <div class="cf-thankyou__default">
+                    <p><?= nl2br(Html::encode($screenMessage)) ?></p>
+                </div>
+            <?php elseif ($formModel->hasThankYouContent()): ?>
                 <div class="cf-thankyou__content richtext-output">
                     <?= RichHtml::toHtml($formModel->thank_you_content) ?>
                 </div>

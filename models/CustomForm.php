@@ -1600,8 +1600,27 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         $this->persistProgrammeSettings();
+        $this->persistRandomisationFromRequest();
 
         return true;
+    }
+
+    protected function persistRandomisationFromRequest(): void
+    {
+        $request = Yii::$app->request;
+        if (!$request->isPost || $request->post('randomisation_present') === null) {
+            return;
+        }
+        (new \humhub\modules\thiscoveryForms\services\RandomisationService())->saveConfig($this, [
+            'enabled' => $request->post('randomisation_enabled', '0'),
+            'arms' => $request->post('randomisation_arms', ''),
+            'strata' => $request->post('randomisation_strata', ''),
+            'method' => $request->post('randomisation_method', 'simple'),
+            'block_size' => $request->post('randomisation_block_size', 4),
+            'assign' => $request->post('randomisation_assign', 'start'),
+            'assign_page' => $request->post('randomisation_assign_page', ''),
+            'screen_out_message' => $request->post('screen_out_message', ''),
+        ]);
     }
 
     protected function persistProgrammeSettings(): void
@@ -2195,6 +2214,29 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'branches' => $branches,
                 ]);
                 $field->required = false;
+            } elseif ($type === FormField::TYPE_RAND_BLOCK) {
+                $field->options_json = json_encode([
+                    'blockKey' => trim((string)($row['block_key'] ?? $row['page_key'] ?? '')),
+                    'randomise' => [
+                        'enabled' => true,
+                        'method' => (($row['randomise_method'] ?? '') === 'rotate') ? 'rotate' : 'shuffle',
+                    ],
+                ], JSON_UNESCAPED_UNICODE);
+                $field->required = false;
+            } elseif ($type === FormField::TYPE_RAND_BLOCK_END) {
+                $field->required = false;
+            } elseif ($type === FormField::TYPE_QUESTION_GROUP && !empty($row['randomise_enabled'])) {
+                $show = trim((string)($row['randomise_show'] ?? ''));
+                $field->options_json = json_encode([
+                    'randomise' => [
+                        'enabled' => true,
+                        'method' => (($row['randomise_method'] ?? '') === 'rotate') ? 'rotate' : 'shuffle',
+                        'show' => $show === '' ? null : (int)$show,
+                        'pinFirst' => array_values(array_filter(array_map('trim', explode(',', (string)($row['randomise_pin_first'] ?? ''))))),
+                        'pinLast' => array_values(array_filter(array_map('trim', explode(',', (string)($row['randomise_pin_last'] ?? ''))))),
+                    ],
+                ], JSON_UNESCAPED_UNICODE);
+                $field->required = false;
             } elseif ($type === FormField::TYPE_RICH_TEXT) {
                 $richContent = (string)($row['rich_content'] ?? '');
                 $field->setRichTextContent($richContent);
@@ -2498,6 +2540,12 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $this->addError('title', Yii::t('ThiscoveryFormsModule.base', '“{label}” cannot go to an earlier page.', [
                 'label' => $backward,
             ]));
+            return false;
+        }
+        foreach ((new \humhub\modules\thiscoveryForms\services\RandomisationService())->authoringErrors($this) as $message) {
+            $this->addError('title', $message);
+        }
+        if ($this->hasErrors('title')) {
             return false;
         }
 

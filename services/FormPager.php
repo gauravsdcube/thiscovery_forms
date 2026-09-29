@@ -105,9 +105,12 @@ class FormPager
      * @param FormField[] $fields
      * @return array<int, true>
      */
-    public function visitedFieldIds(array $fields, array $values): array
+    public function visitedFieldIds(array $fields, array $values, array $blockOrders = []): array
     {
         $built = $this->buildPages($fields);
+        if ($blockOrders) {
+            $built = $this->applyBlockOrder($built, $blockOrders);
+        }
         $pages = $built['pages'];
         $pageKeyIndex = $built['pageKeyIndex'];
         $visited = [];
@@ -217,8 +220,8 @@ class FormPager
         $engine = new LogicEngine();
         $nav = $engine->pageNavigation(self::navigationFields($pages[$fromIndex]), $values, $allFields);
         if ($nav) {
-            if ($nav['action'] === LogicEngine::ACTION_GOTO_END) {
-                return ['end' => true, 'explicit' => true, 'index' => null];
+            if ($nav['action'] === LogicEngine::ACTION_GOTO_END || $nav['action'] === LogicEngine::ACTION_SCREEN_OUT) {
+                return ['end' => true, 'explicit' => true, 'index' => null, 'screen_out' => $nav['action'] === LogicEngine::ACTION_SCREEN_OUT];
             }
             if ($nav['action'] === LogicEngine::ACTION_GOTO_PAGE) {
                 $goto = (string)$nav['gotoPageKey'];
@@ -405,5 +408,62 @@ class FormPager
             $idx++;
         }
         return null;
+    }
+
+    /**
+     * Reorder each contiguous run of pages named by a block, then rebuild indexes.
+     *
+     * @param array{pages:array,pageKeyIndex:array} $built
+     * @param array<string, string[]> $blockOrders
+     * @return array{pages:array,pageKeyIndex:array}
+     */
+    public function applyBlockOrder(array $built, array $blockOrders): array
+    {
+        $pages = array_values($built['pages'] ?? []);
+        foreach ($blockOrders as $keys) {
+            if (!is_array($keys) || count($keys) < 2) {
+                continue;
+            }
+            $positions = [];
+            foreach ($pages as $i => $page) {
+                if (in_array((string)($page['pageKey'] ?? ''), $keys, true)) {
+                    $positions[] = $i;
+                }
+            }
+            if (count($positions) < 2) {
+                continue;
+            }
+            $start = $positions[0];
+            $contiguous = true;
+            foreach ($positions as $n => $pos) {
+                if ($pos !== $start + $n) {
+                    $contiguous = false;
+                    break;
+                }
+            }
+            if (!$contiguous) {
+                continue;
+            }
+            $byKey = [];
+            foreach ($positions as $pos) {
+                $byKey[(string)$pages[$pos]['pageKey']] = $pages[$pos];
+            }
+            $ordered = [];
+            foreach ($keys as $key) {
+                if (isset($byKey[(string)$key])) {
+                    $ordered[] = $byKey[(string)$key];
+                }
+            }
+            if (count($ordered) !== count($positions)) {
+                continue;
+            }
+            array_splice($pages, $start, count($positions), $ordered);
+        }
+        $pageKeyIndex = [];
+        foreach ($pages as $i => $page) {
+            $pages[$i]['index'] = $i;
+            $pageKeyIndex[(string)$page['pageKey']] = $i;
+        }
+        return ['pages' => $pages, 'pageKeyIndex' => $pageKeyIndex];
     }
 }

@@ -22,6 +22,18 @@ class VariableSubstitutor
     public function substitute(string $html, ?User $user, CustomForm $form, array $answers = [], array $fields = [], bool $escape = true, array $vars = [], ?FormPanelMember $member = null): string
     {
         $map = $this->tokenMap($user, $form, $member, $escape);
+        $current = RandomisationService::$current;
+        if ($current) {
+            $assigned = (new RandomisationService())->assignment($current);
+            if ($assigned) {
+                $map['arm'] = $escape
+                    ? htmlspecialchars((string)$assigned['arm_name'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : (string)$assigned['arm_name'];
+                $map['arm_code'] = $escape
+                    ? htmlspecialchars((string)$assigned['arm_code'], ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+                    : (string)$assigned['arm_code'];
+            }
+        }
         foreach ($vars as $key => $value) {
             $text = (string)$value;
             $map[strtolower((string)$key)] = $escape

@@ -286,6 +286,11 @@ class SubmitForm extends Model
     {
         $this->values = $answer->getValuesMap();
         $this->justifications = $answer->getJustificationsMap();
+        $this->editingAnswer = $answer;
+        $assigned = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->assignment($answer);
+        if ($assigned) {
+            $this->values['arm'] = (string)$assigned['arm_code'];
+        }
     }
 
     public function validateFields(): void
@@ -543,6 +548,14 @@ class SubmitForm extends Model
             $this->scenario = self::SCENARIO_DRAFT;
         }
 
+        if ($existing && !$existing->isNewRecord) {
+            $existing->populateRelation('form', $this->form);
+            \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $existing;
+            (new \humhub\modules\thiscoveryForms\services\RandomisationService())->materialise($existing);
+            $this->editingAnswer = $existing;
+            $this->onPathFieldIds = null;
+        }
+
         if (!$this->validate()) {
             return null;
         }
@@ -620,6 +633,21 @@ class SubmitForm extends Model
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save your submission. Please try again.'));
                 return null;
             }
+            $answer->populateRelation('form', $this->form);
+            \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $answer;
+            $rand = new \humhub\modules\thiscoveryForms\services\RandomisationService();
+            $rand->materialise($answer);
+            $postedPage = Yii::$app->request->post('current_page');
+            $assigned = $rand->assignIfDue(
+                $answer,
+                $this->values,
+                ($postedPage === null || $postedPage === '') ? null : (int)$postedPage,
+                !$asDraft
+            );
+            if ($assigned) {
+                $this->values['arm'] = (string)$assigned['arm_code'];
+            }
+            $this->onPathFieldIds = null;
 
             $existingFields = [];
             foreach ($answer->answerFields as $af) {
@@ -701,7 +729,8 @@ class SubmitForm extends Model
                 if ($anonymous) {
                     $answer->resume_email = null;
                 }
-                $answer->save(false, ['status', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
+                $answer->outcome = $this->terminalOutcome($answer);
+                $answer->save(false, ['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
             }
 
             $transaction->commit();
@@ -1025,13 +1054,41 @@ class SubmitForm extends Model
         ];
     }
 
+    private function terminalOutcome(FormAnswer $answer): string
+    {
+        if (!\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
+            return (string)$answer->outcome;
+        }
+        $engine = new \humhub\modules\thiscoveryForms\services\LogicEngine();
+        foreach ($this->form->fields as $field) {
+            $logic = $field->getLogic();
+            if (($logic['action'] ?? '') !== \humhub\modules\thiscoveryForms\services\LogicEngine::ACTION_SCREEN_OUT) {
+                continue;
+            }
+            if (!$this->isOnAnswerPath($field)) {
+                continue;
+            }
+            if (!empty($logic['rules']) && $engine->rulesMet($logic, $this->values, $this->form->fields)) {
+                return FormAnswer::OUTCOME_SCREENED_OUT;
+            }
+        }
+        if (\humhub\modules\thiscoveryForms\services\RandomisationService::active($this->form)) {
+            return FormAnswer::OUTCOME_COMPLETE;
+        }
+        return (string)$answer->outcome;
+    }
+
     private function isOnAnswerPath(FormField $field): bool
     {
         if ($field->isHiddenFromRespondent() || $field->type === FormField::TYPE_RESPONDENT_META) {
             return true;
         }
         if ($this->onPathFieldIds === null) {
-            $this->onPathFieldIds = (new FormPager())->visitedFieldIds($this->form->fields, $this->values);
+            $orders = [];
+            if ($this->editingAnswer && \humhub\modules\thiscoveryForms\services\RandomisationService::active($this->form)) {
+                $orders = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->orders($this->editingAnswer)['pages'];
+            }
+            $this->onPathFieldIds = (new FormPager())->visitedFieldIds($this->form->fields, $this->values, $orders);
         }
         return isset($this->onPathFieldIds[(int)$field->id]);
     }
