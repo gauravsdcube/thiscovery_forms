@@ -78,6 +78,20 @@ class SubmitForm extends Model
         return $scenarios;
     }
 
+    /**
+     * A loop answer is keyed by instance path. A choice list is a plain list.
+     *
+     * @param mixed $value
+     */
+    private function isInstancePost(FormField $field, $value): bool
+    {
+        return is_array($value)
+            && $value !== []
+            && !array_is_list($value)
+            && $this->form
+            && (new \humhub\modules\thiscoveryForms\services\LoopService())->isLoopField($this->form, $field);
+    }
+
     public function loadValuesFromRequest($post, $files = []): bool
     {
         $this->values = [];
@@ -98,6 +112,14 @@ class SubmitForm extends Model
             }
             if ($field->type === FormField::TYPE_CHECKBOX) {
                 $val = $fieldPost[$key] ?? [];
+                if ($this->isInstancePost($field, $val)) {
+                    $clean = [];
+                    foreach ($val as $instance => $cell) {
+                        $clean[(string)$instance] = $this->sanitizeChoiceValue($field, is_array($cell) ? array_values($cell) : []);
+                    }
+                    $this->values[$field->id] = $clean;
+                    continue;
+                }
                 $this->values[$field->id] = $this->sanitizeChoiceValue($field, is_array($val) ? array_values($val) : []);
                 continue;
             }
@@ -106,6 +128,14 @@ class SubmitForm extends Model
                 if (is_string($val)) {
                     $decoded = json_decode($val, true);
                     $val = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
+                }
+                if ($this->isInstancePost($field, $val)) {
+                    $clean = [];
+                    foreach ($val as $instance => $cell) {
+                        $clean[(string)$instance] = is_array($cell) ? array_values(array_map('strval', $cell)) : [];
+                    }
+                    $this->values[$field->id] = $clean;
+                    continue;
                 }
                 $this->values[$field->id] = is_array($val) ? array_values(array_map('strval', $val)) : [];
                 continue;
@@ -147,6 +177,14 @@ class SubmitForm extends Model
             }
             $posted = isset($fieldPost[$key]) ? $fieldPost[$key] : '';
             if (in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN], true)) {
+                if ($this->isInstancePost($field, $posted)) {
+                    $clean = [];
+                    foreach ($posted as $instance => $cell) {
+                        $clean[(string)$instance] = $this->sanitizeChoiceValue($field, $cell);
+                    }
+                    $this->values[$field->id] = $clean;
+                    continue;
+                }
                 $posted = $this->sanitizeChoiceValue($field, $posted);
             }
             if ($field->type === FormField::TYPE_RATING && ($posted === '' || $posted === null || $posted === [])) {
@@ -259,7 +297,10 @@ class SubmitForm extends Model
                 $current = $this->values[$field->id] ?? null;
                 $probe = is_array($current) ? $current : [$current];
                 foreach ($probe as $item) {
-                    if ($item !== null && $item !== '' && FormField::isOtherOption((string)$item)) {
+                    if (!is_scalar($item) || $item === '') {
+                        continue;
+                    }
+                    if (FormField::isOtherOption((string)$item)) {
                         $otherLabel = (string)$item;
                         break;
                     }
@@ -274,6 +315,29 @@ class SubmitForm extends Model
             }
             $stored = FormField::otherSpecifyPrefix($otherLabel) . $text;
             $current = $this->values[$field->id] ?? null;
+            if ($field->type === FormField::TYPE_CHECKBOX && $this->isInstancePost($field, $current)) {
+                $next = [];
+                $replaced = false;
+                foreach ($current as $instance => $cell) {
+                    $cellNext = [];
+                    foreach (is_array($cell) ? $cell : [] as $item) {
+                        if (!is_scalar($item)) {
+                            continue;
+                        }
+                        if ((string)$item === $otherLabel || str_starts_with((string)$item, FormField::otherSpecifyPrefix($otherLabel))) {
+                            $cellNext[] = $stored;
+                            $replaced = true;
+                        } else {
+                            $cellNext[] = $item;
+                        }
+                    }
+                    $next[(string)$instance] = $cellNext;
+                }
+                if ($replaced) {
+                    $this->values[$field->id] = $next;
+                }
+                continue;
+            }
             if ($field->type === FormField::TYPE_CHECKBOX) {
                 $items = is_array($current) ? $current : [];
                 $next = [];
@@ -289,6 +353,9 @@ class SubmitForm extends Model
                 if ($replaced) {
                     $this->values[$field->id] = $next;
                 }
+                continue;
+            }
+            if (is_array($current)) {
                 continue;
             }
             if ((string)$current === $otherLabel || str_starts_with((string)$current, FormField::otherSpecifyPrefix($otherLabel))) {
@@ -327,9 +394,9 @@ class SubmitForm extends Model
 
             $value = $this->values[$field->id] ?? null;
             $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
+            $loopCellsChecked = false;
             if ($loops->isLoopField($this->form, $field)) {
-                $group = $loops->groupForField($this->form->fields, $field);
-                $shown = $group ? $loops->instances($group, $this->values, $this->form->fields) : [];
+                $shown = $loops->shownPaths(array_values($this->form->fields), $field, $this->values);
                 $empty = false;
                 if ($shown === []) {
                     $empty = false;
@@ -339,6 +406,16 @@ class SubmitForm extends Model
                         if ($this->isEmptyValue($cell)) {
                             $empty = true;
                         }
+                    }
+                }
+                if (!$empty) {
+                    $loopCellsChecked = true;
+                    foreach ($shown as $instance) {
+                        $cell = is_array($value) ? ($value[$instance['code']] ?? null) : null;
+                        if ($this->isEmptyValue($cell)) {
+                            continue;
+                        }
+                        $this->validateFieldValue($field, $cell);
                     }
                 }
             } else {
@@ -373,7 +450,30 @@ class SubmitForm extends Model
                 continue;
             }
 
-            switch ($field->type) {
+            if (!$loopCellsChecked) {
+                $this->validateFieldValue($field, $value);
+            }
+
+            $justMode = $field->getEffectiveJustification($this->form);
+            if ($justMode === FormField::JUSTIFY_REQUIRED && $this->scenario !== self::SCENARIO_DRAFT) {
+                $just = trim((string)($this->justifications[$field->id] ?? ''));
+                if ($just === '') {
+                    $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please add a comment for "{label}".', [
+                        'label' => $field->label,
+                    ]));
+                }
+            }
+        }
+    }
+
+    /**
+     * Type rules for one stored answer, or one loop repeat.
+     *
+     * @param mixed $value
+     */
+    private function validateFieldValue(FormField $field, $value): void
+    {
+        switch ($field->type) {
                 case FormField::TYPE_RESPONDENT_META:
                 case FormField::TYPE_PANEL_ATTR:
                     if ($field->getPanelAttrKey() === 'email' && !filter_var((string)$value, FILTER_VALIDATE_EMAIL)) {
@@ -529,17 +629,6 @@ class SubmitForm extends Model
                     $this->validateMap($field, $value);
                     break;
             }
-
-            $justMode = $field->getEffectiveJustification($this->form);
-            if ($justMode === FormField::JUSTIFY_REQUIRED && $this->scenario !== self::SCENARIO_DRAFT) {
-                $just = trim((string)($this->justifications[$field->id] ?? ''));
-                if ($just === '') {
-                    $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please add a comment for "{label}".', [
-                        'label' => $field->label,
-                    ]));
-                }
-            }
-        }
     }
 
     /**
@@ -746,8 +835,7 @@ class SubmitForm extends Model
                 }
                 $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
                 if ($instanceColumn && $loops->isLoopField($this->form, $field)) {
-                    $group = $loops->groupForField($this->form->fields, $field);
-                    $shown = $group ? $loops->instances($group, $this->values, $this->form->fields) : [];
+                    $shown = $loops->shownPaths(array_values($this->form->fields), $field, $this->values);
                     $posted = $this->values[$fieldId] ?? [];
                     if (!is_array($posted)) {
                         $posted = [];

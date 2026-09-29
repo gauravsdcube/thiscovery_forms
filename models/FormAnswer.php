@@ -71,7 +71,7 @@ class FormAnswer extends ActiveRecord
             [['form_id', 'created_by', 'updated_by', 'status', 'is_test', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id', 'edition_id', 'quota_marker'], 'integer'],
             [['status'], 'default', 'value' => self::STATUS_COMPLETE],
             [['status'], 'in', 'range' => [self::STATUS_IN_PROGRESS, self::STATUS_COMPLETE]],
-            [['current_instance_key'], 'string', 'max' => 64],
+            [['current_instance_key'], 'string', 'max' => 191],
             [['current_instance_key'], 'default', 'value' => ''],
             [['outcome'], 'default', 'value' => ''],
             [['outcome'], 'in', 'range' => ['', self::OUTCOME_COMPLETE, self::OUTCOME_SCREENED_OUT, self::OUTCOME_NOT_CONSENTED, self::OUTCOME_OVER_QUOTA]],

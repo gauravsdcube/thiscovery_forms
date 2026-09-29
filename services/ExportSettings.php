@@ -260,14 +260,12 @@ class ExportSettings
             $loops = new LoopService();
             if (LoopService::active($form) && $loops->isLoopField($form, $field)) {
                 $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
-                $group = $loops->groupForField(array_values($form->fields), $field);
-                if (!$group) {
-                    continue;
-                }
-                foreach ($loops->columnsFor($group, array_values($form->fields)) as $column) {
+                $fieldList = array_values($form->fields);
+                foreach ($loops->columnPaths($fieldList, $field) as $column) {
+                    $columnKey = $loops->exportColumn($variable, (string)$column['code']);
                     $cols[] = [
-                        'key' => $variable . '__' . $column['code'],
-                        'header' => self::uniqueHeader($variable . '__' . $column['code'], $usedHeaders),
+                        'key' => $columnKey,
+                        'header' => self::uniqueHeader($columnKey, $usedHeaders),
                         'group' => self::GROUP_QUESTION,
                         'lock' => self::fieldDropsWhenScrub($field),
                         'field' => $field,

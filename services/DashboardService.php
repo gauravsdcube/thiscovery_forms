@@ -857,11 +857,8 @@ class DashboardService
             if (!$loops->isLoopField($form, $field)) {
                 continue;
             }
-            $group = $loops->groupForField($fields, $field);
-            if ($group) {
-                foreach ($loops->columnsFor($group, $fields) as $column) {
-                    $labels[(string)$column['code']] = (string)$column['label'];
-                }
+            foreach ($loops->columnPaths($fields, $field) as $column) {
+                $labels[(string)$column['code']] = (string)$column['label'];
             }
             $questions[(int)$field->id] = [
                 'label' => trim(strip_tags((string)$field->label)),

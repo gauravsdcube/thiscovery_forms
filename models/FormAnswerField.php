@@ -30,7 +30,7 @@ class FormAnswerField extends ActiveRecord
         return [
             [['answer_id', 'field_id'], 'required'],
             [['answer_id', 'field_id'], 'integer'],
-            [['instance_key'], 'string', 'max' => 64],
+            [['instance_key'], 'string', 'max' => 191],
             [['instance_key'], 'default', 'value' => ''],
             [['value', 'justification'], 'string'],
         ];

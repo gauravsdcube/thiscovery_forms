@@ -201,24 +201,21 @@ class ExportService
         $loops = new LoopService();
         foreach ($fields as $field) {
             if ($loops->isLoopField($form, $field)) {
-                $group = $loops->groupForField(array_values($form->fields), $field);
-                $shown = $group ? $loops->instances($group, $map, array_values($form->fields)) : [];
+                $fieldList = array_values($form->fields);
+                $shown = $loops->shownPaths($fieldList, $field, $map);
                 $shownCodes = [];
                 foreach ($shown as $instance) {
                     $shownCodes[$instance['code']] = true;
                 }
                 $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
                 $instanceCells = is_array($map[$field->id] ?? null) ? $map[$field->id] : [];
-                if (!$group) {
-                    continue;
-                }
-                foreach ($loops->columnsFor($group, array_values($form->fields)) as $column) {
+                foreach ($loops->columnPaths($fieldList, $field) as $column) {
                     $code = (string)$column['code'];
                     $raw = $instanceCells[$code] ?? '';
                     if (!$includeHidden && !isset($shownCodes[$code])) {
                         $raw = '';
                     }
-                    $cells[$variable . '__' . $code] = $this->formatCell($raw);
+                    $cells[$loops->exportColumn($variable, $code)] = $this->formatCell($raw);
                 }
                 continue;
             }
@@ -278,13 +275,10 @@ class ExportService
             $loops = new LoopService();
             if ($loops->isLoopField($form, $field)) {
                 $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
-                $group = $loops->groupForField(array_values($form->fields), $field);
-                if (!$group) {
-                    continue;
-                }
-                foreach ($loops->columnsFor($group, array_values($form->fields)) as $column) {
+                $fieldList = array_values($form->fields);
+                foreach ($loops->columnPaths($fieldList, $field) as $column) {
                     fputcsv($fh, [
-                        $variable . '__' . $column['code'],
+                        $loops->exportColumn($variable, (string)$column['code']),
                         trim(strip_tags((string)$field->label)) . ' (' . $column['label'] . ')',
                         (string)$field->type,
                         implode('; ', $codes),

@@ -333,6 +333,9 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 <?= Html::textInput($namePrefix . '[loop_max]', is_array($loopCfg) ? (string)$loopCfg['max'] : '', ['class' => 'form-control']) ?>
             </div>
             <div class="col-md-12">
+                <p class="cf-hint text-muted mb-1"><?= Yii::t('ThiscoveryFormsModule.base', 'This group can sit inside one other repeating group. A third level cannot be published. A nested repeat code cannot contain a slash.') ?></p>
+            </div>
+            <div class="col-md-12">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Fixed list, one code | label per line') ?></label>
                 <?= Html::textarea($namePrefix . '[loop_items]', is_array($loopCfg) ? implode("\n", array_map(static fn($item) => $item['code'] . ' | ' . $item['label'], $loopCfg['items'])) : '', ['class' => 'form-control', 'rows' => 3]) ?>
             </div>

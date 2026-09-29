@@ -6,10 +6,10 @@ All notable changes to this module are documented in this file.
 
 ### Loops
 
-Loops are off unless an administrator turns them on and the form turns them on. A question group can repeat once, from a fixed list, from selected options, or from a number. Nested loops and rosters are not in this version.
+Loops are off unless an administrator turns them on and the form turns them on. A question group can repeat from a fixed list, from selected options, or from a number. That group can contain one other repeating group. A third level and rosters are not in this version.
 
 - Each repeat is stored on its own answer cell. Unselected repeats stay in the table. The default export leaves them blank. “These answers are kept but not shown.”
-- Wide export columns look like `symptom__asthma`. The codebook lists the same names. Logic can use any, all, count, or sum. An unknown aggregate cannot be published.
+- Wide export columns look like `symptom__asthma`. A nested repeat looks like `symptom__alex__asthma`. The codebook lists the same names. Logic can use any, all, count, or sum. An unknown aggregate cannot be published.
 - Reducing a number hides the later repeats and does not renumber the ones that remain.
 - The dashboard adds every repeat together. A control shows one repeat label at a time. Resume opens the repeat that was open.
 

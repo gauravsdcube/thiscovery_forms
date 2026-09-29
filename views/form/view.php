@@ -501,14 +501,22 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?php foreach ($pages as $page): ?>
                 <?php
                 if (!empty($page['instanceKey'])) {
-                    \humhub\modules\thiscoveryForms\services\LoopService::$pipe = [
+                    $pipeState = [
                         'label' => (string)($page['instanceLabel'] ?? ''),
                         'index' => (int)($page['instanceIndex'] ?? 1),
                         'count' => (int)($page['instanceCount'] ?? 1),
                         'key' => (string)$page['instanceKey'],
                     ];
+                    if (!empty($page['instanceParent']) && is_array($page['instanceParent'])) {
+                        $pipeState['parent'] = $page['instanceParent'];
+                    }
+                    \humhub\modules\thiscoveryForms\services\LoopService::$pipe = $pipeState;
                 } else {
                     \humhub\modules\thiscoveryForms\services\LoopService::$pipe = null;
+                }
+                $loopHeading = trim((string)($page['instanceHeading'] ?? ''));
+                if ($loopHeading === '' && !empty($page['instanceKey'])) {
+                    $loopHeading = (string)($page['instanceLabel'] ?? '') . ', ' . (int)($page['instanceIndex'] ?? 1) . ' of ' . (int)($page['instanceCount'] ?? 1);
                 }
                 ?>
                 <div class="cf-form-page<?= $page['index'] === 0 ? ' is-active' : '' ?>"
@@ -518,7 +526,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                      data-cf-page-break-id="<?= $page['break'] ? (int)$page['break']->id : '' ?>"
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
                     <?php if (!empty($page['instanceKey'])): ?>
-                        <h2 class="cf-loop-instance" id="cf-loop-heading-<?= (int)$page['index'] ?>"><?= Html::encode((string)($page['instanceLabel'] ?? '')) ?>, <?= (int)($page['instanceIndex'] ?? 1) ?> of <?= (int)($page['instanceCount'] ?? 1) ?></h2>
+                        <h2 class="cf-loop-instance" id="cf-loop-heading-<?= (int)$page['index'] ?>"><?= Html::encode($loopHeading) ?></h2>
                     <?php endif; ?>
                     <?php if (!empty($page['title'])): ?>
                         <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null); ?>

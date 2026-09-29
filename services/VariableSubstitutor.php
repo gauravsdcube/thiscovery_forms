@@ -81,6 +81,13 @@ class VariableSubstitutor
                 : $text;
         };
 
+        $html = preg_replace_callback('/\{\{\s*loop\.parent\.(label|index|count)\s*\}\}/i', static function ($m) use ($escape) {
+            $pipe = \humhub\modules\thiscoveryForms\services\LoopService::$pipe;
+            $parent = is_array($pipe) ? ($pipe['parent'] ?? null) : null;
+            $text = is_array($parent) ? (string)($parent[$m[1]] ?? '') : '';
+            return $escape ? htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') : $text;
+        }, $html) ?? $html;
+
         $html = preg_replace_callback('/\{\{\s*loop\.(label|index|count)\s*\}\}/i', static function ($m) use ($escape) {
             $pipe = \humhub\modules\thiscoveryForms\services\LoopService::$pipe;
             $text = is_array($pipe) ? (string)($pipe[$m[1]] ?? '') : '';
@@ -91,7 +98,7 @@ class VariableSubstitutor
             $parts = array_map('trim', explode(':', $m[1]));
             $key = $parts[0] ?? '';
             $instance = null;
-            if (preg_match('/^([a-zA-Z0-9_\-]+)\[([a-zA-Z0-9_\-]+)\]$/', $key, $im)) {
+            if (preg_match('/^([a-zA-Z0-9_\-]+)\[([a-zA-Z0-9_\/\-]+)\]$/', $key, $im)) {
                 $key = $im[1];
                 $instance = $im[2];
             }

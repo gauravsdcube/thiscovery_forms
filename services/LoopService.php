@@ -9,13 +9,13 @@ use humhub\modules\thiscoveryForms\Module;
 use Yii;
 
 /**
- * One-level loops. A question group with options_json.loop repeats.
- * Rosters and nested loops are not built. Flag off keeps instance_key blank
- * and shows the group once.
+ * A question group with options_json.loop repeats. One repeating group may
+ * contain one other. A third level is refused. Rosters are not built. Flag
+ * off keeps instance_key blank and shows the group once.
  */
 class LoopService
 {
-    /** @var array{label:string,index:int,count:int,key:string}|null */
+    /** @var array{label:string,index:int,count:int,key:string,parent?:array{label:string,index:int,count:int,key:string}}|null */
     public static $pipe = null;
 
     public static function active(CustomForm $form): bool
@@ -92,27 +92,20 @@ class LoopService
         }
         $fields = $fields ?? array_values($form->fields);
         $ids = [];
-        $depth = 0;
-        $inLoop = false;
+        $stack = [];
         foreach ($fields as $field) {
             if (!$field instanceof FormField) {
                 continue;
             }
             if ($field->type === FormField::TYPE_QUESTION_GROUP) {
-                $depth++;
-                if ($this->config($field)) {
-                    $inLoop = true;
-                }
+                $stack[] = $this->config($field) !== null;
                 continue;
             }
-            if ($field->type === FormField::TYPE_GROUP_END && $depth > 0) {
-                $depth--;
-                if ($depth === 0) {
-                    $inLoop = false;
-                }
+            if ($field->type === FormField::TYPE_GROUP_END && $stack) {
+                array_pop($stack);
                 continue;
             }
-            if ($inLoop && $field->collectsAnswer()) {
+            if ($field->collectsAnswer() && in_array(true, $stack, true)) {
                 $ids[(int)$field->id] = true;
             }
         }
@@ -129,7 +122,7 @@ class LoopService
      * @param array<string,mixed> $values
      * @return array<int, array{code:string,label:string}>
      */
-    public function instances(FormField $group, array $values, array $fields): array
+    public function instances(FormField $group, array $values, array $fields, string $parentKey = ''): array
     {
         $cfg = $this->config($group);
         if (!$cfg) {
@@ -143,7 +136,7 @@ class LoopService
             if (!$source) {
                 return [];
             }
-            $raw = $values[(int)$source->id] ?? $values[(string)$source->variable] ?? null;
+            $raw = $this->sourceRaw($source, $values, $parentKey);
             if ($raw === null || $raw === '' || $raw === []) {
                 return [];
             }
@@ -166,7 +159,7 @@ class LoopService
             if (!$source || $cfg['max'] < 1) {
                 return [];
             }
-            $raw = $values[(int)$source->id] ?? $values[(string)$source->variable] ?? null;
+            $raw = $this->sourceRaw($source, $values, $parentKey);
             if ($raw === null || $raw === '' || !is_numeric($raw)) {
                 return [];
             }
@@ -175,8 +168,11 @@ class LoopService
                 $list[] = ['code' => 'n' . $i, 'label' => (string)$i];
             }
         }
+        $list = array_values(array_filter($list, static function ($item) {
+            return is_array($item) && !str_contains((string)($item['code'] ?? ''), '/');
+        }));
         if ($cfg['randomise'] && count($list) > 1) {
-            $list = $this->ordered($group, $list);
+            $list = $this->ordered($group, $list, $parentKey);
         }
         if ($cfg['show'] !== null && $cfg['show'] > 0) {
             $list = array_slice($list, 0, $cfg['show']);
@@ -196,16 +192,20 @@ class LoopService
         $fields = array_values($form->getFields()->all());
         $depth = 0;
         $loopDepth = 0;
+        $deepest = 0;
+        $loopGroups = [];
         $seen = [];
         foreach ($fields as $index => $field) {
             if ($field->type === FormField::TYPE_QUESTION_GROUP) {
                 $depth++;
                 $cfg = $this->config($field);
                 if ($cfg) {
-                    if ($loopDepth > 0) {
-                        $errors[] = Yii::t('ThiscoveryFormsModule.base', 'A loop cannot contain another loop.');
+                    if ($loopDepth > 1) {
+                        $errors[] = Yii::t('ThiscoveryFormsModule.base', 'A loop can contain only one nested loop.');
                     }
                     $loopDepth++;
+                    $deepest = max($deepest, $loopDepth);
+                    $loopGroups[] = $field;
                     $label = trim((string)$field->label) ?: Yii::t('ThiscoveryFormsModule.base', 'Question group');
                     if ($cfg['source'] !== 'fixed' && $cfg['field_key'] === '') {
                         $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” needs a source question.', ['label' => $label]);
@@ -262,6 +262,56 @@ class LoopService
                 }
             }
         }
+        if ($deepest > 1) {
+            foreach ($loopGroups as $group) {
+                $errors = array_merge($errors, $this->nestedCodeErrors($group, $fields));
+            }
+        }
+        return $errors;
+    }
+
+    /**
+     * A nested path is parent/child and must fit the instance key.
+     *
+     * @param FormField[] $fields
+     * @return array<int, string>
+     */
+    private function nestedCodeErrors(FormField $group, array $fields): array
+    {
+        $cfg = $this->config($group);
+        if (!$cfg) {
+            return [];
+        }
+        $label = trim((string)$group->label) ?: Yii::t('ThiscoveryFormsModule.base', 'Question group');
+        $codes = [];
+        if ($cfg['source'] === 'fixed') {
+            foreach ($cfg['items'] as $item) {
+                $codes[] = (string)$item['code'];
+            }
+        } elseif ($cfg['source'] === 'choices') {
+            $source = $this->fieldByKey($fields, $cfg['field_key']);
+            if ($source) {
+                foreach ($source->getChoicePairs() as $pair) {
+                    if ((string)$pair['code'] !== '') {
+                        $codes[] = (string)$pair['code'];
+                    }
+                }
+            }
+        }
+        $errors = [];
+        foreach ($codes as $code) {
+            if (str_contains($code, '/')) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}”, which cannot contain a slash.', [
+                    'label' => $label,
+                    'code' => $code,
+                ]);
+            } elseif (strlen($code) > 90) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}”, which is too long to nest.', [
+                    'label' => $label,
+                    'code' => $code,
+                ]);
+            }
+        }
         return $errors;
     }
 
@@ -307,50 +357,19 @@ class LoopService
         $index = [];
         $cursor = 0;
         foreach ($built['pages'] as $page) {
-            $items = array_values($page['items'] ?? []);
-            $chunks = $this->splitPage($items);
-            $first = true;
-            foreach ($chunks as $chunk) {
-                if ($chunk['loop'] === null) {
-                    $key = $first ? (string)$page['pageKey'] : ((string)$page['pageKey'] . '_c' . $cursor);
-                    $pages[] = [
-                        'index' => $cursor,
-                        'pageKey' => $key,
-                        'title' => $first ? (string)$page['title'] : '',
-                        'break' => $first ? ($page['break'] ?? null) : null,
-                        'items' => $chunk['items'],
-                        'instanceKey' => '',
-                        'instanceLabel' => '',
-                        'instanceIndex' => 0,
-                        'instanceCount' => 0,
-                    ];
-                    $index[$key] = $cursor;
-                    $cursor++;
-                    $first = false;
-                    continue;
-                }
-                $instances = $this->instances($chunk['loop'], $values, $fields);
-                if ($instances === []) {
-                    continue;
-                }
-                $count = count($instances);
-                foreach ($instances as $position => $instance) {
-                    $key = (string)$page['pageKey'] . '__' . $instance['code'];
-                    $pages[] = [
-                        'index' => $cursor,
-                        'pageKey' => $key,
-                        'title' => (string)$instance['label'],
-                        'break' => null,
-                        'items' => $chunk['items'],
-                        'instanceKey' => (string)$instance['code'],
-                        'instanceLabel' => (string)$instance['label'],
-                        'instanceIndex' => $position + 1,
-                        'instanceCount' => $count,
-                    ];
-                    $index[$key] = $cursor;
-                    $cursor++;
-                }
-            }
+            $this->emitChunks(
+                $this->splitPage(array_values($page['items'] ?? [])),
+                (string)$page['pageKey'],
+                (string)$page['title'],
+                $page['break'] ?? null,
+                [],
+                $values,
+                $fields,
+                $pages,
+                $index,
+                $cursor,
+                true
+            );
         }
         if ($pages === []) {
             return $built;
@@ -369,34 +388,65 @@ class LoopService
         }
         $fields = array_values($form->fields);
         $extra = 0;
-        $depth = 0;
-        $group = null;
-        $inLoop = 0;
         foreach ($fields as $field) {
-            if ($field->type === FormField::TYPE_QUESTION_GROUP) {
-                $depth++;
-                if ($this->config($field)) {
-                    $group = $field;
-                    $inLoop = $depth;
-                }
+            if (!$field->collectsAnswer() || !isset($shownIds[(int)$field->id]) || !$this->isLoopField($form, $field)) {
                 continue;
             }
-            if ($field->type === FormField::TYPE_GROUP_END && $depth > 0) {
-                if ($inLoop === $depth) {
-                    $group = null;
-                    $inLoop = 0;
-                }
-                $depth--;
-                continue;
-            }
-            if ($group && $field->collectsAnswer() && isset($shownIds[(int)$field->id])) {
-                $n = count($this->instances($group, $values, $fields));
-                if ($n > 1) {
-                    $extra += $n - 1;
-                }
+            $n = count($this->shownPaths($fields, $field, $values));
+            if ($n > 1) {
+                $extra += $n - 1;
             }
         }
         return $count + $extra;
+    }
+
+    /**
+     * Shown instance paths for a question, outer code then inner code.
+     *
+     * @param FormField[] $fields
+     * @param array<string,mixed> $values
+     * @return array<int, array{code:string,label:string}>
+     */
+    public function shownPaths(array $fields, FormField $target, array $values): array
+    {
+        return $this->expandShown($this->loopStack($fields, $target), '', $values, $fields);
+    }
+
+    /**
+     * Every possible export path, including repeats that this response did not show.
+     *
+     * @param FormField[] $fields
+     * @return array<int, array{code:string,label:string}>
+     */
+    public function columnPaths(array $fields, FormField $target): array
+    {
+        $groups = $this->loopStack($fields, $target);
+        if ($groups === []) {
+            return [];
+        }
+        $paths = [['code' => '', 'label' => '']];
+        foreach ($groups as $group) {
+            $next = [];
+            foreach ($paths as $path) {
+                foreach ($this->columnsFor($group, $fields) as $column) {
+                    $code = (string)$column['code'];
+                    if ($code === '' || str_contains($code, '/')) {
+                        continue;
+                    }
+                    $next[] = [
+                        'code' => $path['code'] === '' ? $code : $path['code'] . '/' . $code,
+                        'label' => $path['label'] === '' ? (string)$column['label'] : $path['label'] . ' — ' . $column['label'],
+                    ];
+                }
+            }
+            $paths = $next;
+        }
+        return $paths;
+    }
+
+    public function exportColumn(string $variable, string $code): string
+    {
+        return $variable . '__' . str_replace('/', '__', $code);
     }
 
     /**
@@ -467,10 +517,13 @@ class LoopService
      * @param array<int, array{code:string,label:string}> $list
      * @return array<int, array{code:string,label:string}>
      */
-    private function ordered(FormField $group, array $list): array
+    private function ordered(FormField $group, array $list, string $parentKey = ''): array
     {
         $answer = RandomisationService::$current;
         $key = trim((string)$group->variable) ?: ('group' . (int)$group->id);
+        if ($parentKey !== '') {
+            $key .= '/' . $parentKey;
+        }
         if ($answer && $answer->id) {
             $orders = (new RandomisationService())->orders($answer);
             $stored = $orders['loops'][$key] ?? null;
@@ -510,6 +563,179 @@ class LoopService
             }
         }
         return $ordered;
+    }
+
+    /**
+     * @param array<int, array{loop:?FormField,items:FormField[]}> $chunks
+     * @param array<int, array{key:string,code:string,label:string,index:int,count:int}> $trail
+     * @param FormField[] $fields
+     * @param array<string,mixed> $values
+     * @param array<int, array<string,mixed>> $pages
+     * @param array<string, int> $index
+     */
+    private function emitChunks(
+        array $chunks,
+        string $pageKey,
+        string $title,
+        $break,
+        array $trail,
+        array $values,
+        array $fields,
+        array &$pages,
+        array &$index,
+        int &$cursor,
+        bool $keepFirst
+    ): void {
+        $first = $keepFirst;
+        foreach ($chunks as $chunk) {
+            if ($chunk['loop'] === null || count($trail) >= 2) {
+                $key = $first ? $pageKey : ($pageKey . '_c' . $cursor);
+                $pages[] = $this->pageRow($cursor, $key, $first ? $title : '', $first ? $break : null, $chunk['items'], $trail);
+                $index[$key] = $cursor;
+                $cursor++;
+                $first = false;
+                continue;
+            }
+            $parentKey = $trail ? (string)$trail[count($trail) - 1]['key'] : '';
+            $instances = $this->instances($chunk['loop'], $values, $fields, $parentKey);
+            if ($instances === []) {
+                continue;
+            }
+            $count = count($instances);
+            foreach ($instances as $position => $instance) {
+                $segment = (string)$instance['code'];
+                $full = $parentKey === '' ? $segment : $parentKey . '/' . $segment;
+                $nextTrail = $trail;
+                $nextTrail[] = [
+                    'key' => $full,
+                    'code' => $segment,
+                    'label' => (string)$instance['label'],
+                    'index' => $position + 1,
+                    'count' => $count,
+                ];
+                $childKey = $pageKey . '__' . $segment;
+                $inner = $this->splitPage($chunk['items']);
+                $nested = false;
+                foreach ($inner as $part) {
+                    if ($part['loop'] !== null) {
+                        $nested = true;
+                        break;
+                    }
+                }
+                if ($nested) {
+                    $this->emitChunks($inner, $childKey, (string)$instance['label'], null, $nextTrail, $values, $fields, $pages, $index, $cursor, true);
+                    continue;
+                }
+                $pages[] = $this->pageRow($cursor, $childKey, (string)$instance['label'], null, $chunk['items'], $nextTrail);
+                $index[$childKey] = $cursor;
+                $cursor++;
+            }
+        }
+    }
+
+    /**
+     * @param FormField[] $items
+     * @param array<int, array{key:string,label:string,index:int,count:int}> $trail
+     * @return array<string,mixed>
+     */
+    private function pageRow(int $cursor, string $key, string $title, $break, array $items, array $trail): array
+    {
+        $current = $trail ? $trail[count($trail) - 1] : null;
+        return [
+            'index' => $cursor,
+            'pageKey' => $key,
+            'title' => $title,
+            'break' => $break,
+            'items' => $items,
+            'instanceKey' => $current['key'] ?? '',
+            'instanceLabel' => $current['label'] ?? '',
+            'instanceIndex' => (int)($current['index'] ?? 0),
+            'instanceCount' => (int)($current['count'] ?? 0),
+            'instanceHeading' => count($trail) > 1 ? $this->heading($trail) : '',
+            'instanceParent' => count($trail) > 1 ? $trail[count($trail) - 2] : null,
+        ];
+    }
+
+    /**
+     * @param array<int, array{label:string,index:int,count:int}> $trail
+     */
+    private function heading(array $trail): string
+    {
+        $parts = [];
+        foreach ($trail as $level) {
+            $parts[] = $level['label'] . ', ' . $level['index'] . ' of ' . $level['count'];
+        }
+        return implode(' — ', $parts);
+    }
+
+    /**
+     * @param FormField[] $groups
+     * @param FormField[] $fields
+     * @param array<string,mixed> $values
+     * @return array<int, array{code:string,label:string}>
+     */
+    private function expandShown(array $groups, string $parentKey, array $values, array $fields): array
+    {
+        if ($groups === []) {
+            return [];
+        }
+        $group = array_shift($groups);
+        $out = [];
+        foreach ($this->instances($group, $values, $fields, $parentKey) as $instance) {
+            $code = $parentKey === '' ? (string)$instance['code'] : $parentKey . '/' . $instance['code'];
+            if ($groups === []) {
+                $out[] = ['code' => $code, 'label' => (string)$instance['label']];
+                continue;
+            }
+            foreach ($this->expandShown($groups, $code, $values, $fields) as $child) {
+                $out[] = $child;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Enclosing loop groups, outermost first.
+     *
+     * @param FormField[] $fields
+     * @return FormField[]
+     */
+    private function loopStack(array $fields, FormField $target): array
+    {
+        $stack = [];
+        foreach ($fields as $field) {
+            if ($field->type === FormField::TYPE_QUESTION_GROUP) {
+                $stack[] = $field;
+                continue;
+            }
+            if ($field->type === FormField::TYPE_GROUP_END && $stack) {
+                array_pop($stack);
+                continue;
+            }
+            if ((int)$field->id === (int)$target->id) {
+                $loops = [];
+                foreach ($stack as $group) {
+                    if ($this->config($group)) {
+                        $loops[] = $group;
+                    }
+                }
+                return $loops;
+            }
+        }
+        return [];
+    }
+
+    /**
+     * @param array<string,mixed> $values
+     * @return mixed
+     */
+    private function sourceRaw(FormField $source, array $values, string $parentKey)
+    {
+        $raw = $values[(int)$source->id] ?? $values[(string)$source->variable] ?? null;
+        if ($parentKey !== '' && is_array($raw) && !array_is_list($raw) && array_key_exists($parentKey, $raw)) {
+            return $raw[$parentKey];
+        }
+        return $raw;
     }
 
     /**

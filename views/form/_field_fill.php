@@ -27,7 +27,7 @@ $inputName = 'SubmitForm[values][' . $field->id . ']' . ($instanceKey !== '' ? '
 if ($instanceKey !== '' && is_array($value)) {
     $value = $value[$instanceKey] ?? '';
 }
-$inputId = 'cf-input-' . $field->id . ($instanceKey !== '' ? '-' . preg_replace('/[^a-z0-9_-]/i', '', $instanceKey) : '');
+$inputId = 'cf-input-' . $field->id . ($instanceKey !== '' ? '-' . preg_replace('/[^a-z0-9_-]/i', '', str_replace('/', '__', $instanceKey)) : '');
 if (($value === '' || $value === null || $value === []) && $field->getDefaultValue() !== '') {
     $value = $field->getDefaultValue();
 }
