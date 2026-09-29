@@ -30,6 +30,9 @@ class ModuleSettings extends Model
     public $econsentEnabled = 0;
 
     /** @var int */
+    public $quotasEnabled = 0;
+
+    /** @var int */
     public $fromBriefEnabled = 0;
 
     /** @var int */
@@ -72,6 +75,7 @@ class ModuleSettings extends Model
         $module = Yii::$app->getModule('thiscovery-forms');
         $this->randomisationEnabled = (int)$module->settings->get(Module::SETTING_RANDOMISATION, 0);
         $this->econsentEnabled = (int)$module->settings->get(Module::SETTING_ECONSENT, 0);
+        $this->quotasEnabled = (int)$module->settings->get(Module::SETTING_QUOTAS, 0);
         $this->fromBriefEnabled = (int)$module->settings->get(Module::SETTING_FROM_BRIEF_ENABLED, 0);
         $this->fromBriefLlmEnabled = (int)$module->settings->get(Module::SETTING_FROM_BRIEF_LLM_ENABLED, 0);
         $this->llmProvider = (string)$module->settings->get(Module::SETTING_LLM_PROVIDER, 'openai');
@@ -96,7 +100,7 @@ class ModuleSettings extends Model
             )],
             [['enabledKinds'], 'each', 'rule' => ['in', 'range' => $kinds]],
             [['display'], 'safe'],
-            [['fromBriefEnabled', 'fromBriefLlmEnabled', 'randomisationEnabled', 'econsentEnabled'], 'boolean'],
+            [['fromBriefEnabled', 'fromBriefLlmEnabled', 'randomisationEnabled', 'econsentEnabled', 'quotasEnabled'], 'boolean'],
             [['llmProvider', 'llmApiBase', 'llmApiKey', 'llmModel'], 'string'],
             [['fromBriefMaxUploadMb'], 'integer', 'min' => 1, 'max' => 50],
             [['llmMaxBriefChars'], 'integer', 'min' => 2000, 'max' => 500000],
@@ -117,6 +121,7 @@ class ModuleSettings extends Model
             'enabledKinds' => Yii::t('ThiscoveryFormsModule.base', 'Enabled form types'),
             'randomisationEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable randomisation'),
             'econsentEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable electronic consent'),
+            'quotasEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable quotas'),
             'fromBriefEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable create from brief / document'),
             'fromBriefLlmEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Allow LLM assist'),
             'llmProvider' => Yii::t('ThiscoveryFormsModule.base', 'LLM provider'),
@@ -161,6 +166,7 @@ class ModuleSettings extends Model
 
         $module->settings->set(Module::SETTING_RANDOMISATION, !empty($this->randomisationEnabled) ? '1' : '0');
         $module->settings->set(Module::SETTING_ECONSENT, !empty($this->econsentEnabled) ? '1' : '0');
+        $module->settings->set(Module::SETTING_QUOTAS, !empty($this->quotasEnabled) ? '1' : '0');
         $module->settings->set(Module::SETTING_FROM_BRIEF_ENABLED, (int)!empty($this->fromBriefEnabled));
         $module->settings->set(Module::SETTING_FROM_BRIEF_LLM_ENABLED, (int)!empty($this->fromBriefLlmEnabled));
         $module->settings->set(Module::SETTING_LLM_PROVIDER, $provider);

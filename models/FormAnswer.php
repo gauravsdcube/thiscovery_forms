@@ -22,6 +22,7 @@ use yii\db\ActiveQuery;
  * @property string $updated_at
  * @property int|null $updated_by
  * @property int|null $panel_member_id
+ * @property int|null $quota_marker
  * @property int|null $wave_id
  * @property int|null $round_id
  * @property int|null $edition_id
@@ -67,7 +68,7 @@ class FormAnswer extends ActiveRecord
     {
         return [
             [['form_id'], 'required'],
-            [['form_id', 'created_by', 'updated_by', 'status', 'is_test', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id', 'edition_id'], 'integer'],
+            [['form_id', 'created_by', 'updated_by', 'status', 'is_test', 'current_page', 'panel_member_id', 'wave_id', 'round_id', 'current_stage_id', 'edition_id', 'quota_marker'], 'integer'],
             [['status'], 'default', 'value' => self::STATUS_COMPLETE],
             [['status'], 'in', 'range' => [self::STATUS_IN_PROGRESS, self::STATUS_COMPLETE]],
             [['outcome'], 'default', 'value' => ''],
