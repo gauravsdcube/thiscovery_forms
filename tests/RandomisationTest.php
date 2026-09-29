@@ -75,7 +75,7 @@ $form = ReviewLib::form(review_space(), 'EV F1 randomisation', [
 ReviewLib::clearFields($form);
 
 $colour = ReviewLib::field($form, FormField::TYPE_RADIO, 'Colour', ['variable' => 'f1_colour', 'sort_order' => 1]);
-$colour->setOptionsFromText("Red\nBlue\nGreen\nYellow", true);
+$colour->setOptionsFromText("Red\nBlue\nGreen\nYellow\nPurple\nOrange", true);
 $colour->save(false);
 
 $guestA = new FormAnswer();
