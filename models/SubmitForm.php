@@ -326,7 +326,24 @@ class SubmitForm extends Model
             }
 
             $value = $this->values[$field->id] ?? null;
-            $empty = $this->isEmptyValue($value);
+            $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
+            if ($loops->isLoopField($this->form, $field)) {
+                $group = $loops->groupForField($this->form->fields, $field);
+                $shown = $group ? $loops->instances($group, $this->values, $this->form->fields) : [];
+                $empty = false;
+                if ($shown === []) {
+                    $empty = false;
+                } else {
+                    foreach ($shown as $instance) {
+                        $cell = is_array($value) ? ($value[$instance['code']] ?? null) : null;
+                        if ($this->isEmptyValue($cell)) {
+                            $empty = true;
+                        }
+                    }
+                }
+            } else {
+                $empty = $this->isEmptyValue($value);
+            }
 
             $required = $field->required;
             if ($field->type === FormField::TYPE_HTML) {
@@ -681,8 +698,10 @@ class SubmitForm extends Model
             }
 
             $existingFields = [];
+            $instanceColumn = \humhub\modules\thiscoveryForms\services\LoopService::columnReady();
             foreach ($answer->answerFields as $af) {
-                $existingFields[$af->field_id] = $af;
+                $instance = $instanceColumn ? (string)($af->instance_key ?? '') : '';
+                $existingFields[(int)$af->field_id . ':' . $instance] = $af;
             }
 
             $liveQuery = FormField::find()
@@ -718,8 +737,47 @@ class SubmitForm extends Model
                     }
                 }
                 if ($this->consentRefusedSort !== null && (int)$field->sort_order > (int)$this->consentRefusedSort) {
-                    if (isset($existingFields[$fieldId])) {
-                        $existingFields[$fieldId]->delete();
+                    foreach ($existingFields as $slot => $existingCell) {
+                        if (str_starts_with((string)$slot, $fieldId . ':')) {
+                            $existingCell->delete();
+                        }
+                    }
+                    continue;
+                }
+                $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
+                if ($instanceColumn && $loops->isLoopField($this->form, $field)) {
+                    $group = $loops->groupForField($this->form->fields, $field);
+                    $shown = $group ? $loops->instances($group, $this->values, $this->form->fields) : [];
+                    $posted = $this->values[$fieldId] ?? [];
+                    if (!is_array($posted)) {
+                        $posted = [];
+                    }
+                    foreach ($shown as $instance) {
+                        $code = (string)$instance['code'];
+                        $slot = $fieldId . ':' . $code;
+                        if (!array_key_exists($code, $posted)) {
+                            continue;
+                        }
+                        $cell = $posted[$code];
+                        if ($this->isEmptyValue($cell)) {
+                            if (isset($existingFields[$slot])) {
+                                $existingFields[$slot]->delete();
+                            }
+                            continue;
+                        }
+                        $af = $existingFields[$slot] ?? new FormAnswerField();
+                        $af->answer_id = $answer->id;
+                        $af->field_id = $fieldId;
+                        $af->instance_key = $code;
+                        $af->value = $this->encodeValue($cell);
+                        if (!$af->save()) {
+                            $transaction->rollBack();
+                            FormAnswerField::discardDeferredFiles();
+                            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
+                                'label' => $field->label,
+                            ]));
+                            return null;
+                        }
                     }
                     continue;
                 }
@@ -727,8 +785,8 @@ class SubmitForm extends Model
                 $value = $visible ? ($this->values[$fieldId] ?? null) : null;
 
                 if (!$visible || $this->isEmptyValue($value)) {
-                    if (isset($existingFields[$fieldId])) {
-                        $existingFields[$fieldId]->delete();
+                    if (isset($existingFields[$fieldId . ':'])) {
+                        $existingFields[$fieldId . ':']->delete();
                     }
                     continue;
                 }
@@ -737,9 +795,12 @@ class SubmitForm extends Model
                     $value = $this->scoreImageArea($field, is_array($value) ? $value : []);
                 }
 
-                $af = $existingFields[$fieldId] ?? new FormAnswerField();
+                $af = $existingFields[$fieldId . ':'] ?? new FormAnswerField();
                 $af->answer_id = $answer->id;
                 $af->field_id = $fieldId;
+                if ($instanceColumn) {
+                    $af->instance_key = '';
+                }
                 $af->value = $this->encodeValue($value);
                 $af->justification = $field->supportsJustification()
                     ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)

@@ -22,7 +22,15 @@ $updated = ($answer->updated_at && $answer->updated_at !== $answer->created_at)
 $valueMap = [];
 $justMap = [];
 $answerFieldMap = [];
+$loopCells = [];
 foreach ($answer->answerFields as $af) {
+    $instance = \humhub\modules\thiscoveryForms\services\LoopService::columnReady()
+        ? (string)($af->instance_key ?? '')
+        : '';
+    if ($instance !== '') {
+        $loopCells[(int)$af->field_id][$instance] = $af;
+        continue;
+    }
     $answerFieldMap[(int)$af->field_id] = $af;
     $valueMap[(int)$af->field_id] = $af->getDisplayValue();
     if (trim((string)$af->justification) !== '') {
@@ -127,6 +135,17 @@ foreach ($formModel->getAllFields()->all() as $field) {
             <?php foreach ($detailFields as $field): ?>
                 <?php
                 if (!$field->collectsAnswer()) {
+                    continue;
+                }
+                if (!empty($loopCells[(int)$field->id])) {
+                    foreach ($loopCells[(int)$field->id] as $instanceKey => $cell) {
+                        ?>
+                        <div class="cf-answer-field">
+                            <div class="cf-answer-field__label"><?= Html::encode($field->displayLabel()) ?> — <?= Html::encode((string)$instanceKey) ?></div>
+                            <div class="cf-answer-field__value"><div class="tt-response-original"><?= $cell->getAnswerHtml() ?></div></div>
+                        </div>
+                        <?php
+                    }
                     continue;
                 }
                 $afValue = $valueMap[(int)$field->id] ?? '';

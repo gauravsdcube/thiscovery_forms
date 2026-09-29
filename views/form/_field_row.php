@@ -306,6 +306,38 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 ], ['class' => 'form-control']) ?>
             </div>
         </div>
+        <?php if ($type === FormField::TYPE_QUESTION_GROUP && \humhub\modules\thiscoveryForms\Module::loopsEnabled()): ?>
+        <?php $loopCfg = (new \humhub\modules\thiscoveryForms\services\LoopService())->config($field); ?>
+        <div class="row g-3 mt-1">
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Repeat this group') ?></label>
+                <?= Html::dropDownList($namePrefix . '[loop_enabled]', $loopCfg ? '1' : '', [
+                    '' => Yii::t('ThiscoveryFormsModule.base', 'No'),
+                    '1' => Yii::t('ThiscoveryFormsModule.base', 'Yes'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Source') ?></label>
+                <?= Html::dropDownList($namePrefix . '[loop_source]', is_array($loopCfg) ? $loopCfg['source'] : 'fixed', [
+                    'fixed' => Yii::t('ThiscoveryFormsModule.base', 'Fixed list'),
+                    'choices' => Yii::t('ThiscoveryFormsModule.base', 'Selected options'),
+                    'number' => Yii::t('ThiscoveryFormsModule.base', 'A number'),
+                ], ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Source question variable') ?></label>
+                <?= Html::textInput($namePrefix . '[loop_field_key]', is_array($loopCfg) ? $loopCfg['field_key'] : '', ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-2">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Max') ?></label>
+                <?= Html::textInput($namePrefix . '[loop_max]', is_array($loopCfg) ? (string)$loopCfg['max'] : '', ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-12">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Fixed list, one code | label per line') ?></label>
+                <?= Html::textarea($namePrefix . '[loop_items]', is_array($loopCfg) ? implode("\n", array_map(static fn($item) => $item['code'] . ' | ' . $item['label'], $loopCfg['items'])) : '', ['class' => 'form-control', 'rows' => 3]) ?>
+            </div>
+        </div>
+        <?php endif; ?>
 
         <div class="row g-3 mt-1<?= $type === FormField::TYPE_NUMBER ? '' : ' d-none' ?>" data-cf-number-panel>
             <div class="col-md-4">

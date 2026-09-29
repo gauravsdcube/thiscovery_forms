@@ -3938,6 +3938,42 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (raw === undefined) {
                 return false;
             }
+            var aggregate = String(branch.aggregate || '');
+            if (aggregate && raw && typeof raw === 'object' && !Array.isArray(raw)) {
+                var cells = Object.keys(raw).map(function (k) { return raw[k]; });
+                var one = function (cell) {
+                    var probe = {};
+                    probe[fieldKey] = cell;
+                    return branchMatches({ fieldKey: fieldKey, operator: op, value: expected }, probe);
+                };
+                if (aggregate === 'any') {
+                    return cells.some(one);
+                }
+                if (aggregate === 'all') {
+                    return cells.length > 0 && cells.every(one);
+                }
+                if (aggregate === 'sum') {
+                    var sum = 0;
+                    cells.forEach(function (cell) {
+                        var n = parseFloat(cell);
+                        if (!isNaN(n)) {
+                            sum += n;
+                        }
+                    });
+                    var sumProbe = {};
+                    sumProbe[fieldKey] = String(sum);
+                    return branchMatches({ fieldKey: fieldKey, operator: op, value: expected }, sumProbe);
+                }
+                if (aggregate === 'count') {
+                    var answered = cells.filter(function (cell) {
+                        return cell !== null && cell !== undefined && String(cell) !== '' && !(Array.isArray(cell) && cell.length === 0);
+                    }).length;
+                    var countProbe = {};
+                    countProbe[fieldKey] = String(answered);
+                    return branchMatches({ fieldKey: fieldKey, operator: op, value: expected }, countProbe);
+                }
+                return false;
+            }
             var pairs = choicePairsFor(fieldKey);
             var matchOpt = function (v, expectedVal) {
                 return valueMatchesOption(v, expectedVal, pairs);

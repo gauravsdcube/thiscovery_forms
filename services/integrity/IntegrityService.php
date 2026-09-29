@@ -297,7 +297,7 @@ class IntegrityService
         }
         $values = $answer->getValuesMap();
         $shown = $this->shownFieldIds($form, $values);
-        $meta->shown_question_count = count($shown);
+        $meta->shown_question_count = (new \humhub\modules\thiscoveryForms\services\LoopService())->shownQuestionCount($form, $values, $shown);
         if (!$skipScores && IntegritySettings::isOn($cfg, 'speed_detection')) {
             $meta->median_seconds = $this->medianSecondsPerQuestion($form, (int)$answer->id);
             [$scores['speed'], $speedFlags] = $this->analyseSpeed($meta, $cfg);

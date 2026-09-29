@@ -56,6 +56,14 @@ $builtPages = (new FormPager())->buildPages($formModel->fields);
 if ($existing instanceof FormAnswer) {
     $builtPages = $randService->applyPageOrder($builtPages, $existing);
 }
+if (\humhub\modules\thiscoveryForms\services\LoopService::active($formModel)) {
+    $builtPages = (new \humhub\modules\thiscoveryForms\services\LoopService())->expandPages(
+        $builtPages,
+        $formModel,
+        $formModel->fields,
+        $submit->values
+    );
+}
 $pages = $builtPages['pages'];
 $pageKeyIndex = $builtPages['pageKeyIndex'];
 $armAssignment = ($existing instanceof FormAnswer) ? $randService->assignment($existing) : null;
@@ -479,11 +487,27 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?= Html::hiddenInput('action_vars', ($existing instanceof FormAnswer) ? json_encode($existing->getVars(), JSON_UNESCAPED_UNICODE) : '{}', ['data-cf-action-vars' => true]) ?>
 
             <?php foreach ($pages as $page): ?>
+                <?php
+                if (!empty($page['instanceKey'])) {
+                    \humhub\modules\thiscoveryForms\services\LoopService::$pipe = [
+                        'label' => (string)($page['instanceLabel'] ?? ''),
+                        'index' => (int)($page['instanceIndex'] ?? 1),
+                        'count' => (int)($page['instanceCount'] ?? 1),
+                        'key' => (string)$page['instanceKey'],
+                    ];
+                } else {
+                    \humhub\modules\thiscoveryForms\services\LoopService::$pipe = null;
+                }
+                ?>
                 <div class="cf-form-page<?= $page['index'] === 0 ? ' is-active' : '' ?>"
                      data-cf-page="<?= (int)$page['index'] ?>"
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
+                     <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '"' : '' ?>
                      data-cf-page-break-id="<?= $page['break'] ? (int)$page['break']->id : '' ?>"
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
+                    <?php if (!empty($page['instanceKey'])): ?>
+                        <h2 class="cf-loop-instance"><?= Html::encode((string)($page['instanceLabel'] ?? '')) ?>, <?= (int)($page['instanceIndex'] ?? 1) ?> of <?= (int)($page['instanceCount'] ?? 1) ?></h2>
+                    <?php endif; ?>
                     <?php if (!empty($page['title'])): ?>
                         <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null); ?>
                         <h2 class="cf-form-page__title" data-cf-pipe="<?= Html::encode((string)$page['title']) ?>"><?= $pageTitle ?></h2>
@@ -594,6 +618,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 'allValues' => $submit->values,
                                 'allFields' => $formModel->fields,
                                 'justifications' => $submit->justifications,
+                                'instanceKey' => (string)($page['instanceKey'] ?? ''),
                                 'frozen' => !empty($frozen),
                                 'fillRtl' => $fillRtl,
                                 'panelMember' => $fillContext->member ?? null,

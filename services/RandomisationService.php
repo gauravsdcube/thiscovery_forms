@@ -340,6 +340,7 @@ class RandomisationService
             'questions' => is_array($decoded['questions'] ?? null) ? $decoded['questions'] : [],
             'pages' => is_array($decoded['pages'] ?? null) ? $decoded['pages'] : [],
             'shown' => is_array($decoded['shown'] ?? null) ? $decoded['shown'] : [],
+            'loops' => is_array($decoded['loops'] ?? null) ? $decoded['loops'] : [],
         ];
     }
 
@@ -764,6 +765,7 @@ class RandomisationService
                 'questions' => $orders['questions'],
                 'pages' => $orders['pages'],
                 'shown' => $orders['shown'],
+                'loops' => $orders['loops'] ?? [],
             ], JSON_UNESCAPED_UNICODE),
         ], ['answer_id' => (int)$answer->id])->execute();
     }

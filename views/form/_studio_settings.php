@@ -177,6 +177,21 @@ $activeSection = $activeSection ?? 'basics';
                     </div>
                     <?php endif; ?>
                 </div>
+                <input type="hidden" name="loops_present" value="1">
+                <?php $loopSvc = new \humhub\modules\thiscoveryForms\services\LoopService(); ?>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-12">
+                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Loops') ?></h4>
+                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned loops on. A group can repeat once, from a fixed list, selected options, or a number. Nested loops and rosters are not in this version. Unselected answers are kept but not shown.') ?></p>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use loops on this form') ?></label>
+                        <?= Html::dropDownList('loops_enabled', $loopSvc->formEnabled($formModel) ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                </div>
                 <input type="hidden" name="randomisation_present" value="1">
                 <div class="row g-3 mt-2">
                     <div class="col-md-12">

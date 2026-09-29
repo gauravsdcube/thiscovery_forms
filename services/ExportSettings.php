@@ -257,6 +257,25 @@ class ExportSettings
             if (!$field->collectsAnswer()) {
                 continue;
             }
+            $loops = new LoopService();
+            if (LoopService::active($form) && $loops->isLoopField($form, $field)) {
+                $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
+                $group = $loops->groupForField(array_values($form->fields), $field);
+                if (!$group) {
+                    continue;
+                }
+                foreach ($loops->columnsFor($group, array_values($form->fields)) as $column) {
+                    $cols[] = [
+                        'key' => $variable . '__' . $column['code'],
+                        'header' => self::uniqueHeader($variable . '__' . $column['code'], $usedHeaders),
+                        'group' => self::GROUP_QUESTION,
+                        'lock' => self::fieldDropsWhenScrub($field),
+                        'field' => $field,
+                        'comment' => false,
+                    ];
+                }
+                continue;
+            }
             $lock = self::fieldDropsWhenScrub($field);
             $header = self::uniqueHeader($svc->fieldHeader($field, $headerMode), $usedHeaders);
             $cols[] = [

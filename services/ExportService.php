@@ -53,7 +53,7 @@ class ExportService
 
         /** @var FormAnswer $answer */
         foreach ($query->each(100) as $answer) {
-            $cells = $this->answerCells($form, $answer, $fields);
+            $cells = $this->answerCells($form, $answer, $fields, !empty($params['include_hidden_instances']));
             $row = [];
             foreach ($columns as $col) {
                 $value = $cells[$col['key']] ?? '';
@@ -113,7 +113,7 @@ class ExportService
      * @param FormField[] $fields
      * @return array<string, string>
      */
-    private function answerCells(CustomForm $form, FormAnswer $answer, array $fields): array
+    private function answerCells(CustomForm $form, FormAnswer $answer, array $fields, bool $includeHidden = false): array
     {
         $status = $answer->isComplete()
             ? Yii::t('ThiscoveryFormsModule.base', 'Complete')
@@ -198,7 +198,30 @@ class ExportService
                 }
             }
         }
+        $loops = new LoopService();
         foreach ($fields as $field) {
+            if ($loops->isLoopField($form, $field)) {
+                $group = $loops->groupForField(array_values($form->fields), $field);
+                $shown = $group ? $loops->instances($group, $map, array_values($form->fields)) : [];
+                $shownCodes = [];
+                foreach ($shown as $instance) {
+                    $shownCodes[$instance['code']] = true;
+                }
+                $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
+                $instanceCells = is_array($map[$field->id] ?? null) ? $map[$field->id] : [];
+                if (!$group) {
+                    continue;
+                }
+                foreach ($loops->columnsFor($group, array_values($form->fields)) as $column) {
+                    $code = (string)$column['code'];
+                    $raw = $instanceCells[$code] ?? '';
+                    if (!$includeHidden && !isset($shownCodes[$code])) {
+                        $raw = '';
+                    }
+                    $cells[$variable . '__' . $code] = $this->formatCell($raw);
+                }
+                continue;
+            }
             $val = $map[$field->id] ?? '';
             if ($field->type === FormField::TYPE_FILE && is_string($val) && $val !== '') {
                 $file = File::findOne(['guid' => $val]);
@@ -251,6 +274,24 @@ class ExportService
             $codes = [];
             foreach ($field->getChoicePairs() as $pair) {
                 $codes[] = $pair['code'] . '=' . $pair['label'];
+            }
+            $loops = new LoopService();
+            if ($loops->isLoopField($form, $field)) {
+                $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
+                $group = $loops->groupForField(array_values($form->fields), $field);
+                if (!$group) {
+                    continue;
+                }
+                foreach ($loops->columnsFor($group, array_values($form->fields)) as $column) {
+                    fputcsv($fh, [
+                        $variable . '__' . $column['code'],
+                        trim(strip_tags((string)$field->label)) . ' (' . $column['label'] . ')',
+                        (string)$field->type,
+                        implode('; ', $codes),
+                        'Loop instance ' . $column['code'],
+                    ]);
+                }
+                continue;
             }
             fputcsv($fh, [
                 trim((string)$field->variable),

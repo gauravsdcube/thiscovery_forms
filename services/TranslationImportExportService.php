@@ -378,6 +378,13 @@ class TranslationImportExportService
                 $this->pushUnit($units, "field.$id.option.c:$code", $type, 'option', (string)$pair['label'], $id);
             }
 
+            $loop = (new LoopService())->config($field);
+            if ($loop && $loop['source'] === 'fixed') {
+                $variable = trim((string)$field->variable) ?: ('group' . $id);
+                foreach ($loop['items'] as $item) {
+                    $this->pushUnit($units, 'loop.' . $variable . '.' . $item['code'], $type, 'loop_item', (string)$item['label'], $id, false);
+                }
+            }
             if ($field->type === FormField::TYPE_PAGE_BREAK) {
                 $this->pushUnit($units, "field.$id.page_title", $type, 'page_title', (string)$field->getPageBreakConfig()['title'], $id, false);
             }

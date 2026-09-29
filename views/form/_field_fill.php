@@ -22,8 +22,12 @@ use yii\helpers\Html;
 $allFields = $allFields ?? [];
 $allValues = $allValues ?? [];
 $userId = (int)(Yii::$app->user->id ?? 0);
-$inputName = 'SubmitForm[values][' . $field->id . ']';
-$inputId = 'cf-input-' . $field->id;
+$instanceKey = $instanceKey ?? '';
+$inputName = 'SubmitForm[values][' . $field->id . ']' . ($instanceKey !== '' ? '[' . $instanceKey . ']' : '');
+if ($instanceKey !== '' && is_array($value)) {
+    $value = $value[$instanceKey] ?? '';
+}
+$inputId = 'cf-input-' . $field->id . ($instanceKey !== '' ? '-' . preg_replace('/[^a-z0-9_-]/i', '', $instanceKey) : '');
 if (($value === '' || $value === null || $value === []) && $field->getDefaultValue() !== '') {
     $value = $field->getDefaultValue();
 }

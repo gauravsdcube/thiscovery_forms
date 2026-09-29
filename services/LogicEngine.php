@@ -131,6 +131,10 @@ class LogicEngine
         if ($source === 'panel' || $source === 'arm') {
             $leaf['source'] = $source;
         }
+        $aggregate = (string)($rule['aggregate'] ?? '');
+        if (in_array($aggregate, ['any', 'all', 'count', 'sum'], true)) {
+            $leaf['aggregate'] = $aggregate;
+        }
         return $leaf;
     }
 
@@ -248,6 +252,10 @@ class LogicEngine
         }
 
         $source = $this->fieldByKey($fields, $fieldKey);
+        $aggregate = (string)($rule['aggregate'] ?? '');
+        if ($aggregate !== '' && is_array($raw)) {
+            return $this->aggregateInstances($aggregate, $raw, $op, $expected);
+        }
         if ($source && FormField::isChoiceType($source->type) && in_array($op, [FormField::OP_EQUALS, FormField::OP_NOT_EQUALS], true)) {
             $hit = $source->choiceMatchesExpected($raw, $expected);
             return $op === FormField::OP_EQUALS ? $hit : !$hit;
@@ -490,6 +498,58 @@ class LogicEngine
             }
         }
         return null;
+    }
+
+    /**
+     * @param array<string,mixed> $raw
+     */
+    private function aggregateInstances(string $aggregate, array $raw, string $op, string $expected): bool
+    {
+        if (!in_array($aggregate, ['any', 'all', 'count', 'sum'], true)) {
+            return false;
+        }
+        $cells = [];
+        foreach ($raw as $key => $value) {
+            if (is_int($key)) {
+                return false;
+            }
+            $cells[] = $value;
+        }
+        if ($aggregate === 'any') {
+            foreach ($cells as $cell) {
+                if ($this->compare($cell, $op, $expected)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        if ($aggregate === 'all') {
+            if ($cells === []) {
+                return false;
+            }
+            foreach ($cells as $cell) {
+                if (!$this->compare($cell, $op, $expected)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if ($aggregate === 'sum') {
+            $sum = 0.0;
+            foreach ($cells as $cell) {
+                if (is_numeric($cell)) {
+                    $sum += (float)$cell;
+                }
+            }
+            return $this->compare((string)$sum, $op, $expected);
+        }
+        $answered = 0;
+        foreach ($cells as $cell) {
+            if ($cell !== null && $cell !== '' && $cell !== []) {
+                $answered++;
+            }
+        }
+        return $this->compare((string)$answered, $op, $expected);
     }
 
     private function compare($raw, string $op, string $expected): bool
