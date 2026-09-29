@@ -179,6 +179,7 @@ class DashboardService
             'waves' => $form->usesWaves() ? $this->getWaveStats($form) : [],
             'rounds' => $form->isConsensus() ? $this->getRoundStats($form) : [],
             'arms' => (new RandomisationService())->allocationSummary($form),
+            'quotas' => (new QuotaService())->summary($form),
         ];
     }
 

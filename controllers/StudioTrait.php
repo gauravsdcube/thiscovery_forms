@@ -100,6 +100,9 @@ trait StudioTrait
                 (int)$form->id
             );
             $edition = $svc->publish($form, $latest ? (int)$latest->id : null);
+            if (!$edition) {
+                return;
+            }
             Yii::$app->session->setFlash(
                 'success',
                 Yii::t(

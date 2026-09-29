@@ -159,6 +159,11 @@ class ExportService
         $cells[ExportSettings::KEY_ARM_METHOD] = (string)($assigned['method'] ?? '');
         $cells[ExportSettings::KEY_ARM_ASSIGNED_AT] = (string)($assigned['assigned_at'] ?? '');
         $cells[ExportSettings::KEY_ARM_STRATUM] = (string)($assigned['stratum_key'] ?? '');
+        if (QuotaService::tablesReady()) {
+            $quota = new QuotaService();
+            $cells['quota_ids'] = implode('|', $quota->acceptedIds($answer));
+            $cells['quota_marker'] = (string)($answer->quota_marker ?? '');
+        }
         $cells['consent_version'] = '';
         $cells['consent_hash'] = '';
         $cells['consent_signed_at'] = '';
@@ -260,6 +265,16 @@ class ExportService
             fputcsv($fh, ['arm', (string)$arm['name'], 'arm', (string)$arm['code'] . '=' . (string)$arm['weight'], '']);
         }
         fputcsv($fh, ['outcome', 'Response outcome', 'meta', 'complete; screened_out; not_consented; over_quota', 'Blank means the 1.28 status column applies.']);
+        foreach ((new QuotaService())->quotas((int)$form->id) as $quota) {
+            $rules = json_decode((string)($quota['rules_json'] ?? ''), true);
+            fputcsv($fh, [
+                'quota_' . (int)$quota['id'],
+                (string)$quota['name'],
+                'quota',
+                '',
+                'target ' . (int)$quota['target'] . '; ' . (is_array($rules) ? json_encode($rules, JSON_UNESCAPED_UNICODE) : ''),
+            ]);
+        }
         rewind($fh);
         $csv = stream_get_contents($fh);
         fclose($fh);

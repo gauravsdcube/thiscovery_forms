@@ -239,6 +239,20 @@ class TranslationImportExportService
                 $skipped++;
                 continue;
             }
+            if ($parsed['kind'] === 'quota') {
+                foreach (($row['translations'] ?? []) as $langCode => $value) {
+                    $lang = TranslationService::normalizeLanguage((string)$langCode);
+                    $value = trim((string)$value);
+                    if ($lang === null || $lang === $source || $value === '') {
+                        continue;
+                    }
+                    if ((new QuotaService())->saveTranslation((int)$parsed['quota_id'], (string)$parsed['part'], $lang, $value)) {
+                        $importedLangs[$lang] = true;
+                        $updated++;
+                    }
+                }
+                continue;
+            }
             if ($parsed['kind'] === 'consent') {
                 foreach (($row['translations'] ?? []) as $langCode => $value) {
                     $lang = TranslationService::normalizeLanguage((string)$langCode);
@@ -345,6 +359,9 @@ class TranslationImportExportService
         $this->pushUnit($units, 'form.thank_you_content', 'form', 'thank_you_content', (string)$form->thank_you_content, null, false);
         foreach ((new ConsentService())->translationUnits($form) as $unit) {
             $this->pushUnit($units, $unit['key'], 'consent', $unit['part'], $unit['source'], null, false);
+        }
+        foreach ((new QuotaService())->translationUnits($form) as $unit) {
+            $this->pushUnit($units, $unit['key'], 'quota', $unit['part'], $unit['source'], null, false);
         }
 
         foreach ($form->fields as $field) {
@@ -509,6 +526,9 @@ class TranslationImportExportService
     private function parseKey(string $key): ?array
     {
         $key = trim($key);
+        if (preg_match('/^quota\.(\d+)\.(name|message)$/', $key, $m)) {
+            return ['kind' => 'quota', 'quota_id' => (int)$m[1], 'part' => $m[2]];
+        }
         if (preg_match('/^consent\.(\d+)\.(body|[A-Za-z][A-Za-z0-9_]*)$/', $key, $m)) {
             return ['kind' => 'consent', 'version' => (int)$m[1], 'part' => $m[2]];
         }

@@ -146,6 +146,37 @@ $activeSection = $activeSection ?? 'basics';
                     </div>
                     <?php endif; ?>
                 </div>
+                <input type="hidden" name="quotas_present" value="1">
+                <?php $quotaSvc = new \humhub\modules\thiscoveryForms\services\QuotaService(); ?>
+                <div class="row g-3 mt-2">
+                    <div class="col-md-12">
+                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Quotas') ?></h4>
+                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned quotas on. A full cell keeps the answers and marks the response over quota. Reservations are off unless a quota turns them on, and then they last 60 minutes.') ?></p>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use quotas on this form') ?></label>
+                        <?= Html::dropDownList('quotas_enabled', $quotaSvc->formEnabled($formModel) ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign the least-filled open arm') ?></label>
+                        <?= Html::dropDownList('quota_assign_arm', (string)$formModel->getSetting('quota_assign_arm', '0') === '1' ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-4 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Email when a quota fills') ?></label>
+                        <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.test']) ?>
+                    </div>
+                    <?php if (empty($isNew) && $formModel->content && $formModel->content->container): ?>
+                    <div class="col-md-12">
+                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit quotas'), $formModel->content->container->createUrl('/thiscovery-forms/quota/index', ['id' => $formModel->id]), ['class' => 'btn btn-default btn-sm']) ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
                 <input type="hidden" name="randomisation_present" value="1">
                 <div class="row g-3 mt-2">
                     <div class="col-md-12">

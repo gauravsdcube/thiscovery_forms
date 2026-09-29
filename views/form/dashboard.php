@@ -144,6 +144,38 @@ JS
         </div>
     <?php endif; ?>
 
+    <?php if (!empty($stats['quotas'])): ?>
+        <div class="cf-dash-panel">
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Quotas') ?></h3>
+            <table class="table">
+                <thead>
+                <tr>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Quota') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Target') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Accepted') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Reserved') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Remaining') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Fill') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Status') ?></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($stats['quotas'] as $quota): ?>
+                    <tr>
+                        <td><?= Html::encode((string)$quota['name']) ?></td>
+                        <td><?= (int)$quota['target'] ?></td>
+                        <td><?= (int)$quota['accepted'] ?></td>
+                        <td><?= (int)$quota['reserved'] ?></td>
+                        <td><?= (int)$quota['remaining'] ?></td>
+                        <td><?= (int)$quota['fill_percent'] ?>%</td>
+                        <td><?= Html::encode((string)$quota['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+
     <?php if (!empty($stats['waves'])): ?>
         <div class="cf-dash-panel">
             <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Waves') ?></h3>

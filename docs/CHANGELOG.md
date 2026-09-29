@@ -2,6 +2,14 @@
 
 All notable changes to this module are documented in this file.
 
+## Unreleased (1.29 quotas)
+
+Quotas are off unless an administrator turns them on and the form turns them on. The counter is locked when a response is submitted, so two people cannot take the last place. Partial answers are kept and the outcome is over quota.
+
+- Reservations are off unless that quota turns them on. The hold then lasts 60 minutes. `quota/expire` clears expired holds. `quota/reconcile` is a dry run until `--apply=1`.
+- A required full cell can end the survey, redirect to an allowlisted address, go to another page, or mark the response and let it finish without taking a place.
+- `quota.full` is not sent. Webhooks are still deferred. The audit row is written when the target is reached.
+
 ## Unreleased (1.29 consent)
 
 Electronic consent is off unless an administrator turns it on and the form turns it on. Completing a form no longer stamps a panel member’s consent time.

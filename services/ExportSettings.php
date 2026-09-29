@@ -193,6 +193,10 @@ class ExportSettings
         $pushMeta(self::KEY_EDITION_ID, Yii::t('ThiscoveryFormsModule.base', 'Edition ID'));
         $pushMeta(self::KEY_STATUS, Yii::t('ThiscoveryFormsModule.base', 'Status'));
         $pushMeta(self::KEY_OUTCOME, Yii::t('ThiscoveryFormsModule.base', 'Outcome'));
+        if (\humhub\modules\thiscoveryForms\services\QuotaService::tablesReady()) {
+            $pushMeta('quota_ids', 'quota_ids');
+            $pushMeta('quota_marker', 'quota_marker');
+        }
         $pushMeta(self::KEY_ARM_CODE, 'arm_code');
         $pushMeta(self::KEY_ARM_NAME, 'arm_name');
         $pushMeta(self::KEY_ARM_METHOD, 'arm_method');

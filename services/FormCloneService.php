@@ -69,6 +69,7 @@ class FormCloneService
             return false;
         }
         (new ConsentService())->copyOnto($source, $target);
+        (new QuotaService())->copyOnto($source, $target);
 
         unset($source->fields, $target->fields);
         (new TranslationService())->copyOnto($source, $target);
