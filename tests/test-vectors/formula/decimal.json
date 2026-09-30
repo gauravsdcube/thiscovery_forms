@@ -1,0 +1,21 @@
+[
+  {"op": "canonical", "args": ["0.1"], "expect": "0.1"},
+  {"op": "canonical", "args": ["0.10"], "expect": "0.1"},
+  {"op": "canonical", "args": ["-0"], "expect": "0"},
+  {"op": "canonical", "args": ["10 years"], "expect": null},
+  {"op": "canonical", "args": ["3,5"], "expect": null},
+  {"op": "add", "args": ["0.1", "0.2"], "expect": "0.3"},
+  {"op": "add", "args": ["1", "-2"], "expect": "-1"},
+  {"op": "sub", "args": ["1", "0.3"], "expect": "0.7"},
+  {"op": "mul", "args": ["0.1", "0.2"], "expect": "0.02"},
+  {"op": "div", "args": ["1", "3"], "expect": "0.333333333333"},
+  {"op": "div", "args": ["1", "0"], "expect": null},
+  {"op": "round", "args": ["1.5", 0], "expect": "2"},
+  {"op": "round", "args": ["-1.5", 0], "expect": "-2"},
+  {"op": "round", "args": ["1.25", 1], "expect": "1.3"},
+  {"op": "round", "args": ["-1.25", 1], "expect": "-1.3"},
+  {"op": "round", "args": ["0.1", 6], "expect": "0.1"},
+  {"op": "cmp", "args": ["0.30", "0.3"], "expect": 0},
+  {"op": "cmp", "args": ["-2", "-1"], "expect": -1},
+  {"op": "canonical", "args": ["1.0000000000005"], "expect": "1.000000000001"}
+]
