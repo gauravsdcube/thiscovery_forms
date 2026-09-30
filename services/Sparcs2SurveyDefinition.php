@@ -805,14 +805,13 @@ class Sparcs2SurveyDefinition
     /** @param list<array{0:string,1:string}> $pairs */
     private static function showIfAny(array $pairs): array
     {
-        $rules = [];
+        $parts = [];
         foreach ($pairs as [$field, $value]) {
-            $rules[] = ['fieldKey' => $field, 'operator' => FormField::OP_EQUALS, 'value' => $value];
+            $parts[] = self::formulaLeaf($field, FormField::OP_EQUALS, $value);
         }
         return [
             'logic_action' => LogicEngine::ACTION_SHOW,
-            'logic_combinator' => 'or',
-            'logic_rules' => $rules,
+            'logic_formula' => implode(' or ', $parts),
         ];
     }
 
@@ -820,35 +819,43 @@ class Sparcs2SurveyDefinition
     {
         return [
             'logic_action' => LogicEngine::ACTION_SHOW,
-            'logic_combinator' => 'and',
-            'logic_rules' => [
-                ['fieldKey' => $field, 'operator' => $operator, 'value' => $value],
-            ],
+            'logic_formula' => self::formulaLeaf($field, $operator, $value),
         ];
+    }
+
+    private static function formulaLeaf(string $field, string $operator, string $value): string
+    {
+        $name = preg_replace('/[^A-Za-z0-9_]/', '', $field) ?: 'q';
+        $number = \humhub\modules\thiscoveryForms\services\formula\Decimal::canonical($value);
+        $shown = $number !== null ? $number : '"' . str_replace('"', '\\"', $value) . '"';
+        return match ($operator) {
+            FormField::OP_GT => '[' . $name . '] > ' . $shown,
+            FormField::OP_GTE => '[' . $name . '] >= ' . $shown,
+            FormField::OP_LT => '[' . $name . '] < ' . $shown,
+            FormField::OP_LTE => '[' . $name . '] <= ' . $shown,
+            FormField::OP_NOT_EQUALS => '[' . $name . '] != ' . $shown,
+            default => '[' . $name . '] = ' . $shown,
+        };
     }
 
     private static function hideIf(string $field, string $value): array
     {
         return [
             'logic_action' => LogicEngine::ACTION_HIDE,
-            'logic_combinator' => 'and',
-            'logic_rules' => [
-                ['fieldKey' => $field, 'operator' => FormField::OP_EQUALS, 'value' => $value],
-            ],
+            'logic_formula' => self::formulaLeaf($field, FormField::OP_EQUALS, $value),
         ];
     }
 
     /** @param list<array{0:string,1:string}> $pairs */
     private static function gotoEndIfAny(array $pairs): array
     {
-        $rules = [];
+        $parts = [];
         foreach ($pairs as [$field, $value]) {
-            $rules[] = ['fieldKey' => $field, 'operator' => FormField::OP_EQUALS, 'value' => $value];
+            $parts[] = self::formulaLeaf($field, FormField::OP_EQUALS, $value);
         }
         return [
             'logic_action' => LogicEngine::ACTION_GOTO_END,
-            'logic_combinator' => 'or',
-            'logic_rules' => $rules,
+            'logic_formula' => implode(' or ', $parts),
         ];
     }
 
@@ -856,10 +863,7 @@ class Sparcs2SurveyDefinition
     {
         return [
             'logic_action' => LogicEngine::ACTION_GOTO_END,
-            'logic_combinator' => 'and',
-            'logic_rules' => [
-                ['fieldKey' => $field, 'operator' => FormField::OP_EQUALS, 'value' => $value],
-            ],
+            'logic_formula' => self::formulaLeaf($field, FormField::OP_EQUALS, $value),
         ];
     }
 
@@ -877,15 +881,14 @@ class Sparcs2SurveyDefinition
     /** @param list<array{0:string,1:string}> $pairs */
     private static function gotoPageIfAny(string $pageKey, array $pairs): array
     {
-        $rules = [];
+        $parts = [];
         foreach ($pairs as [$field, $value]) {
-            $rules[] = ['fieldKey' => $field, 'operator' => FormField::OP_EQUALS, 'value' => $value];
+            $parts[] = self::formulaLeaf($field, FormField::OP_EQUALS, $value);
         }
         return [
             'logic_action' => LogicEngine::ACTION_GOTO_PAGE,
             'logic_goto' => $pageKey,
-            'logic_combinator' => 'or',
-            'logic_rules' => $rules,
+            'logic_formula' => implode(' or ', $parts),
         ];
     }
 
@@ -894,10 +897,7 @@ class Sparcs2SurveyDefinition
         return [
             'logic_action' => LogicEngine::ACTION_GOTO_PAGE,
             'logic_goto' => $pageKey,
-            'logic_combinator' => 'and',
-            'logic_rules' => [
-                ['fieldKey' => $field, 'operator' => FormField::OP_EQUALS, 'value' => $value],
-            ],
+            'logic_formula' => self::formulaLeaf($field, FormField::OP_EQUALS, $value),
         ];
     }
 }

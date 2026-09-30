@@ -47,6 +47,7 @@ class LogicEngine
             'action' => self::ACTION_SHOW,
             'combinator' => 'and',
             'gotoPageKey' => '',
+            'text' => '',
             'rules' => [],
             'when' => null,
         ];
@@ -74,30 +75,57 @@ class LogicEngine
             }
         }
 
-        $when = isset($logic['when']) && is_array($logic['when']) ? $logic['when'] : null;
-        if ($when === null && $rules) {
-            $parts = [];
-            foreach ($rules as $rule) {
-                $tree = \humhub\modules\thiscoveryForms\services\formula\RuleBuilder::fromSimple($rule);
-                if ($tree) {
-                    $parts[] = $tree;
-                }
-            }
-            if (count($parts) === 1) {
-                $when = $parts[0];
-            } elseif ($parts) {
-                $when = ['op' => $combinator === 'or' ? 'or' : 'and', 'args' => $parts];
-            }
-        }
-
         return [
             'v' => 1,
             'action' => $action,
             'combinator' => $combinator,
             'gotoPageKey' => trim((string)($logic['gotoPageKey'] ?? $logic['goto'] ?? '')),
+            'text' => trim((string)($logic['text'] ?? $logic['formula'] ?? '')),
             'rules' => $rules,
-            'when' => $when,
+            'when' => isset($logic['when']) && is_array($logic['when']) ? $logic['when'] : null,
         ];
+    }
+
+    public static function legacyMessage(): string
+    {
+        return \Yii::t(
+            'ThiscoveryFormsModule.base',
+            'This rule uses the old field, operator, and value format. Write it as a formula, for example [age] = 18.'
+        );
+    }
+
+    public static function containsLegacy($node): bool
+    {
+        if (!is_array($node)) {
+            return false;
+        }
+        $isTree = isset($node['op']) || (isset($node['when']) && is_array($node['when']));
+        if (!$isTree && (isset($node['fieldKey']) || isset($node['all']) || isset($node['any']))) {
+            return true;
+        }
+        if (!$isTree && isset($node['operator'])) {
+            return true;
+        }
+        foreach ($node as $value) {
+            if (is_array($value) && self::containsLegacy($value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static function fromFormula(string $text, string $action = self::ACTION_SHOW, string $goto = ''): array
+    {
+        $text = trim($text);
+        $logic = self::defaultLogic();
+        $logic['action'] = isset(self::actionLabels()[$action]) ? $action : self::ACTION_SHOW;
+        $logic['gotoPageKey'] = $goto;
+        $logic['text'] = $text;
+        if ($text === '') {
+            return $logic;
+        }
+        $logic['when'] = (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($text);
+        return self::normalize($logic);
     }
 
     /**
@@ -211,12 +239,14 @@ class LogicEngine
 
     public function evaluateRule(array $rule, array $values, array $fields = []): bool
     {
+        if (self::containsLegacy($rule)) {
+            return false;
+        }
         if (isset($rule['when']) && is_array($rule['when'])) {
             $tree = $rule['when'];
+        } elseif (isset($rule['op'])) {
+            $tree = $rule;
         } else {
-            $tree = \humhub\modules\thiscoveryForms\services\formula\RuleBuilder::fromSimple($rule);
-        }
-        if (!is_array($tree)) {
             return false;
         }
         $today = '';
@@ -227,20 +257,10 @@ class LogicEngine
     public function rulesMet(array $logic, array $values, array $fields = []): bool
     {
         $logic = self::normalize($logic);
-        if (is_array($logic['when'] ?? null)) {
-            return $this->evaluateRule(['when' => $logic['when']], $values, $fields);
-        }
-        if (!$logic['rules']) {
+        if (!is_array($logic['when'] ?? null)) {
             return true;
         }
-        $results = [];
-        foreach ($logic['rules'] as $rule) {
-            $results[] = $this->evaluateRule($rule, $values, $fields);
-        }
-        if ($logic['combinator'] === 'or') {
-            return in_array(true, $results, true);
-        }
-        return !in_array(false, $results, true);
+        return $this->evaluateRule(['when' => $logic['when']], $values, $fields);
     }
 
     public function isVisible(FormField $field, array $values, array $allFields = []): bool
@@ -377,7 +397,7 @@ class LogicEngine
             if ($action === self::ACTION_SCREEN_OUT && !\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
                 continue;
             }
-            if (empty($logic['rules']) || !$this->rulesMet($logic, $values, $lookup)) {
+            if (empty($logic['when']) || !$this->rulesMet($logic, $values, $lookup)) {
                 continue;
             }
             return [
@@ -404,7 +424,7 @@ class LogicEngine
             if (($logic['action'] ?? '') !== self::ACTION_SKIP_PAGE) {
                 continue;
             }
-            if (!empty($logic['rules']) && $this->rulesMet($logic, $values, $lookup)) {
+            if (!empty($logic['when']) && $this->rulesMet($logic, $values, $lookup)) {
                 return true;
             }
         }

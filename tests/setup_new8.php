@@ -55,16 +55,11 @@ ReviewLib::field($skip, FormField::TYPE_TEXT, 'Mid question', [
     'variable' => 'r8s_mid',
     'required' => 1,
     'sort_order' => 3,
-    'logic' => ['action' => 'show', 'combinator' => 'and', 'rules' => [['fieldKey' => (string)$q->id, 'operator' => 'equals', 'value' => 'no']]],
+    'logic' => \humhub\modules\thiscoveryForms\services\LogicEngine::fromFormula('[r8s_gate] = "no"'),
 ]);
 $ab = ReviewLib::field($skip, FormField::TYPE_PAGE_BREAK, 'After', ['sort_order' => 4]);
 $ab->setPageBreakConfig(['pageKey' => 'after', 'title' => 'After']);
-$ab->setLogic([
-    'action' => 'goto_page',
-    'combinator' => 'and',
-    'gotoPageKey' => 'land',
-    'rules' => [['fieldKey' => (string)$q->id, 'operator' => 'equals', 'value' => 'yes']],
-]);
+$ab->setLogic(\humhub\modules\thiscoveryForms\services\LogicEngine::fromFormula('[r8s_gate] = "yes"', 'goto_page', 'land'));
 $ab->save(false);
 ReviewLib::field($skip, FormField::TYPE_TEXT, 'After question', ['variable' => 'r8s_after', 'required' => 1, 'sort_order' => 5]);
 $lb = ReviewLib::field($skip, FormField::TYPE_PAGE_BREAK, 'Land', ['sort_order' => 6]);

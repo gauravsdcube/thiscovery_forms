@@ -28,6 +28,9 @@ use yii\helpers\Json;
 
 $savedDraft = $savedDraft ?? null;
 $fillContext = $fillContext ?? null;
+if ($formModel instanceof CustomForm && $submit instanceof SubmitForm) {
+    $formModel->applyDeclaredUrlParams($submit->values, Yii::$app->request->get());
+}
 $panelToken = $panelToken ?? (string)Yii::$app->request->get('token', '');
 $ownDraft = $ownDraft ?? null;
 $startNew = !empty($startNew);
@@ -106,7 +109,7 @@ foreach ($pages as $page) {
     $logicFields = $routingAligned ? $page['items'] : \humhub\modules\thiscoveryForms\services\FormPager::navigationFields($page);
     foreach ($logicFields as $item) {
         $logic = $item->getLogic();
-        if (!empty($logic['rules'])) {
+        if (!empty($logic['when'])) {
             $fieldLogic[] = [
                 'fieldId' => (int)$item->id,
                 'logic' => $logic,
@@ -115,7 +118,7 @@ foreach ($pages as $page) {
     }
     if ($routingAligned && $page['break'] instanceof FormField) {
         $breakLogic = $page['break']->getLogic();
-        if (!empty($breakLogic['rules']) && ($breakLogic['action'] ?? '') !== 'skip_page') {
+        if (!empty($breakLogic['when']) && ($breakLogic['action'] ?? '') !== 'skip_page') {
             $fieldLogic[] = [
                 'fieldId' => (int)$page['break']->id,
                 'logic' => $breakLogic,
@@ -125,7 +128,7 @@ foreach ($pages as $page) {
     $skipLogic = null;
     if ($routingAligned && $previousBreak instanceof FormField) {
         $introLogic = $previousBreak->getLogic();
-        if (($introLogic['action'] ?? '') === 'skip_page' && !empty($introLogic['rules'])) {
+        if (($introLogic['action'] ?? '') === 'skip_page' && !empty($introLogic['when'])) {
             $skipLogic = $introLogic;
         }
     }
@@ -461,6 +464,13 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 'class' => 'cf-fill-form',
                 'novalidate' => true,
                 'data-cf-fill-form' => true,
+                'data-cf-url-values' => Json::encode((static function (CustomForm $form, array $values): array {
+                    $urlValues = [];
+                    foreach ($form->declaredUrlParams() as $param) {
+                        $urlValues['url:' . $param['name']] = (string)($values['url:' . $param['name']] ?? '');
+                    }
+                    return $urlValues;
+                })($formModel, $submit->values)),
                 'data-cf-arm-code' => $armAssignment['arm_code'] ?? '',
                 'data-cf-save-url' => Url::toSaveProgress($formModel),
                 'data-cf-run-actions-url' => Url::toRunActions($formModel),
@@ -586,7 +596,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 'data-cf-field-type' => $field->type,
                             ];
                             $groupLogic = $field->getLogic();
-                            if (!empty($groupLogic['rules'])) {
+                            if (!empty($groupLogic['when'])) {
                                 $groupAttrs['data-cf-logic'] = Json::encode($groupLogic);
                             }
                             $groupTitle = $pipe->substitutePlain((string)$field->label, $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null);
@@ -610,6 +620,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                             'data-cf-conditional' => true,
                             'data-cf-field-id' => $field->id,
                             'data-cf-field-type' => $field->type,
+                            'data-cf-variable' => (string)$field->variable,
                         ];
                         if ($openGroupIds) {
                             $attrs['data-cf-enclosing-groups'] = Json::encode(array_values($openGroupIds));
@@ -627,7 +638,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                             $attrs['data-cf-field-actions'] = '1';
                         }
                         $logic = $field->getLogic();
-                        if (!empty($logic['rules'])) {
+                        if (!empty($logic['when'])) {
                             $attrs['data-cf-logic'] = Json::encode($logic);
                         }
                         $frozen = $fillContext && in_array((int)$field->id, $fillContext->frozenFieldIds, true);
@@ -637,11 +648,6 @@ $fillRtl = TranslationService::isRtl($fillLang);
                             if ($prev) {
                                 $value = $prev->getValuesMap()[$field->id] ?? $value;
                             }
-                        }
-                        if ($field->hasCondition() && $field->condition_field_id) {
-                            $attrs['data-cf-depends'] = $field->condition_field_id;
-                            $attrs['data-cf-operator'] = $field->condition_operator;
-                            $attrs['data-cf-value'] = $field->condition_value;
                         }
                         if ($field->collectsAnswer()) {
                             $questionNum++;

@@ -9,7 +9,6 @@ use humhub\modules\thiscoveryForms\services\formula\Context;
 use humhub\modules\thiscoveryForms\services\formula\Evaluator;
 use humhub\modules\thiscoveryForms\services\formula\FormulaException;
 use humhub\modules\thiscoveryForms\services\formula\Parser;
-use humhub\modules\thiscoveryForms\services\formula\RuleBuilder;
 use humhub\modules\thiscoveryForms\services\formula\Value;
 
 $failures = [];
@@ -63,12 +62,7 @@ foreach ($cases as [$text, $fields, $expect]) {
     }
 }
 
-$tree = RuleBuilder::fromSimple([
-    'fieldKey' => 'arm',
-    'source' => 'arm',
-    'operator' => 'equals',
-    'value' => 'B',
-]);
+$tree = $parser->parse('[arm] = "B"');
 $context = new Context();
 $context->arm = Value::text('B');
 if (!(new Evaluator($context))->truth($tree)) {

@@ -172,7 +172,35 @@ class QuotaService
         }
         foreach ($byId as $quota) {
             $label = (string)$quota['name'];
-            foreach ($this->leaves($this->rulesOf($quota)) as $leaf) {
+            $quotaRules = $this->rulesOf($quota);
+            if (!empty($quotaRules['legacy'])) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Quota “{name}” uses the old rule format. Write it as a formula.', [
+                    'name' => $label,
+                ]);
+                continue;
+            }
+            if (is_array($quotaRules['when'] ?? null)) {
+                foreach (\humhub\modules\thiscoveryForms\services\formula\FormulaDeps::names($quotaRules['when']) as $name) {
+                    if (str_starts_with($name, 'panel:')) {
+                        if ($form->hidesIdentityFromManagers()) {
+                            $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Quota “{name}” cannot use a panel attribute on a fully anonymous form.', [
+                                'name' => $label,
+                            ]);
+                        }
+                        continue;
+                    }
+                    if ($name === 'arm' || str_starts_with($name, 'var:') || str_starts_with($name, 'meta:') || str_starts_with($name, 'url:')) {
+                        continue;
+                    }
+                    if (!$this->fieldByKey($fields, $name)) {
+                        $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Quota “{name}” uses question “{key}”, which is not on this form.', [
+                            'name' => $label,
+                            'key' => $name,
+                        ]);
+                    }
+                }
+            }
+            foreach ($this->leaves($quotaRules) as $leaf) {
                 $source = (string)($leaf['source'] ?? 'field');
                 $key = (string)($leaf['fieldKey'] ?? '');
                 if ($source === 'panel' || str_starts_with($key, 'panel.')) {
@@ -249,10 +277,16 @@ class QuotaService
      * @param array<string,mixed> $values
      * @param FormField[] $fields
      */
-    public function rulesMatch(array $rules, array $values, array $fields = []): bool
+    public function rulesMatch($rules, array $values, array $fields = []): bool
     {
+        if (is_string($rules)) {
+            $rules = $this->normalizeRules($rules);
+        }
         if ($rules === []) {
             return true;
+        }
+        if (!empty($rules['legacy']) || LogicEngine::containsLegacy($rules)) {
+            return false;
         }
         return (new LogicEngine())->evaluateRule($rules, $values, $fields);
     }
@@ -263,6 +297,15 @@ class QuotaService
      */
     public function cellKnown(array $rules, array $values, array $fields = []): bool
     {
+        if (is_array($rules['when'] ?? null)) {
+            foreach (\humhub\modules\thiscoveryForms\services\formula\FormulaDeps::names($rules['when']) as $name) {
+                $raw = $this->namedValue($name, $values, $fields);
+                if ($raw === null || $raw === '' || $raw === []) {
+                    return false;
+                }
+            }
+            return true;
+        }
         foreach ($this->leaves($rules) as $leaf) {
             $raw = $this->leafValue($leaf, $values, $fields);
             if ($raw === null || $raw === '' || $raw === []) {
@@ -824,6 +867,34 @@ class QuotaService
     }
 
     /**
+     * @param array<string,mixed> $values
+     * @param FormField[] $fields
+     * @return mixed
+     */
+    private function namedValue(string $name, array $values, array $fields)
+    {
+        if ($name === 'arm') {
+            return $values['arm'] ?? null;
+        }
+        if (str_starts_with($name, 'panel:')) {
+            return $values['panel.' . substr($name, 6)] ?? null;
+        }
+        if (array_key_exists($name, $values)) {
+            return $values[$name];
+        }
+        foreach ($fields as $field) {
+            if (!$field instanceof FormField) {
+                continue;
+            }
+            $variable = trim((string)$field->variable);
+            if ($variable === $name || (string)$field->id === $name || ('id' . (int)$field->id) === $name) {
+                return $values[(int)$field->id] ?? ($values[(string)$field->id] ?? null);
+            }
+        }
+        return null;
+    }
+
+    /**
      * @param array<string,mixed> $rules
      * @return array<int, array<string,mixed>>
      */
@@ -1172,6 +1243,18 @@ class QuotaService
      */
     private function panelOnly(array $rules): bool
     {
+        if (is_array($rules['when'] ?? null)) {
+            $names = \humhub\modules\thiscoveryForms\services\formula\FormulaDeps::names($rules['when']);
+            if ($names === []) {
+                return false;
+            }
+            foreach ($names as $name) {
+                if (!str_starts_with($name, 'panel:')) {
+                    return false;
+                }
+            }
+            return true;
+        }
         $leaves = $this->leaves($rules);
         if ($leaves === []) {
             return false;
@@ -1274,14 +1357,33 @@ class QuotaService
     private function normalizeRules($rules): array
     {
         if (is_string($rules)) {
-            $decoded = json_decode($rules, true);
-            $rules = is_array($decoded) ? $decoded : [];
+            $trim = trim($rules);
+            $decoded = json_decode($trim, true);
+            if (is_array($decoded)) {
+                $rules = $decoded;
+            } elseif ($trim !== '' && str_contains($trim, '[')) {
+                return LogicEngine::fromFormula($trim);
+            } else {
+                return [];
+            }
         }
         if (!is_array($rules)) {
             return [];
         }
-        $normalized = LogicEngine::normalizeRule($rules);
-        return $normalized ?: [];
+        if (isset($rules['when']) && is_array($rules['when'])) {
+            return [
+                'v' => 1,
+                'when' => $rules['when'],
+                'text' => (string)($rules['text'] ?? $rules['formula'] ?? ''),
+            ];
+        }
+        if (trim((string)($rules['formula'] ?? '')) !== '') {
+            return LogicEngine::fromFormula((string)$rules['formula']);
+        }
+        if (LogicEngine::containsLegacy($rules)) {
+            return ['v' => 1, 'legacy' => true];
+        }
+        return [];
     }
 
     /**

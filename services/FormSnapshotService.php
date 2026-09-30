@@ -198,20 +198,18 @@ class FormSnapshotService
             $field->form_id = (int)$form->id;
             $field->id = (int)($row['id'] ?? (1000000 + $i));
             $field->sort_order = (int)($row['sort_order'] ?? ($i * 10));
+            $formula = trim((string)($row['logic_formula'] ?? ''));
             $rules = is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [];
-            if (!$rules && trim((string)($row['condition_field'] ?? '')) !== '') {
-                $rules = [[
-                    'fieldKey' => (string)$row['condition_field'],
-                    'operator' => (string)($row['condition_operator'] ?? FormField::OP_EQUALS),
-                    'value' => (string)($row['condition_value'] ?? ''),
-                ]];
+            if (LogicEngine::containsLegacy($rules) || trim((string)($row['condition_field'] ?? '')) !== '') {
+                throw new \InvalidArgumentException(LogicEngine::legacyMessage());
             }
-            $field->setLogic([
-                'action' => $row['logic_action'] ?? 'show',
-                'combinator' => $row['logic_combinator'] ?? 'and',
-                'gotoPageKey' => $row['logic_goto'] ?? '',
-                'rules' => $rules,
-            ]);
+            if ($formula !== '') {
+                $field->setLogic(LogicEngine::fromFormula(
+                    $formula,
+                    (string)($row['logic_action'] ?? 'show'),
+                    (string)($row['logic_goto'] ?? '')
+                ));
+            }
             $fields[] = $field;
         }
         $this->bindHydratedFieldsToLiveRows($form, $fields);

@@ -22,11 +22,7 @@ $field = static function (int $id, array $logic = []): FormField {
 };
 
 $showIf = static function (int $source, string $value): array {
-    return [
-        'action' => 'show',
-        'combinator' => 'and',
-        'rules' => [['fieldKey' => (string)$source, 'operator' => 'equals', 'value' => $value]],
-    ];
+    return LogicEngine::fromFormula('[v' . $source . '] = "' . $value . '"');
 };
 
 $a = $field(1);

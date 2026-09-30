@@ -90,12 +90,10 @@ if (is_array($allowedTypes) && $allowedTypes) {
 if ($isGroupEnd) {
     $typeLabels = [FormField::TYPE_GROUP_END => FormField::getTypeLabels()[FormField::TYPE_GROUP_END]];
 }
-$operatorLabels = FormField::getOperatorLabels();
 $actionLabels = LogicEngine::actionLabelsForType($type);
 if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEngine::actionLabels()[$logic['action']])) {
     $actionLabels = [$logic['action'] => LogicEngine::actionLabels()[$logic['action']]] + $actionLabels;
 }
-$logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP_EQUALS, 'value' => '']];
 ?>
 <div class="cf-field-card thiscovery-forms-field-row<?= $collapsed ? ' is-collapsed' : ' is-expanded' ?><?= $isQuestionGroup ? ' is-group' : '' ?><?= $isGroupEnd ? ' is-group-end d-none' : '' ?>" data-cf-key="<?= Html::encode($key) ?>" data-cf-type="<?= Html::encode($type) ?>">
     <?= Html::hiddenInput($namePrefix . '[id]', $field->id ?: '') ?>
@@ -363,6 +361,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 ]) ?>
                 <button type="button" class="btn btn-default btn-sm mt-2" data-cf-formula-test><?= Yii::t('ThiscoveryFormsModule.base', 'Test formula') ?></button>
                 <p class="form-text" data-cf-formula-result></p>
+                <ul class="cf-formula-deps" data-cf-formula-deps></ul>
             </div>
             <div class="col-md-4">
                 <?= Html::dropDownList($namePrefix . '[formula_result]', $formulaCfg['result'], [
@@ -748,26 +747,15 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 <div class="cf-field-help mb-2"><?= Yii::t('ThiscoveryFormsModule.base', 'Evaluated when the respondent clicks Next on the page before this break. First matching rule wins; otherwise the next page is used.') ?></div>
                 <div data-cf-branch-list>
                     <?php
-                    $branches = $pageBreak['branches'] ?: [['fieldKey' => '', 'operator' => FormField::OP_EQUALS, 'value' => '', 'gotoPageKey' => '']];
+                    $branches = $pageBreak['branches'] ?: [['text' => '', 'gotoPageKey' => '']];
                     foreach ($branches as $bi => $branch):
                     ?>
                         <div class="cf-branch-row row g-2 mb-2" data-cf-branch-row>
-                            <div class="col-md-3">
-                                <?= Html::dropDownList($namePrefix . '[branches][' . $bi . '][fieldKey]', FormField::toStudioKey((string)($branch['fieldKey'] ?? '')), $conditionOptions, [
+                            <div class="col-md-7">
+                                <?= Html::textInput($namePrefix . '[branches][' . $bi . '][formula]', (string)($branch['text'] ?? $branch['formula'] ?? ''), [
                                     'class' => 'form-control',
-                                    'data-cf-branch-field' => true,
-                                    'data-cf-selected-key' => FormField::toStudioKey((string)($branch['fieldKey'] ?? '')),
-                                ]) ?>
-                            </div>
-                            <div class="col-md-2">
-                                <?= Html::dropDownList($namePrefix . '[branches][' . $bi . '][operator]', $branch['operator'] ?? FormField::OP_EQUALS, $operatorLabels, [
-                                    'class' => 'form-control',
-                                ]) ?>
-                            </div>
-                            <div class="col-md-2">
-                                <?= Html::textInput($namePrefix . '[branches][' . $bi . '][value]', $branch['value'] ?? '', [
-                                    'class' => 'form-control',
-                                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Value'),
+                                    'placeholder' => '[age] >= 18',
+                                    'data-cf-formula-text' => true,
                                 ]) ?>
                             </div>
                             <div class="col-md-3">
@@ -1111,8 +1099,8 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
         <div class="cf-advanced-panel<?= $hasCondition ? ' is-open' : '' ?>" data-cf-advanced data-cf-logic-panel>
             <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?></div>
             <div class="cf-field-help mb-2"><?= $isQuestionGroup
-                ? Yii::t('ThiscoveryFormsModule.base', 'Show or hide every question in this group from an earlier answer. Type option text exactly as listed, without quotation marks.')
-                : Yii::t('ThiscoveryFormsModule.base', 'Simple: show or hide this question. Advanced: skip a page or jump when the rules match. Combine rules with AND or OR. Type option text exactly as listed, without quotation marks.') ?></div>
+                ? Yii::t('ThiscoveryFormsModule.base', 'Show or hide every question in this group with a formula, for example [age] >= 18.')
+                : Yii::t('ThiscoveryFormsModule.base', 'Write a formula. Use and, or, and not. Choice answers are compared by their codes, for example [mood] = "low".') ?></div>
             <div class="row g-3">
                 <div class="col-md-5">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Action') ?></label>
@@ -1120,13 +1108,6 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                         'class' => 'form-control',
                         'data-cf-logic-action' => true,
                     ]) ?>
-                </div>
-                <div class="col-md-3">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Match') ?></label>
-                    <?= Html::dropDownList($namePrefix . '[logic_combinator]', $logic['combinator'], [
-                        'and' => Yii::t('ThiscoveryFormsModule.base', 'All rules (AND)'),
-                        'or' => Yii::t('ThiscoveryFormsModule.base', 'Any rule (OR)'),
-                    ], ['class' => 'form-control', 'data-cf-logic-combinator' => true]) ?>
                 </div>
                 <div class="col-md-4<?= in_array($logic['action'], [LogicEngine::ACTION_GOTO_PAGE], true) ? '' : ' d-none' ?>" data-cf-logic-goto-wrap>
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Go to page key') ?></label>
@@ -1137,52 +1118,26 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     ]) ?>
                 </div>
             </div>
-            <div class="mt-3" data-cf-logic-rules>
-                <div data-cf-logic-rule-list>
-                    <?php foreach ($logicRules as $ri => $rule): ?>
-                        <?php if (!empty($rule['all']) || !empty($rule['any'])): ?>
-                            <div class="cf-branch-row mb-2" data-cf-logic-rule-row data-cf-logic-compound-row>
-                                <?= Html::hiddenInput($namePrefix . '[logic_rules][' . $ri . '][compound]', json_encode($rule, JSON_UNESCAPED_UNICODE), [
-                                    'data-cf-logic-compound' => true,
-                                ]) ?>
-                                <div class="cf-field-help mb-0">
-                                    <?= Yii::t('ThiscoveryFormsModule.base', 'Compound age/grid rule from import. Saved with the form; edit the nested conditions in code if you need to change them.') ?>
-                                </div>
-                            </div>
-                            <?php continue; ?>
-                        <?php endif; ?>
-                        <div class="cf-branch-row row g-2 mb-2" data-cf-logic-rule-row>
-                            <div class="col-md-4">
-                                <?= Html::dropDownList($namePrefix . '[logic_rules][' . $ri . '][fieldKey]', FormField::toStudioKey((string)($rule['fieldKey'] ?? '')), $conditionOptions, [
-                                    'class' => 'form-control',
-                                    'data-cf-condition-field' => true,
-                                    'data-cf-selected-key' => FormField::toStudioKey((string)($rule['fieldKey'] ?? '')),
-                                ]) ?>
-                            </div>
-                            <div class="col-md-3">
-                                <?= Html::dropDownList($namePrefix . '[logic_rules][' . $ri . '][operator]', $rule['operator'] ?? FormField::OP_EQUALS, $operatorLabels, [
-                                    'class' => 'form-control',
-                                    'data-cf-logic-operator' => true,
-                                ]) ?>
-                            </div>
-                            <div class="col-md-3">
-                                <?= Html::textInput($namePrefix . '[logic_rules][' . $ri . '][value]', $rule['value'] ?? '', [
-                                    'class' => 'form-control',
-                                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Value'),
-                                    'data-cf-logic-value' => true,
-                                ]) ?>
-                            </div>
-                            <div class="col-md-2">
-                                <button type="button" class="btn btn-sm btn-light" data-cf-remove-logic-rule title="<?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?>">
-                                    <i class="fa fa-times"></i>
-                                </button>
-                            </div>
-                        </div>
+            <div class="mt-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Formula') ?></label>
+                <?= Html::textarea($namePrefix . '[logic_formula]', (string)($logic['text'] ?? ''), [
+                    'class' => 'form-control',
+                    'rows' => 2,
+                    'maxlength' => 4000,
+                    'placeholder' => '[age] >= 18 and [consent] = "yes"',
+                    'data-cf-formula-text' => true,
+                ]) ?>
+                <?php
+                $logicDeps = [];
+                if (is_array($logic['when'] ?? null)) {
+                    $logicDeps = \humhub\modules\thiscoveryForms\services\formula\FormulaDeps::names($logic['when']);
+                }
+                ?>
+                <ul class="cf-formula-deps" data-cf-formula-deps>
+                    <?php foreach ($logicDeps as $dep): ?>
+                        <li><?= Html::encode($dep) ?></li>
                     <?php endforeach; ?>
-                </div>
-                <button type="button" class="btn btn-sm btn-light" data-cf-add-logic-rule>
-                    <i class="fa fa-plus"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Add rule') ?>
-                </button>
+                </ul>
             </div>
         </div>
 

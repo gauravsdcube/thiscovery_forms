@@ -24,9 +24,6 @@ use yii\db\ActiveQuery;
  * @property int $sort_order
  * @property string|null $options_json
  * @property string|null $deleted_at
- * @property int|null $condition_field_id
- * @property string|null $condition_operator
- * @property string|null $condition_value
  * @property string|null $logic_json
  * @property string|null $actions_json
  *
@@ -94,17 +91,16 @@ class FormField extends ActiveRecord
     {
         return [
             [['form_id', 'type', 'label'], 'required'],
-            [['form_id', 'sort_order', 'condition_field_id'], 'integer'],
+            [['form_id', 'sort_order'], 'integer'],
             [['required'], 'boolean'],
             [['label', 'internal_label'], 'string', 'max' => 255],
             [['variable'], 'string', 'max' => 120],
             [['variable'], 'match', 'pattern' => '/^[A-Za-z][A-Za-z0-9_]*$/', 'skipOnEmpty' => true,
                 'message' => Yii::t('ThiscoveryFormsModule.base', 'Variable must start with a letter and use only letters, numbers, and underscores.')],
-            [['help_text', 'condition_value'], 'string', 'max' => 500],
+            [['help_text'], 'string', 'max' => 500],
             [['options_json', 'logic_json', 'actions_json'], 'string'],
             [['deleted_at'], 'safe'],
             [['type'], 'in', 'range' => array_keys(self::getTypeLabels())],
-            [['condition_operator'], 'in', 'range' => array_keys(self::getOperatorLabels()), 'skipOnEmpty' => true],
         ];
     }
 
@@ -299,11 +295,6 @@ class FormField extends ActiveRecord
             $label .= ' (' . Yii::t('ThiscoveryFormsModule.base', 'removed') . ')';
         }
         return $label;
-    }
-
-    public function getConditionField(): ActiveQuery
-    {
-        return $this->hasOne(self::class, ['id' => 'condition_field_id']);
     }
 
     public static function isChoiceType(?string $type): bool
@@ -1535,15 +1526,19 @@ class FormField extends ActiveRecord
             if (!is_array($branch)) {
                 continue;
             }
-            $fieldKey = trim((string)($branch['fieldKey'] ?? ''));
+            if (isset($branch['fieldKey']) || isset($branch['operator'])) {
+                throw new \InvalidArgumentException(LogicEngine::legacyMessage());
+            }
+            $formula = trim((string)($branch['formula'] ?? $branch['text'] ?? ''));
             $goto = trim((string)($branch['gotoPageKey'] ?? ''));
-            if ($fieldKey === '' || $goto === '') {
+            if ($formula === '' || $goto === '') {
                 continue;
             }
+            $parsed = LogicEngine::fromFormula($formula);
             $branches[] = [
-                'fieldKey' => $fieldKey,
-                'operator' => (string)($branch['operator'] ?? self::OP_EQUALS),
-                'value' => LogicEngine::normalizeRuleValue($branch['value'] ?? ''),
+                'v' => 1,
+                'text' => $formula,
+                'when' => $parsed['when'],
                 'gotoPageKey' => $goto,
             ];
         }
@@ -2162,29 +2157,40 @@ class FormField extends ActiveRecord
     public function getLogic(): array
     {
         $decoded = json_decode((string)$this->logic_json, true);
-        if (is_array($decoded) && !empty($decoded['rules'])) {
-            return LogicEngine::normalize($decoded);
+        if (!is_array($decoded)) {
+            return LogicEngine::defaultLogic();
         }
-        return LogicEngine::defaultLogic();
+        if (LogicEngine::containsLegacy($decoded) && empty($decoded['when'])) {
+            return LogicEngine::defaultLogic();
+        }
+        return LogicEngine::normalize($decoded);
     }
 
     public function setLogic(array $logic): void
     {
+        if (LogicEngine::containsLegacy($logic)) {
+            throw new \InvalidArgumentException(LogicEngine::legacyMessage());
+        }
+        $text = trim((string)($logic['formula'] ?? $logic['text'] ?? ''));
+        if ($text !== '' && empty($logic['when'])) {
+            $logic = LogicEngine::fromFormula(
+                $text,
+                (string)($logic['action'] ?? LogicEngine::ACTION_SHOW),
+                (string)($logic['gotoPageKey'] ?? $logic['goto'] ?? '')
+            );
+        }
         $logic = LogicEngine::normalize($logic);
-        if (empty($logic['rules'])) {
+        if (empty($logic['when'])) {
             $this->logic_json = null;
-            $this->condition_field_id = null;
-            $this->condition_operator = null;
-            $this->condition_value = null;
             return;
         }
-        $this->logic_json = json_encode($logic, JSON_UNESCAPED_UNICODE);
-        $first = LogicEngine::firstLeafRule($logic['rules']);
-        $this->condition_field_id = $first && ctype_digit((string)($first['fieldKey'] ?? ''))
-            ? (int)$first['fieldKey']
-            : null;
-        $this->condition_operator = $first['operator'] ?? null;
-        $this->condition_value = $first['value'] ?? null;
+        $this->logic_json = json_encode([
+            'v' => 1,
+            'action' => $logic['action'],
+            'when' => $logic['when'],
+            'text' => $logic['text'],
+            'goto' => $logic['gotoPageKey'],
+        ], JSON_UNESCAPED_UNICODE);
     }
 
     public function getActions(): array
@@ -2207,7 +2213,7 @@ class FormField extends ActiveRecord
     public function hasCondition(): bool
     {
         $logic = $this->getLogic();
-        return !empty($logic['rules']);
+        return !empty($logic['rules']) || !empty($logic['when']);
     }
 
     /**
@@ -2231,9 +2237,8 @@ class FormField extends ActiveRecord
      */
     public static function evaluateBranch(array $branch, array $values, array $keyToId = [], array $fields = []): bool
     {
-        $fieldKey = (string)($branch['fieldKey'] ?? '');
-        if (isset($keyToId[$fieldKey])) {
-            $branch['fieldKey'] = (string)$keyToId[$fieldKey];
+        if (isset($branch['fieldKey']) || isset($branch['operator'])) {
+            return false;
         }
         return (new LogicEngine())->evaluateRule($branch, $values, $fields);
     }
@@ -2286,9 +2291,7 @@ class FormField extends ActiveRecord
             'number_min' => $this->getNumberMin(),
             'number_max' => $this->getNumberMax(),
             'prefill_profile' => $this->getPrefillProfileAttribute() ?: '',
-            'condition_field' => $this->condition_field_id,
-            'condition_operator' => $this->condition_operator,
-            'condition_value' => $this->condition_value,
+            'logic_formula' => $this->getLogic()['text'],
             'logic_action' => $this->getLogic()['action'],
             'logic_combinator' => $this->getLogic()['combinator'],
             'logic_goto' => $this->getLogic()['gotoPageKey'],
@@ -2464,9 +2467,7 @@ class FormField extends ActiveRecord
                 : (is_array($payload['logic']['rules'] ?? null) ? $payload['logic']['rules'] : []),
             'carry_from' => (string)($payload['carry_from'] ?? ''),
             'carry_mode' => (string)($payload['carry_mode'] ?? self::CARRY_SELECTED),
-            'condition_field' => $payload['condition_field'] ?? '',
-            'condition_operator' => $payload['condition_operator'] ?? self::OP_EQUALS,
-            'condition_value' => $payload['condition_value'] ?? '',
+            'logic_formula' => (string)($payload['logic_formula'] ?? ($payload['logic']['text'] ?? '')),
         ];
 
         if (array_key_exists('pii', $payload)) {

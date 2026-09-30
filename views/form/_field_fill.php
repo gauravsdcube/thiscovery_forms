@@ -271,9 +271,20 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $calcValues = $allValues;
             \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill($calcValues, $allFields);
             $calcShown = $calcValues[(int)$field->id] ?? '';
+            $calcTree = '';
+            if ($formulaCfg['formula'] !== '') {
+                try {
+                    $calcTree = json_encode(
+                        (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($formulaCfg['formula']),
+                        JSON_UNESCAPED_UNICODE
+                    );
+                } catch (\Throwable $e) {
+                    $calcTree = '';
+                }
+            }
             ?>
             <?php if ($formulaCfg['display'] !== 'hidden'): ?>
-                <output class="form-control-plaintext" id="<?= Html::encode($inputId) ?>"><?= Html::encode((string)$calcShown) ?></output>
+                <output class="form-control-plaintext" id="<?= Html::encode($inputId) ?>" data-cf-calc-tree="<?= Html::encode((string)$calcTree) ?>"><?= Html::encode((string)$calcShown) ?></output>
             <?php endif; ?>
         <?php elseif ($field->type === FormField::TYPE_EMAIL): ?>
             <?= Html::input('email', $inputName, is_array($value) ? '' : $value, [

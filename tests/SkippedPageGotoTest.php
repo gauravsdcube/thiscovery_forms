@@ -29,16 +29,11 @@ $mid = ReviewLib::field($form, FormField::TYPE_TEXT, 'Mid question', [
     'variable' => 'midq',
     'required' => 1,
     'sort_order' => 3,
-    'logic' => ['action' => 'show', 'combinator' => 'and', 'rules' => [['fieldKey' => (string)$q->id, 'operator' => 'equals', 'value' => 'no']]],
+    'logic' => \humhub\modules\thiscoveryForms\services\LogicEngine::fromFormula('[gate] = "no"'),
 ]);
 $afterBreak = ReviewLib::field($form, FormField::TYPE_PAGE_BREAK, 'After', ['sort_order' => 4]);
 $afterBreak->setPageBreakConfig(['pageKey' => 'after', 'title' => 'After']);
-$afterBreak->setLogic([
-    'action' => 'goto_page',
-    'combinator' => 'and',
-    'gotoPageKey' => 'land',
-    'rules' => [['fieldKey' => (string)$q->id, 'operator' => 'equals', 'value' => 'yes']],
-]);
+$afterBreak->setLogic(\humhub\modules\thiscoveryForms\services\LogicEngine::fromFormula('[gate] = "yes"', 'goto_page', 'land'));
 $afterBreak->save(false);
 $after = ReviewLib::field($form, FormField::TYPE_TEXT, 'After question', ['variable' => 'afterq', 'required' => 1, 'sort_order' => 5]);
 $landBreak = ReviewLib::field($form, FormField::TYPE_PAGE_BREAK, 'Land', ['sort_order' => 6]);

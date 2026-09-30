@@ -325,7 +325,7 @@ class FormPager
         $intro = $idx > 0 ? ($pages[$idx - 1]['break'] ?? null) : null;
         if ($intro instanceof FormField) {
             $logic = $intro->getLogic();
-            if (($logic['action'] ?? '') === LogicEngine::ACTION_SKIP_PAGE && !empty($logic['rules']) && $engine->rulesMet($logic, $values, $allFields)) {
+            if (($logic['action'] ?? '') === LogicEngine::ACTION_SKIP_PAGE && !empty($logic['when']) && $engine->rulesMet($logic, $values, $allFields)) {
                 return true;
             }
         }

@@ -11,6 +11,7 @@ use humhub\modules\thiscoveryForms\models\FormPanel;
 use humhub\modules\thiscoveryForms\models\FormPanelMember;
 use humhub\modules\thiscoveryForms\Module;
 use humhub\modules\thiscoveryForms\services\FormCloneService;
+use humhub\modules\thiscoveryForms\services\LogicEngine;
 use humhub\modules\thiscoveryForms\services\QuotaService;
 use humhub\modules\thiscoveryForms\services\TranslationImportExportService;
 use yii\db\Query;
@@ -56,16 +57,11 @@ $reset = static function () use ($form): void {
     }
 };
 
-$rules = [
-    'all' => [
-        ['fieldKey' => 'age', 'operator' => 'between', 'value' => '18,34'],
-        ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'female'],
-    ],
-];
+$rules = 'between([age], 18, 34) and [sex] = "female"';
 $check($svc->rulesMatch($rules, ['age' => '25', 'sex' => 'female'], $form->fields), 'a matching cell was false');
 $check(!$svc->rulesMatch($rules, ['age' => '25', 'sex' => 'male'], $form->fields), 'a cross-classified miss was true');
-$check($svc->rulesMatch(['source' => 'panel', 'fieldKey' => 'site', 'operator' => 'equals', 'value' => 'north'], ['panel.site' => 'north']), 'a panel factor was false');
-$check(!$svc->cellKnown(['fieldKey' => 'arm', 'operator' => 'equals', 'value' => 'pictogram'], []), 'an arm cell was known before assignment');
+$check($svc->rulesMatch('[panel:site] = "north"', ['panel.site' => 'north']), 'a panel factor was false');
+$check(!$svc->cellKnown(LogicEngine::fromFormula('[arm] = "pictogram"'), []), 'an arm cell was known before assignment');
 
 $module->settings->set(Module::SETTING_QUOTAS, '0');
 $off = ReviewLib::submit($form, [(int)$age->id => '25', (int)$sex->id => 'female']);
@@ -118,7 +114,7 @@ $reset();
 $parent = $svc->saveQuota($form, null, [
     'name' => 'Women',
     'target' => 1,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'female'],
+    'rules' => '[sex] = "female"',
     'action' => 'end',
     'action_message' => 'Women is full.',
 ]);
@@ -142,7 +138,7 @@ $svc->addHost($form, '10.1.1.1');
 $redirect = $svc->saveQuota($form, null, [
     'name' => 'Redirect cell',
     'target' => 1,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'female'],
+    'rules' => '[sex] = "female"',
     'action' => 'redirect',
     'action_url' => 'https://1.1.1.1/go?s={status}&q={quota}&a={answer}',
     'action_message' => 'Please continue with the panel.',
@@ -152,7 +148,7 @@ $check(!array_filter($errors, static fn($message) => str_contains($message, 'Red
 $private = $svc->saveQuota($form, null, [
     'name' => 'Private redirect',
     'target' => 1,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'male'],
+    'rules' => '[sex] = "male"',
     'action' => 'redirect',
     'action_url' => 'https://10.1.1.1/go',
     'action_message' => 'No.',
@@ -168,7 +164,7 @@ $reset();
 $svc->saveQuota($form, null, [
     'name' => 'Mark only',
     'target' => 1,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'female'],
+    'rules' => '[sex] = "female"',
     'action' => 'continue',
     'action_message' => 'Marked.',
 ]);
@@ -187,7 +183,7 @@ $form = ReviewLib::reload($form);
 $svc->saveQuota($form, null, [
     'name' => 'Go elsewhere',
     'target' => 1,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'female'],
+    'rules' => '[sex] = "female"',
     'action' => 'goto',
     'action_page_key' => 'other',
     'action_message' => 'Try the other page.',
@@ -200,7 +196,7 @@ $reset();
 $hold = $svc->saveQuota($form, null, [
     'name' => 'Held place',
     'target' => 1,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'female'],
+    'rules' => '[sex] = "female"',
     'reserve' => 1,
     'reserve_minutes' => 60,
     'check_page_key' => 'start',
@@ -236,7 +232,7 @@ $member->save(false);
 $panelQuota = $svc->saveQuota($form, null, [
     'name' => 'North',
     'target' => 1,
-    'rules' => ['source' => 'panel', 'fieldKey' => 'site', 'operator' => 'equals', 'value' => 'north'],
+    'rules' => '[panel:site] = "north"',
     'action' => 'end',
     'action_message' => 'North is full.',
 ]);
@@ -259,15 +255,15 @@ $anonField = ReviewLib::field($anon, FormField::TYPE_TEXT, 'City', ['variable' =
 $svc->saveQuota($anon, null, [
     'name' => 'Anonymous panel',
     'target' => 1,
-    'rules' => ['source' => 'panel', 'fieldKey' => 'site', 'operator' => 'equals', 'value' => 'north'],
+    'rules' => '[panel:site] = "north"',
     'action' => 'end',
 ]);
 $anonErrors = $svc->authoringErrors(ReviewLib::reload($anon));
 $check((bool)array_filter($anonErrors, static fn($message) => str_contains($message, 'Anonymous panel')), 'a fully anonymous form was allowed a panel quota');
 
 $import = $svc->importPayload($form, [
-    ['name' => 'Known age', 'target' => 3, 'rules' => ['fieldKey' => 'age', 'operator' => 'equals', 'value' => '50'], 'action' => 'end'],
-    ['name' => 'Missing question', 'target' => 3, 'rules' => ['fieldKey' => 'not_a_field', 'operator' => 'equals', 'value' => 'x'], 'action' => 'end'],
+    ['name' => 'Known age', 'target' => 3, 'rules' => '[age] = 50', 'action' => 'end'],
+    ['name' => 'Missing question', 'target' => 3, 'rules' => '[not_a_field] = "x"', 'action' => 'end'],
 ]);
 $check($import['imported'] === 1 && in_array('Missing question', $import['failed'], true), 'a missing question did not fail on its own');
 
@@ -285,7 +281,7 @@ $check(in_array('quota.' . (int)$panelQuota['id'] . '.name', $keys, true), 'tran
 $policy = $svc->saveQuota($form, null, [
     'name' => 'Integrity cell',
     'target' => 5,
-    'rules' => ['fieldKey' => 'sex', 'operator' => 'equals', 'value' => 'other'],
+    'rules' => '[sex] = "other"',
     'count_policy' => 'complete_excluding_integrity',
     'action' => 'end',
 ]);
@@ -301,7 +297,7 @@ $form->save(false);
 $race = $svc->saveQuota($form, null, [
     'name' => 'Race',
     'target' => 10,
-    'rules' => ['fieldKey' => 'age', 'operator' => 'equals', 'value' => '25'],
+    'rules' => '[age] = 25',
     'action' => 'end',
     'action_message' => 'Full.',
 ]);

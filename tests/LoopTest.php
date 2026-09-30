@@ -119,15 +119,9 @@ try {
     $engine = new LogicEngine();
     $logicValues = [(int)$symptom->id => ['asthma' => 'wheeze', 'diabetes' => 'thirst']];
     $fields = array_values($form->fields);
-    $check($engine->evaluateRule([
-        'fieldKey' => 'symptom', 'operator' => 'equals', 'value' => 'wheeze', 'aggregate' => 'any',
-    ], $logicValues, $fields), 'any matches one instance');
-    $check(!$engine->evaluateRule([
-        'fieldKey' => 'symptom', 'operator' => 'equals', 'value' => 'wheeze', 'aggregate' => 'all',
-    ], $logicValues, $fields), 'all needs every instance');
-    $check($engine->evaluateRule([
-        'fieldKey' => 'symptom', 'operator' => 'gt', 'value' => '1', 'aggregate' => 'count',
-    ], $logicValues, $fields), 'count compares the number of answers');
+    $check($engine->evaluateRule(LogicEngine::fromFormula('any_eq([symptom[*]], "wheeze")'), $logicValues, $fields), 'any matches one instance');
+    $check(!$engine->evaluateRule(LogicEngine::fromFormula('all_eq([symptom[*]], "wheeze")'), $logicValues, $fields), 'all needs every instance');
+    $check($engine->evaluateRule(LogicEngine::fromFormula('count_answered([symptom[*]]) > 1'), $logicValues, $fields), 'count needs more than one');
 
     LoopService::$pipe = ['label' => 'Asthma', 'index' => 2, 'count' => 4, 'key' => 'asthma'];
     $piped = (new VariableSubstitutor())->substitutePlain(
@@ -315,11 +309,15 @@ try {
     $bad->setSetting('loops_enabled', '1');
     $bad->save(false);
     ReviewLib::clearFields($bad);
-    ReviewLib::field($bad, FormField::TYPE_TEXT, 'Score', [
-        'logic' => ['rules' => [['fieldKey' => 'score', 'operator' => 'equals', 'value' => '1', 'aggregate' => 'mean']]],
-    ]);
-    $badErrors = $loops->authoringErrors(ReviewLib::reload($bad));
-    $check($badErrors !== [] && str_contains(implode(' ', $badErrors), 'mean'), 'unknown aggregate fails authoring');
+    $legacyRejected = false;
+    try {
+        ReviewLib::field($bad, FormField::TYPE_TEXT, 'Score', [
+            'logic' => ['rules' => [['fieldKey' => 'score', 'operator' => 'equals', 'value' => '1', 'aggregate' => 'mean']]],
+        ]);
+    } catch (InvalidArgumentException $e) {
+        $legacyRejected = str_contains($e->getMessage(), 'old field');
+    }
+    $check($legacyRejected, 'the old field, operator, and value rule was saved');
 
     $numberForm = ReviewLib::form($space, 'EV F5 number', [
         'allow_anonymous' => 0,

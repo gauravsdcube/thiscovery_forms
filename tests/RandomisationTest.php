@@ -202,16 +202,7 @@ $after = ReviewLib::field($form, FormField::TYPE_PAGE_BREAK, 'After', [
     'options' => json_encode(['__type' => FormField::TYPE_PAGE_BREAK, 'pageKey' => 'after']),
 ]);
 $outside = ReviewLib::field($form, FormField::TYPE_TEXT, 'Outside', ['variable' => 'f1_outside', 'sort_order' => 7]);
-$inside->logic_json = json_encode([
-    'action' => LogicEngine::ACTION_GOTO_PAGE,
-    'combinator' => 'and',
-    'gotoPageKey' => 'after',
-    'rules' => [[
-        'fieldKey' => (string)$inside->id,
-        'operator' => FormField::OP_EQUALS,
-        'value' => 'leave',
-    ]],
-]);
+$inside->setLogic(LogicEngine::fromFormula('[f1_inside] = "leave"', LogicEngine::ACTION_GOTO_PAGE, 'after'));
 $inside->save(false);
 $form = ReviewLib::reload($form);
 $svc->saveConfig($form, [
@@ -240,15 +231,7 @@ $check($againPages === $pages, 'the page order changed on the second read');
 
 $screen = ReviewLib::field($form, FormField::TYPE_RADIO, 'Continue', ['variable' => 'f1_continue', 'sort_order' => 8]);
 $screen->setOptionsFromText("yes\nno");
-$screen->logic_json = json_encode([
-    'action' => LogicEngine::ACTION_SCREEN_OUT,
-    'combinator' => 'and',
-    'rules' => [[
-        'fieldKey' => (string)$screen->id,
-        'operator' => FormField::OP_EQUALS,
-        'value' => 'no',
-    ]],
-]);
+$screen->setLogic(LogicEngine::fromFormula('[f1_continue] = "no"', LogicEngine::ACTION_SCREEN_OUT));
 $screen->save(false);
 $form = ReviewLib::publishOpen($form);
 $screened = ReviewLib::submit($form, [(int)$screen->id => 'no']);

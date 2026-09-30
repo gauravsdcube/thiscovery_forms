@@ -2278,6 +2278,39 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             refreshTypeUi($(this).closest('.thiscovery-forms-field-row'));
         });
 
+        var formulaDepNames = function (text) {
+            var found = {};
+            var re = /\[(?:(var:|panel:|meta:|url:|fn:))?([A-Za-z_][A-Za-z0-9_]*)/g;
+            var match;
+            while ((match = re.exec(String(text || '')))) {
+                found[(match[1] || '') + match[2]] = true;
+            }
+            if (/\[arm\]/.test(String(text || ''))) {
+                found.arm = true;
+            }
+            return Object.keys(found).sort();
+        };
+        var paintFormulaDeps = function ($input) {
+            var names = formulaDepNames($input.val());
+            var $list = $input.nextAll('[data-cf-formula-deps]').first();
+            if (!$list.length) {
+                $list = $input.parent().children('[data-cf-formula-deps]').first();
+            }
+            if (!$list.length) {
+                return;
+            }
+            $list.empty();
+            names.forEach(function (name) {
+                $list.append($('<li>').text(name));
+            });
+        };
+        $root.on('input', '[data-cf-formula-text]', function () {
+            paintFormulaDeps($(this));
+        });
+        $root.find('[data-cf-formula-text]').each(function () {
+            paintFormulaDeps($(this));
+        });
+
         $root.on('click', '[data-cf-formula-test]', function () {
             var $panel = $(this).closest('[data-cf-formula-panel]');
             var url = String($('#cf-studio-form').attr('data-cf-formula-preview') || '');
@@ -3746,6 +3779,22 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 values[id] = String($field.find('[data-cf-file-guid]').val() || '');
             });
+            $root.find('[data-cf-variable]').each(function () {
+                var name = String($(this).attr('data-cf-variable') || '');
+                var id = String($(this).attr('data-cf-field-id') || '');
+                if (name && Object.prototype.hasOwnProperty.call(values, id)) {
+                    values[name] = values[id];
+                }
+            });
+            var rawUrl = String($root.find('[data-cf-url-values]').attr('data-cf-url-values') || '');
+            if (rawUrl) {
+                try {
+                    var extra = JSON.parse(rawUrl);
+                    Object.keys(extra || {}).forEach(function (key) {
+                        values[key] = extra[key];
+                    });
+                } catch (e) {}
+            }
             return values;
         };
 
@@ -3946,16 +3995,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (logic && logic.when && formula && formula.treeTruth) {
                 return formula.treeTruth(logic.when, values);
             }
-            if (!logic || !logic.rules || !logic.rules.length) {
-                return true;
-            }
-            var results = logic.rules.map(function (rule) {
-                return ruleMatches(rule, values);
-            });
-            if (String(logic.combinator || 'and') === 'or') {
-                return results.indexOf(true) !== -1;
-            }
-            return results.indexOf(false) === -1;
+            return true;
         };
 
         var ruleMatches = function (rule, values) {
@@ -3970,21 +4010,23 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
             }
             if (rule && Array.isArray(rule.all)) {
-                return rule.all.length > 0 && rule.all.every(function (sub) {
-                    return ruleMatches(sub, values);
-                });
+                return false;
             }
             if (rule && Array.isArray(rule.any)) {
-                return rule.any.some(function (sub) {
-                    return ruleMatches(sub, values);
-                });
+                return false;
             }
             var formula = (typeof globalThis !== 'undefined' ? globalThis : window).thiscoveryFormula;
+            if (rule.when && formula && formula.treeTruth) {
+                return formula.treeTruth(rule.when, values);
+            }
+            if (rule.fieldKey || rule.operator) {
+                return false;
+            }
             return formula && formula.ruleTruth ? formula.ruleTruth(rule, values) : false;
         };
 
         var isLogicVisible = function (logic, values) {
-            if (!logic || !logic.rules || !logic.rules.length) {
+            if (!logic || ((!logic.rules || !logic.rules.length) && !logic.when)) {
                 return true;
             }
             var met = logicMet(logic, values);
@@ -4522,6 +4564,33 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             captureRespondentMeta();
             syncHtmlValues();
             var values = readAnswers();
+            var formulaApi = (typeof globalThis !== 'undefined' ? globalThis : window).thiscoveryFormula;
+            if (formulaApi && formulaApi.evaluateTree) {
+                $root.find('[data-cf-calc-tree]').each(function () {
+                    var $out = $(this);
+                    var tree = null;
+                    try {
+                        tree = JSON.parse(String($out.attr('data-cf-calc-tree') || ''));
+                    } catch (e) {
+                        tree = null;
+                    }
+                    if (!tree) {
+                        return;
+                    }
+                    var result = formulaApi.evaluateTree(tree, values);
+                    var shown = result && result.t && result.t !== 'empty' ? String(result.v) : '';
+                    $out.text(shown);
+                    var $question = $out.closest('[data-cf-field-id]');
+                    var id = String($question.attr('data-cf-field-id') || '');
+                    var name = String($question.attr('data-cf-variable') || '');
+                    if (id) {
+                        values[id] = shown;
+                    }
+                    if (name) {
+                        values[name] = shown;
+                    }
+                });
+            }
             var newlyShown = [];
             var applyVisibility = function ($field) {
                 var logic = parseFieldLogic($field);

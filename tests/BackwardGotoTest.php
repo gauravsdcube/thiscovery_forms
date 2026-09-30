@@ -36,11 +36,7 @@ $saved = $form->saveFieldsFromPost([
         'options' => ['yes', 'no'],
         'logic_action' => 'goto_page',
         'logic_goto' => 'start',
-        'logic_rules' => [[
-            'fieldKey' => 'a',
-            'operator' => 'equals',
-            'value' => 'yes',
-        ]],
+        'logic_formula' => '[r17_a] = "yes"',
     ],
 ]);
 if ($saved) {

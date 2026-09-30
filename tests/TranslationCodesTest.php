@@ -32,15 +32,7 @@ $follow = ReviewLib::field($form, FormField::TYPE_TEXT, 'Because', [
     'variable' => 'because',
     'required' => 0,
     'sort_order' => 2,
-    'logic' => [
-        'action' => 'show',
-        'combinator' => 'and',
-        'rules' => [[
-            'fieldKey' => (string)$radio->id,
-            'operator' => 'equals',
-            'value' => 'yes',
-        ]],
-    ],
+    'logic' => \humhub\modules\thiscoveryForms\services\LogicEngine::fromFormula('[choice] = "yes"'),
 ]);
 $form = ReviewLib::publishOpen($form);
 

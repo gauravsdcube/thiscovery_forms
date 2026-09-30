@@ -780,6 +780,57 @@ class CustomForm extends ContentActiveRecord implements Searchable
     }
 
     /**
+     * Declared URL parameters. A query value outside the allowed list is empty.
+     *
+     * @return list<array{name:string,values:list<string>}>
+     */
+    public function declaredUrlParams(): array
+    {
+        $raw = $this->getSetting('url_params', []);
+        if (!is_array($raw)) {
+            return [];
+        }
+        $out = [];
+        foreach ($raw as $row) {
+            if (!is_array($row) || count($out) >= 20) {
+                continue;
+            }
+            $name = trim((string)($row['name'] ?? ''));
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+                continue;
+            }
+            $values = [];
+            foreach ((array)($row['values'] ?? []) as $value) {
+                $value = trim((string)$value);
+                if ($value !== '' && mb_strlen($value) <= 200) {
+                    $values[] = $value;
+                }
+            }
+            $values = array_values(array_unique($values));
+            if ($values === []) {
+                continue;
+            }
+            $out[] = ['name' => $name, 'values' => $values];
+        }
+        return $out;
+    }
+
+    /**
+     * @param array<int|string,mixed> $values
+     * @param array<string,mixed> $query
+     */
+    public function applyDeclaredUrlParams(array &$values, array $query): void
+    {
+        foreach ($this->declaredUrlParams() as $param) {
+            $got = trim((string)($query[$param['name']] ?? ''));
+            if ($got === '' || mb_strlen($got) > 200 || !in_array($got, $param['values'], true)) {
+                $got = '';
+            }
+            $values['url:' . $param['name']] = $got;
+        }
+    }
+
+    /**
      * Panel attached for waves/invites, or the enrolment panel.
      */
     public function getAttachedPanel(): ?FormPanel
@@ -2241,12 +2292,15 @@ class CustomForm extends ContentActiveRecord implements Searchable
                         if (!is_array($branch)) {
                             continue;
                         }
-                        $branches[] = [
-                            'fieldKey' => (string)($branch['fieldKey'] ?? ''),
-                            'operator' => (string)($branch['operator'] ?? FormField::OP_EQUALS),
-                            'value' => (string)($branch['value'] ?? ''),
+                        $item = [
+                            'formula' => (string)($branch['formula'] ?? $branch['text'] ?? ''),
                             'gotoPageKey' => (string)($branch['gotoPageKey'] ?? ''),
                         ];
+                        if (isset($branch['fieldKey']) || isset($branch['operator'])) {
+                            $item['fieldKey'] = (string)($branch['fieldKey'] ?? '');
+                            $item['operator'] = (string)($branch['operator'] ?? '');
+                        }
+                        $branches[] = $item;
                     }
                 }
                 $field->setPageBreakConfig([
@@ -2462,11 +2516,6 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 $field->required = false;
             }
 
-            // conditions applied in second pass
-            $field->condition_field_id = null;
-            $field->condition_operator = null;
-            $field->condition_value = null;
-
             if (!$field->save()) {
                 $first = $field->getFirstErrors();
                 $msg = $first ? (string)reset($first) : Yii::t('ThiscoveryFormsModule.base', 'Validation failed.');
@@ -2517,36 +2566,23 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 continue;
             }
 
-            $logicRules = $this->remapPostedLogicRules(is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [], $createdMap);
-            if (!$logicRules && !empty($row['condition_field'])) {
-                $condKey = (string)$row['condition_field'];
-                $condId = $createdMap[$condKey] ?? (ctype_digit($condKey) ? (int)$condKey : null);
-                if ($condId && (int)$condId !== (int)$field->id) {
-                    $logicRules[] = [
-                        'fieldKey' => (string)$condId,
-                        'operator' => $row['condition_operator'] ?? FormField::OP_EQUALS,
-                        'value' => (string)($row['condition_value'] ?? ''),
-                    ];
-                }
-            }
-            $keep = json_decode((string)($row['logic_keep'] ?? ''), true);
-            $keepHasSnapshot = is_array($keep) && array_key_exists('rules', $keep);
-            if (!$logicRules && $keepHasSnapshot) {
-                $logicRules = $this->remapPostedLogicRules(is_array($keep['rules'] ?? null) ? $keep['rules'] : [], $createdMap);
-                if ($logicRules) {
-                    $row['logic_action'] = $keep['action'] ?? ($row['logic_action'] ?? 'show');
-                    $row['logic_combinator'] = $keep['combinator'] ?? ($row['logic_combinator'] ?? 'and');
-                    $row['logic_goto'] = $keep['gotoPageKey'] ?? ($row['logic_goto'] ?? '');
-                }
+            $logicRules = is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [];
+            $formula = trim((string)($row['logic_formula'] ?? ''));
+            $keptLogic = json_decode((string)($row['logic_keep'] ?? ''), true);
+            if (LogicEngine::containsLegacy($logicRules)
+                || ($formula === '' && !empty($row['condition_field']))
+                || ($formula === '' && is_array($keptLogic) && LogicEngine::containsLegacy($keptLogic))) {
+                Yii::$app->session->setFlash('error', LogicEngine::legacyMessage());
+                return false;
             }
             $goto = (string)($row['logic_goto'] ?? '');
-            if ($logicRules || $keepHasSnapshot || !$field->hasCondition()) {
-                $field->setLogic([
-                    'action' => $row['logic_action'] ?? 'show',
-                    'combinator' => $row['logic_combinator'] ?? 'and',
-                    'gotoPageKey' => $goto,
-                    'rules' => $logicRules,
-                ]);
+            if ($formula !== '' || array_key_exists('logic_formula', $row)) {
+                try {
+                    $field->setLogic(LogicEngine::fromFormula($formula, (string)($row['logic_action'] ?? 'show'), $goto));
+                } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
+                    Yii::$app->session->setFlash('error', $e->getMessage());
+                    return false;
+                }
             }
 
             if (FormField::isCarryForwardType($field->type)) {

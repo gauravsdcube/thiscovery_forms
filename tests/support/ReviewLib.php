@@ -74,7 +74,11 @@ final class ReviewLib
             $field->options_json = is_string($opts['options']) ? $opts['options'] : json_encode($opts['options'], JSON_UNESCAPED_UNICODE);
         }
         if (isset($opts['logic'])) {
-            $field->logic_json = is_string($opts['logic']) ? $opts['logic'] : json_encode($opts['logic'], JSON_UNESCAPED_UNICODE);
+            $logic = is_string($opts['logic']) ? json_decode($opts['logic'], true) : $opts['logic'];
+            if (!is_array($logic)) {
+                throw new InvalidArgumentException('A formula rule is required.');
+            }
+            $field->setLogic($logic);
         }
         if (isset($opts['actions'])) {
             $field->actions_json = is_string($opts['actions']) ? $opts['actions'] : json_encode($opts['actions'], JSON_UNESCAPED_UNICODE);

@@ -57,7 +57,7 @@
     function context(values) {
         var fields = {};
         Object.keys(values || {}).forEach(function (key) {
-            if (key.indexOf('panel.') === 0 || key === 'arm' || key.indexOf('var:') === 0) return;
+            if (key.indexOf('panel.') === 0 || key === 'arm' || key.indexOf('var:') === 0 || key.indexOf('url:') === 0 || key.indexOf('meta:') === 0) return;
             fields[key] = leaf(values[key], fieldType(key));
         });
         return { fields: fields, values: values || {}, today: (values && values.__today) || '2026-09-30' };
@@ -73,6 +73,8 @@
         if (node.ref === 'arm') return leaf(ctx.values.arm, '');
         if (node.ref === 'panel') return leaf(ctx.values['panel.' + node.name], '');
         if (node.ref === 'var') return leaf(ctx.values['var:' + node.name], '');
+        if (node.ref === 'url') return leaf(ctx.values['url:' + node.name], '');
+        if (node.ref === 'meta') return leaf(ctx.values['meta:' + node.name], '');
         return ctx.fields[node.name] || empty();
     }
     function same(left, right) {

@@ -383,6 +383,7 @@ class SubmitForm extends Model
 
     public function validateFields(): void
     {
+        $this->form->applyDeclaredUrlParams($this->values, Yii::$app->request->get());
         \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
             $this->values,
             array_values($this->form->fields),
@@ -824,6 +825,7 @@ class SubmitForm extends Model
             $liveFieldIds = array_flip($liveQuery->column());
             $editionFill = (int)$answer->edition_id > 0;
 
+            $this->form->applyDeclaredUrlParams($this->values, Yii::$app->request->get());
             \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
                 $this->values,
                 array_values($this->form->fields),
@@ -1317,7 +1319,7 @@ class SubmitForm extends Model
             if (!$this->isOnAnswerPath($field)) {
                 continue;
             }
-            if (!empty($logic['rules']) && $engine->rulesMet($logic, $this->values, $this->form->fields)) {
+            if (!empty($logic['when']) && $engine->rulesMet($logic, $this->values, $this->form->fields)) {
                 return FormAnswer::OUTCOME_SCREENED_OUT;
             }
         }

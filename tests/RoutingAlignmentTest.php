@@ -7,6 +7,7 @@ require __DIR__ . '/support/bootstrap.php';
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\Module;
 use humhub\modules\thiscoveryForms\services\FormPager;
+use humhub\modules\thiscoveryForms\services\LogicEngine;
 
 $failures = [];
 $module = Yii::$app->getModule('thiscovery-forms');
@@ -37,8 +38,8 @@ $route = static function (array $fields, array $answers): array {
 $skipped = [
     $field(1, FormField::TYPE_RADIO),
     $field(2, FormField::TYPE_PAGE_BREAK, ['pageKey' => 'mid']),
-    $field(3, FormField::TYPE_TEXT, ['logic' => ['action' => 'show', 'combinator' => 'and', 'rules' => [['fieldKey' => '1', 'operator' => 'equals', 'value' => 'no']]]]),
-    $field(4, FormField::TYPE_PAGE_BREAK, ['pageKey' => 'after', 'logic' => ['action' => 'goto_page', 'combinator' => 'and', 'gotoPageKey' => 'land', 'rules' => [['fieldKey' => '1', 'operator' => 'equals', 'value' => 'yes']]]]),
+    $field(3, FormField::TYPE_TEXT, ['logic' => LogicEngine::fromFormula('[v1] = "no"')]),
+    $field(4, FormField::TYPE_PAGE_BREAK, ['pageKey' => 'after', 'logic' => LogicEngine::fromFormula('[v1] = "yes"', 'goto_page', 'land')]),
     $field(5, FormField::TYPE_TEXT),
     $field(6, FormField::TYPE_PAGE_BREAK, ['pageKey' => 'land']),
     $field(7, FormField::TYPE_TEXT),
@@ -52,7 +53,7 @@ $action = [
 ];
 $dangling = [
     $field(1, FormField::TYPE_RADIO),
-    $field(2, FormField::TYPE_PAGE_BREAK, ['pageKey' => 'next', 'logic' => ['action' => 'goto_page', 'combinator' => 'and', 'gotoPageKey' => 'missing', 'rules' => [['fieldKey' => '1', 'operator' => 'equals', 'value' => 'yes']]]]),
+    $field(2, FormField::TYPE_PAGE_BREAK, ['pageKey' => 'next', 'logic' => LogicEngine::fromFormula('[v1] = "yes"', 'goto_page', 'missing')]),
     $field(3, FormField::TYPE_TEXT),
 ];
 

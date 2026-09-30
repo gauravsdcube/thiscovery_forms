@@ -11,11 +11,11 @@ $failures = [];
 $engine = new LogicEngine();
 
 $check = static function (string $id, $raw, string $expected, bool $want) use ($engine, &$failures): void {
-    $got = $engine->evaluateRule([
-        'fieldKey' => 'q',
-        'operator' => FormField::OP_BETWEEN,
-        'value' => $expected,
-    ], ['q' => $raw]);
+    $bounds = array_map('trim', explode(',', $expected));
+    $got = $engine->evaluateRule(
+        LogicEngine::fromFormula('between([q], ' . $bounds[0] . ', ' . $bounds[1] . ')'),
+        ['q' => $raw]
+    );
     if ($got !== $want) {
         $failures[] = $id . ' got ' . ($got ? 'true' : 'false');
     }
@@ -40,11 +40,7 @@ $detail->id = 2;
 $detail->type = FormField::TYPE_TEXT;
 $detail->variable = 'detail';
 $detail->label = 'detail';
-$detail->setLogic([
-    'action' => 'show',
-    'combinator' => 'and',
-    'rules' => [['fieldKey' => '1', 'operator' => 'between', 'value' => '1,10']],
-]);
+$detail->setLogic(LogicEngine::fromFormula('between([q], 1, 10)'));
 $fields = [$number, $detail];
 $visible = [];
 foreach ($fields as $field) {
