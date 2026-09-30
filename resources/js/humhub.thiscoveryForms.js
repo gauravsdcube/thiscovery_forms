@@ -2591,16 +2591,32 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 writeTimingField();
             }
             autosaveQueued = false;
+            var payload = $form.serialize();
+            $form.find('[name="roster_add"], [name="roster_parent"], [name="roster_remove"]').val('');
             autosaveXhr = $.ajax({
                 url: saveUrl,
                 type: 'POST',
-                data: $form.serialize(),
+                data: payload,
                 dataType: 'json'
             }).done(function (res) {
                 if (!res || !res.success || !res.resume_code) {
                     return;
                 }
                 applyResumeCode(res.resume_code);
+                if (res.roster_changed) {
+                    fillSubmitting = true;
+                    autosaveQueued = false;
+                    var next = new URL(window.location.href);
+                    next.searchParams.delete('start');
+                    next.searchParams.set('resume', res.resume_code);
+                    if (res.roster_key) {
+                        next.searchParams.set('roster', res.roster_key);
+                    } else {
+                        next.searchParams.delete('roster');
+                    }
+                    window.location.assign(next.toString());
+                    return;
+                }
                 if (res.quota_message) {
                     var $note = $form.find('[data-cf-quota-note]');
                     if (!$note.length) {
@@ -2629,6 +2645,40 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 autosaveXhr = null;
             }
         };
+        $root.on('click', '[data-cf-roster-add]', function () {
+            var $button = $(this);
+            var $form = $root.find('[data-cf-fill-form]');
+            $form.find('[name="roster_remove"]').val('');
+            $form.find('[name="roster_add"]').val(String($button.attr('data-cf-roster-variable') || ''));
+            $form.find('[name="roster_parent"]').val(String($button.attr('data-cf-roster-parent') || ''));
+            autosaveProgress();
+        });
+        $root.on('click', '[data-cf-roster-remove-ask]', function () {
+            var $controls = $(this).closest('[data-cf-roster-controls]');
+            $controls.find('[data-cf-roster-confirm]').removeAttr('hidden');
+            $controls.find('[data-cf-roster-remove-confirm]').trigger('focus');
+        });
+        $root.on('click', '[data-cf-roster-remove-cancel]', function () {
+            $(this).closest('[data-cf-roster-confirm]').attr('hidden', 'hidden');
+        });
+        $root.on('click', '[data-cf-roster-remove-confirm]', function () {
+            var $form = $root.find('[data-cf-fill-form]');
+            $form.find('[name="roster_add"]').val('');
+            $form.find('[name="roster_parent"]').val('');
+            $form.find('[name="roster_remove"]').val(String($(this).attr('data-cf-roster-key') || ''));
+            autosaveProgress();
+        });
+        var rosterFocus = new URLSearchParams(window.location.search).get('roster');
+        if (rosterFocus) {
+            var $added = $root.find('.cf-form-page.is-active');
+            var addedKey = String($added.attr('data-cf-instance') || '');
+            if (addedKey === rosterFocus || addedKey.slice(-rosterFocus.length) === rosterFocus) {
+                var $focus = $added.find('input, textarea, select').filter(':visible').first();
+                if ($focus.length) {
+                    $focus.trigger('focus');
+                }
+            }
+        }
         var scheduleAutosave = function () {
             if (fillSubmitting) {
                 return;

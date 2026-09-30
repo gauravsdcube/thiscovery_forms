@@ -27,6 +27,12 @@ class SubmitForm extends Model
     /** @var FormAnswer|null Answer being edited, so an already attached file can be kept. */
     public $editingAnswer;
 
+    /** @var bool A roster row was added or removed during this save. */
+    public $rosterChanged = false;
+
+    /** @var string Instance key to reopen after a roster change. */
+    public $rosterKey = '';
+
     /** @var int|null */
     public $waveId;
 
@@ -462,6 +468,12 @@ class SubmitForm extends Model
                         'label' => $field->label,
                     ]));
                 }
+            }
+        }
+        if ($this->scenario !== self::SCENARIO_DRAFT && $this->form) {
+            $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
+            if ($loops->rosterBelowMinimum($this->form, $this->editingAnswer, array_values($this->form->fields))) {
+                $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Add the required rows before submitting.'));
             }
         }
     }
@@ -931,6 +943,15 @@ class SubmitForm extends Model
                 }
                 $answer->outcome = $this->terminalOutcome($answer);
                 $answer->save(false, ['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
+            }
+
+            \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $answer;
+            $opened = (new \humhub\modules\thiscoveryForms\services\LoopService())->applyRosterCommands($answer, $this->form);
+            if ($opened !== null) {
+                $this->rosterChanged = true;
+                $this->rosterKey = $opened;
+                $answer->current_instance_key = substr($opened, 0, 191);
+                $answer->save(false, ['current_instance_key', 'updated_at']);
             }
 
             $transaction->commit();

@@ -322,6 +322,7 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     'fixed' => Yii::t('ThiscoveryFormsModule.base', 'Fixed list'),
                     'choices' => Yii::t('ThiscoveryFormsModule.base', 'Selected options'),
                     'number' => Yii::t('ThiscoveryFormsModule.base', 'A number'),
+                    'roster' => Yii::t('ThiscoveryFormsModule.base', 'A list the person adds to'),
                 ], ['class' => 'form-control']) ?>
             </div>
             <div class="col-md-3">
@@ -332,8 +333,16 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Max') ?></label>
                 <?= Html::textInput($namePrefix . '[loop_max]', is_array($loopCfg) ? (string)$loopCfg['max'] : '', ['class' => 'form-control']) ?>
             </div>
+            <div class="col-md-2">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Min') ?></label>
+                <?= Html::textInput($namePrefix . '[loop_min]', is_array($loopCfg) ? (string)$loopCfg['min'] : '', ['class' => 'form-control']) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Name question variable') ?></label>
+                <?= Html::textInput($namePrefix . '[loop_label_field]', is_array($loopCfg) ? (string)($loopCfg['label_field'] ?? '') : '', ['class' => 'form-control']) ?>
+            </div>
             <div class="col-md-12">
-                <p class="cf-hint text-muted mb-1"><?= Yii::t('ThiscoveryFormsModule.base', 'This group can sit inside one other repeating group. A third level cannot be published. A nested repeat code cannot contain a slash.') ?></p>
+                <p class="cf-hint text-muted mb-1"><?= Yii::t('ThiscoveryFormsModule.base', 'This group can sit inside one other repeating group. A third level cannot be published. A nested repeat code cannot contain a slash. A list the person adds to uses Add another, and removing a row keeps the answers.') ?></p>
             </div>
             <div class="col-md-12">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Fixed list, one code | label per line') ?></label>

@@ -276,6 +276,18 @@ class ExportService
             if ($loops->isLoopField($form, $field)) {
                 $variable = trim((string)$field->variable) ?: ('q' . (int)$field->id);
                 $fieldList = array_values($form->fields);
+                $group = $loops->groupForField($fieldList, $field);
+                $groupCfg = $group ? $loops->config($group) : null;
+                if ($groupCfg && $groupCfg['source'] === 'roster') {
+                    fputcsv($fh, [
+                        $variable,
+                        trim(strip_tags((string)$field->label)),
+                        (string)$field->type,
+                        '',
+                        'Roster row. The long export has one row per entry that was shown.',
+                    ]);
+                    continue;
+                }
                 foreach ($loops->columnPaths($fieldList, $field) as $column) {
                     fputcsv($fh, [
                         $loops->exportColumn($variable, (string)$column['code']),
@@ -329,6 +341,98 @@ class ExportService
                 $row['completed'],
             ]);
         }
+        rewind($fh);
+        $csv = stream_get_contents($fh);
+        fclose($fh);
+        return $csv === false ? '' : $csv;
+    }
+
+    /**
+     * One row per shown repeat. Roster rows use this because each row has its own key.
+     */
+    public function longCsv(CustomForm $form, array $params = []): string
+    {
+        $loops = new LoopService();
+        $fields = array_values($form->fields);
+        $groups = [];
+        foreach ($fields as $field) {
+            if ($field->type === FormField::TYPE_QUESTION_GROUP && $loops->config($field)) {
+                $groups[] = $field;
+            }
+        }
+        $fh = fopen('php://temp', 'r+');
+        if ($groups === [] || !LoopService::active($form)) {
+            fputcsv($fh, ['group', 'answer_id', 'instance_key', 'instance_label']);
+            rewind($fh);
+            $csv = stream_get_contents($fh);
+            fclose($fh);
+            return $csv === false ? '' : $csv;
+        }
+        $includeHidden = !empty($params['include_hidden_instances']);
+        $params['forExport'] = 1;
+        $previous = RandomisationService::$current;
+        foreach ($groups as $group) {
+            [$query] = AnswerListService::query($form, $params);
+            $query->with(['answerFields']);
+            $questions = [];
+            $depth = 0;
+            $started = false;
+            $startDepth = 0;
+            foreach ($fields as $field) {
+                if ($field->type === FormField::TYPE_QUESTION_GROUP) {
+                    $depth++;
+                    if ((int)$field->id === (int)$group->id) {
+                        $started = true;
+                        $startDepth = $depth;
+                    }
+                    continue;
+                }
+                if ($field->type === FormField::TYPE_GROUP_END && $depth > 0) {
+                    if ($started && $depth === $startDepth) {
+                        break;
+                    }
+                    $depth--;
+                    continue;
+                }
+                if ($started && $field->collectsAnswer() && $loops->groupForField($fields, $field) && (int)$loops->groupForField($fields, $field)->id === (int)$group->id) {
+                    $questions[] = $field;
+                }
+            }
+            $header = ['group', 'answer_id', 'instance_key', 'instance_label'];
+            foreach ($questions as $question) {
+                $header[] = trim((string)$question->variable) ?: ('q' . (int)$question->id);
+            }
+            fputcsv($fh, $header);
+            /** @var FormAnswer $answer */
+            foreach ($query->each(100) as $answer) {
+                RandomisationService::$current = $answer;
+                $map = $answer->getValuesMap();
+                $keys = $loops->rosterInstanceKeys($answer, $group, false);
+                if ($keys === [] && ($loops->config($group)['source'] ?? '') !== 'roster' && $questions) {
+                    foreach ($loops->shownPaths($fields, $questions[0], $map) as $path) {
+                        $keys[] = (string)$path['code'];
+                    }
+                }
+                if ($includeHidden && ($loops->config($group)['source'] ?? '') === 'roster') {
+                    $keys = array_merge($keys, $loops->rosterInstanceKeys($answer, $group, true));
+                }
+                foreach ($keys as $full) {
+                    $row = [
+                        $loops->groupKey($group),
+                        (string)$answer->id,
+                        $full,
+                        $loops->rosterName($group, $full, $map, $fields),
+                    ];
+                    foreach ($questions as $question) {
+                        $cells = $map[(int)$question->id] ?? null;
+                        $raw = is_array($cells) ? ($cells[$full] ?? '') : '';
+                        $row[] = $this->formatCell($raw);
+                    }
+                    fputcsv($fh, $row);
+                }
+            }
+        }
+        RandomisationService::$current = $previous;
         rewind($fh);
         $csv = stream_get_contents($fh);
         fclose($fh);

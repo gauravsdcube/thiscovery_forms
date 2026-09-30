@@ -2238,6 +2238,7 @@ class FormField extends ActiveRecord
             'loop_enabled' => ($loopCfg = (new \humhub\modules\thiscoveryForms\services\LoopService())->config($this)) ? '1' : '',
             'loop_source' => is_array($loopCfg) ? $loopCfg['source'] : '',
             'loop_field_key' => is_array($loopCfg) ? $loopCfg['field_key'] : '',
+            'loop_label_field' => is_array($loopCfg) ? (string)($loopCfg['label_field'] ?? '') : '',
             'loop_max' => is_array($loopCfg) ? (string)$loopCfg['max'] : '',
             'loop_min' => is_array($loopCfg) ? (string)$loopCfg['min'] : '',
             'loop_randomise' => is_array($loopCfg) && !empty($loopCfg['randomise']) ? '1' : '',
@@ -2570,12 +2571,13 @@ class FormField extends ActiveRecord
                     $items[] = ['code' => $parts[0], 'label' => $parts[1] ?? $parts[0]];
                 }
                 $source = (string)($row['loop_source'] ?? 'fixed');
-                if (!in_array($source, ['fixed', 'choices', 'number'], true)) {
+                if (!in_array($source, ['fixed', 'choices', 'number', 'roster'], true)) {
                     $source = 'fixed';
                 }
                 $options['loop'] = [
                     'source' => $source,
                     'field_key' => trim((string)($row['loop_field_key'] ?? '')),
+                    'label_field' => trim((string)($row['loop_label_field'] ?? '')),
                     'max' => max(0, (int)($row['loop_max'] ?? 0)),
                     'min' => max(0, (int)($row['loop_min'] ?? 0)),
                     'items' => $items,

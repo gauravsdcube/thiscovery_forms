@@ -8,7 +8,9 @@ A group can repeat in one of three ways:
 - The options someone selected on an earlier question.
 - A number from an earlier question, stored as n1, n2, and so on, up to the maximum.
 
-The source question has to come before the group. One repeating group can contain one other repeating group. The inner source can be a question inside the outer repeat, so each outer repeat can have its own inner repeats. A third level cannot be published. A nested repeat code cannot contain a slash. Rosters are not in this version.
+The source question has to come before the group. One repeating group can contain one other repeating group. The inner source can be a question inside the outer repeat, so each outer repeat can have its own inner repeats. A third level cannot be published. A nested repeat code cannot contain a slash.
+
+A group can also be a list the person adds to. Add another creates a row. The server gives that row a key beginning with r. The person can remove a row down to the minimum. Removing it hides the row and keeps the answers. The long export has one row per entry that was shown.
 
 Each repeat is its own answer. If someone unselects an option, that repeat is hidden. The answer is kept. The default export leaves the cell blank. Selecting the option again shows the kept answer. The studio says: these answers are kept but not shown.
 

@@ -88,7 +88,10 @@ class ResumeService
             $dirty[] = 'current_page';
         }
         $instance = Yii::$app->request->post('current_instance_key', null);
-        if ($instance !== null && \humhub\modules\thiscoveryForms\services\LoopService::columnReady()) {
+        if (!empty($submit->rosterChanged)) {
+            $answer->current_instance_key = substr((string)$submit->rosterKey, 0, 191);
+            $dirty[] = 'current_instance_key';
+        } elseif ($instance !== null && \humhub\modules\thiscoveryForms\services\LoopService::columnReady()) {
             $answer->current_instance_key = substr((string)$instance, 0, 191);
             $dirty[] = 'current_instance_key';
         }

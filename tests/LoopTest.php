@@ -5,6 +5,7 @@
 require __DIR__ . '/support/bootstrap.php';
 require_once dirname(__DIR__) . '/migrations/m261001_100000_answer_instance_key.php';
 require_once dirname(__DIR__) . '/migrations/m261001_120000_widen_instance_key.php';
+require_once dirname(__DIR__) . '/migrations/m261001_130000_roster_json.php';
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswerField;
@@ -369,6 +370,108 @@ try {
     $diabetesCount = (int)($symptomRow['counts']['diabetes'] ?? 0);
     $check($symptomRow !== null && $allRepeats === $asthmaCount + $diabetesCount, 'dashboard adds every repeat');
     $check($asthmaCount >= 1 && $diabetesCount >= 1 && $asthmaCount !== $allRepeats, 'dashboard can split one instance from the total');
+
+    $roster = ReviewLib::form($space, 'EV F5 roster', [
+        'allow_anonymous' => 0,
+        'allow_multiple' => 1,
+        'identity_mode' => CustomForm::IDENTITY_IDENTIFIED,
+    ]);
+    $roster->setSetting('loops_enabled', '1');
+    $roster->save(false);
+    ReviewLib::clearFields($roster);
+    ReviewLib::field($roster, FormField::TYPE_QUESTION_GROUP, 'Medication', [
+        'variable' => 'medications',
+        'options' => ['loop' => ['source' => 'roster', 'max' => 2, 'min' => 0, 'label_field' => 'drug_name', 'items' => []]],
+    ]);
+    $drug = ReviewLib::field($roster, FormField::TYPE_TEXT, 'Drug', ['variable' => 'drug_name']);
+    ReviewLib::field($roster, FormField::TYPE_GROUP_END, 'End medication');
+    $rosterErrors = $loops->authoringErrors(ReviewLib::reload($roster));
+    $check($rosterErrors === [], 'a roster can be published: ' . implode(' ', $rosterErrors));
+    $roster = ReviewLib::publishOpen($roster);
+    $drug = FormField::findOne($drug->id);
+    $group = null;
+    foreach ($roster->fields as $field) {
+        if ($field->type === FormField::TYPE_QUESTION_GROUP) {
+            $group = $field;
+        }
+    }
+    $rosterAnswer = ReviewLib::submit($roster, []);
+    $check($rosterAnswer !== null && $group, 'an empty roster can be saved');
+    $firstKey = $group && $rosterAnswer ? $loops->addRow($rosterAnswer, $group) : null;
+    $secondKey = $group && $rosterAnswer ? $loops->addRow($rosterAnswer, $group) : null;
+    $thirdKey = $group && $rosterAnswer ? $loops->addRow($rosterAnswer, $group) : 'skipped';
+    $check(is_string($firstKey) && preg_match('/^r[a-f0-9]{8}$/', $firstKey) === 1, 'the server creates an r key');
+    $check(is_string($secondKey) && $secondKey !== $firstKey, 'a second row gets a new key');
+    $check($thirdKey === null, 'a roster stops at its maximum');
+    if ($rosterAnswer && $firstKey && $secondKey) {
+        $rosterAnswer = ReviewLib::submit($roster, [
+            (int)$drug->id => [$firstKey => 'Aspirin', $secondKey => 'Ibuprofen', 'rdeadbeef' => 'Forged'],
+        ], false, $rosterAnswer);
+    }
+    $check($rosterAnswer && $rosterAnswer->getValue((int)$drug->id, (string)$firstKey) === 'Aspirin', 'the first row stores the name');
+    $check($rosterAnswer && $rosterAnswer->getValue((int)$drug->id, 'rdeadbeef') === null, 'a client cannot invent a roster key');
+    $hiddenOk = $rosterAnswer && $group ? $loops->hideRow($rosterAnswer, $group, '', (string)$secondKey) : false;
+    $check($hiddenOk, 'removing a row hides it');
+    $keptDrug = $rosterAnswer ? FormAnswerField::find()->where([
+        'answer_id' => (int)$rosterAnswer->id,
+        'field_id' => (int)$drug->id,
+        'instance_key' => (string)$secondKey,
+    ])->one() : null;
+    $check($keptDrug && (string)$keptDrug->value === 'Ibuprofen', 'a removed row stays in the table');
+    $check($rosterAnswer && $group && !in_array((string)$secondKey, $loops->rosterInstanceKeys($rosterAnswer, $group), true), 'a removed row leaves the shown list');
+    $long = $rosterAnswer ? (new ExportService())->longCsv($roster) : '';
+    $check(str_contains($long, 'Aspirin') && str_contains($long, (string)$firstKey), 'the long export lists the shown row');
+    $check(!str_contains($long, 'Ibuprofen'), 'the long export omits a removed row');
+    $longHidden = $rosterAnswer ? (new ExportService())->longCsv($roster, ['include_hidden_instances' => 1]) : '';
+    $check(str_contains($longHidden, 'Ibuprofen'), 'the long export can include a removed row');
+    $minForm = ReviewLib::form($space, 'EV F5 roster min', [
+        'allow_anonymous' => 0,
+        'identity_mode' => CustomForm::IDENTITY_IDENTIFIED,
+    ]);
+    $minForm->setSetting('loops_enabled', '1');
+    $minForm->save(false);
+    ReviewLib::clearFields($minForm);
+    ReviewLib::field($minForm, FormField::TYPE_QUESTION_GROUP, 'Dose', [
+        'variable' => 'doses',
+        'options' => ['loop' => ['source' => 'roster', 'max' => 1, 'min' => 2, 'items' => []]],
+    ]);
+    ReviewLib::field($minForm, FormField::TYPE_TEXT, 'Amount', ['variable' => 'amount']);
+    ReviewLib::field($minForm, FormField::TYPE_GROUP_END, 'End dose');
+    $minErrors = implode(' ', $loops->authoringErrors(ReviewLib::reload($minForm)));
+    $check(str_contains($minErrors, 'cannot require more rows'), 'minimum cannot exceed maximum');
+    $floor = ReviewLib::form($space, 'EV F5 roster floor', [
+        'allow_anonymous' => 0,
+        'allow_multiple' => 1,
+        'identity_mode' => CustomForm::IDENTITY_IDENTIFIED,
+    ]);
+    $floor->setSetting('loops_enabled', '1');
+    $floor->save(false);
+    ReviewLib::clearFields($floor);
+    ReviewLib::field($floor, FormField::TYPE_QUESTION_GROUP, 'Kept', [
+        'variable' => 'kept_rows',
+        'options' => ['loop' => ['source' => 'roster', 'max' => 2, 'min' => 1, 'items' => []]],
+    ]);
+    ReviewLib::field($floor, FormField::TYPE_TEXT, 'Note', ['variable' => 'kept_note']);
+    ReviewLib::field($floor, FormField::TYPE_GROUP_END, 'End kept');
+    $floor = ReviewLib::publishOpen($floor);
+    $floorGroup = null;
+    foreach ($floor->fields as $field) {
+        if ($field->type === FormField::TYPE_QUESTION_GROUP) {
+            $floorGroup = $field;
+        }
+    }
+    $floorAnswer = ReviewLib::submit($floor, [], true);
+    $floorKeys = $floorAnswer && $floorGroup ? $loops->rosterInstanceKeys($floorAnswer, $floorGroup) : [];
+    if ($floorAnswer && $floorGroup && $floorKeys === []) {
+        $created = $loops->addRow($floorAnswer, $floorGroup);
+        $floorKeys = $created ? [$created] : [];
+    }
+    $check(count($floorKeys) === 1 && $loops->hideRow($floorAnswer, $floorGroup, '', $floorKeys[0]) === false, 'a roster cannot go below its minimum');
+    if ($rosterAnswer) {
+        $rosterDown = new m261001_130000_roster_json();
+        $rosterDown->init();
+        $check($rosterDown->safeDown() === false, 'roster migration down refuses while a row exists');
+    }
 
     $module->settings->set(Module::SETTING_LOOPS, '0');
     $plain = ReviewLib::form($space, 'EV F5 flag off', [

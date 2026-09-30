@@ -488,6 +488,9 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <div class="visually-hidden" data-cf-page-live aria-live="polite" aria-atomic="true"></div>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
             <?= Html::hiddenInput('current_instance_key', $existing ? (string)$existing->current_instance_key : '', ['data-cf-current-instance' => true]) ?>
+            <?= Html::hiddenInput('roster_add', '') ?>
+            <?= Html::hiddenInput('roster_parent', '') ?>
+            <?= Html::hiddenInput('roster_remove', '') ?>
             <?php if ($integrityEnabled): ?>
             <?= Html::hiddenInput(\humhub\modules\thiscoveryForms\services\integrity\IntegrityService::TIMING_NAME, '{}', ['data-cf-integrity-timing' => true]) ?>
             <div class="cf-honeypot" aria-hidden="true">
@@ -527,6 +530,21 @@ $fillRtl = TranslationService::isRtl($fillLang);
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
                     <?php if (!empty($page['instanceKey'])): ?>
                         <h2 class="cf-loop-instance" id="cf-loop-heading-<?= (int)$page['index'] ?>"><?= Html::encode($loopHeading) ?></h2>
+                    <?php endif; ?>
+                    <?php if (!empty($page['roster']) && is_array($page['roster'])): ?>
+                        <div class="cf-roster-controls" data-cf-roster-controls>
+                            <?php if (!empty($page['roster']['canRemove'])): ?>
+                                <button type="button" class="btn btn-default" data-cf-roster-remove-ask><?= Html::encode((string)$page['roster']['removeLabel']) ?></button>
+                                <div hidden data-cf-roster-confirm>
+                                    <p><?= Html::encode((string)$page['roster']['confirm']) ?></p>
+                                    <button type="button" class="btn btn-default" data-cf-roster-remove-confirm data-cf-roster-key="<?= Html::encode((string)$page['roster']['key']) ?>"><?= Html::encode((string)$page['roster']['removeLabel']) ?></button>
+                                    <button type="button" class="btn btn-link" data-cf-roster-remove-cancel><?= Yii::t('ThiscoveryFormsModule.base', 'Cancel') ?></button>
+                                </div>
+                            <?php endif; ?>
+                            <?php if (!empty($page['roster']['canAdd'])): ?>
+                                <button type="button" class="btn btn-default" data-cf-roster-add data-cf-roster-variable="<?= Html::encode((string)$page['roster']['variable']) ?>" data-cf-roster-parent="<?= Html::encode((string)$page['roster']['parent']) ?>"><?= Html::encode((string)$page['roster']['addLabel']) ?></button>
+                            <?php endif; ?>
+                        </div>
                     <?php endif; ?>
                     <?php if (!empty($page['title'])): ?>
                         <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null); ?>

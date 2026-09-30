@@ -853,12 +853,18 @@ class DashboardService
         $fields = array_values($form->fields);
         $questions = [];
         $labels = [];
+        $nameFields = [];
         foreach ($fields as $field) {
             if (!$loops->isLoopField($form, $field)) {
                 continue;
             }
             foreach ($loops->columnPaths($fields, $field) as $column) {
                 $labels[(string)$column['code']] = (string)$column['label'];
+            }
+            $group = $loops->groupForField($fields, $field);
+            $name = $group ? $loops->rosterNameField($group, $fields) : null;
+            if ($name && (int)$name->id === (int)$field->id) {
+                $nameFields[(int)$field->id] = true;
             }
             $questions[(int)$field->id] = [
                 'label' => trim(strip_tags((string)$field->label)),
@@ -889,9 +895,6 @@ class DashboardService
             }
             $code = (string)$row['instance_key'];
             $id = (int)$row['field_id'];
-            if (!isset($labels[$code])) {
-                $labels[$code] = $code;
-            }
             $questions[$id]['counts']['*'] = ($questions[$id]['counts']['*'] ?? 0) + 1;
             $questions[$id]['counts'][$code] = ($questions[$id]['counts'][$code] ?? 0) + 1;
             $decoded = json_decode($value, true);
@@ -900,6 +903,12 @@ class DashboardService
                 : $value;
             if (strlen($display) > 80) {
                 $display = substr($display, 0, 77) . '...';
+            }
+            if (!isset($labels[$code])) {
+                $labels[$code] = $code;
+            }
+            if (isset($nameFields[$id]) && $display !== '') {
+                $labels[$code] = $display;
             }
             $questions[$id]['values']['*'][$display] = ($questions[$id]['values']['*'][$display] ?? 0) + 1;
             $questions[$id]['values'][$code][$display] = ($questions[$id]['values'][$code][$display] ?? 0) + 1;

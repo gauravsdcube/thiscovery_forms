@@ -538,6 +538,8 @@ trait FillResumeTrait
                 'success' => true,
                 'resume_code' => (string)$answer->resume_code,
                 'quota_message' => (string)$submit->quotaMessage,
+                'roster_changed' => (bool)$submit->rosterChanged,
+                'roster_key' => (string)$submit->rosterKey,
             ];
         }
 

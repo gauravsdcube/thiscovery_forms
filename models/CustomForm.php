@@ -2306,12 +2306,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
                         $items[] = ['code' => $code, 'label' => $parts[1] ?? $code];
                     }
                     $source = (string)($row['loop_source'] ?? 'fixed');
-                    if (!in_array($source, ['fixed', 'choices', 'number'], true)) {
+                    if (!in_array($source, ['fixed', 'choices', 'number', 'roster'], true)) {
                         $source = 'fixed';
                     }
                     $options['loop'] = [
                         'source' => $source,
                         'field_key' => trim((string)($row['loop_field_key'] ?? '')),
+                        'label_field' => trim((string)($row['loop_label_field'] ?? '')),
                         'max' => max(0, (int)($row['loop_max'] ?? 0)),
                         'min' => max(0, (int)($row['loop_min'] ?? 0)),
                         'items' => $items,
