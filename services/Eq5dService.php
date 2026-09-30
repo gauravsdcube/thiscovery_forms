@@ -112,17 +112,21 @@ class Eq5dService
         if ($value === null || $value === '') {
             return self::MISSING_DIMENSION;
         }
-        $options = $field->getOptions();
-        $text = is_array($value) ? (string)reset($value) : (string)$value;
-        foreach ($options as $i => $option) {
-            if ((string)$option === $text || (string)$i === $text) {
-                return min(5, $i + 1);
+        $text = trim(is_array($value) ? (string)reset($value) : (string)$value);
+        if ($text === '') {
+            return self::MISSING_DIMENSION;
+        }
+        $code = $text;
+        foreach ($field->getChoicePairs() as $pair) {
+            if ($pair['code'] === $text || $pair['label'] === $text) {
+                $code = (string)$pair['code'];
+                break;
             }
         }
-        if (ctype_digit($text)) {
-            $n = (int)$text;
-            return ($n >= 1 && $n <= 5) ? $n : self::MISSING_DIMENSION;
+        if (!ctype_digit($code)) {
+            return self::MISSING_DIMENSION;
         }
-        return self::MISSING_DIMENSION;
+        $level = (int)$code;
+        return ($level >= 1 && $level <= 5) ? $level : self::MISSING_DIMENSION;
     }
 }

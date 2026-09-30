@@ -279,6 +279,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $row.children('[data-cf-group-shell]').toggleClass('d-none', type !== 'question_group');
             $own.find('[data-cf-options-panel]').toggleClass('d-none', !needsOptions);
             $own.find('[data-cf-number-panel]').toggleClass('d-none', type !== 'number');
+            $own.find('[data-cf-formula-panel]').toggleClass('d-none', type !== 'calculated');
             $own.find('[data-cf-rating-panel]').toggleClass('d-none', !isRating);
             $own.find('[data-cf-page-panel]').toggleClass('d-none', !isPage);
             $own.find('[data-cf-rich-panel]').toggleClass('d-none', !isRich);
@@ -3908,7 +3909,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     if (rule && (rule.all || rule.any || rule.compound)) {
                         return true;
                     }
-                    return String((rule && rule.fieldKey) || '') !== '';
+                    return String((rule && rule.fieldKey) || '') !== '' || !!(rule && (rule.op || rule.when));
                 });
             }
             return logic;
@@ -3948,7 +3949,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     return ruleMatches(sub, values);
                 });
             }
-            return branchMatches(rule, values);
+            var formula = (typeof globalThis !== 'undefined' ? globalThis : window).thiscoveryFormula;
+            return formula && formula.ruleTruth ? formula.ruleTruth(rule, values) : false;
         };
 
         var isLogicVisible = function (logic, values) {
@@ -3964,162 +3966,6 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return met;
             }
             return true;
-        };
-
-        var normalizeLogicValue = function (value) {
-            value = String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
-            if (value.length >= 2) {
-                var q = value.charAt(0);
-                if ((q === '"' || q === "'") && value.charAt(value.length - 1) === q) {
-                    return value.slice(1, -1).replace(/^\s+|\s+$/g, '');
-                }
-            }
-            return value;
-        };
-
-        var branchMatches = function (branch, values) {
-            var fieldKey = String(branch.fieldKey || '');
-            var op = String(branch.operator || 'equals');
-            var expected = normalizeLogicValue(branch.value || '');
-            var raw = values[fieldKey];
-            if (raw === undefined && /^id\d+$/.test(fieldKey)) {
-                raw = values[fieldKey.slice(2)];
-            }
-            if (raw === undefined) {
-                return false;
-            }
-            var aggregate = String(branch.aggregate || '');
-            if (aggregate && raw && typeof raw === 'object' && !Array.isArray(raw)) {
-                var cells = Object.keys(raw).map(function (k) { return raw[k]; });
-                var one = function (cell) {
-                    var probe = {};
-                    probe[fieldKey] = cell;
-                    return branchMatches({ fieldKey: fieldKey, operator: op, value: expected }, probe);
-                };
-                if (aggregate === 'any') {
-                    return cells.some(one);
-                }
-                if (aggregate === 'all') {
-                    return cells.length > 0 && cells.every(one);
-                }
-                if (aggregate === 'sum') {
-                    var sum = 0;
-                    cells.forEach(function (cell) {
-                        var n = parseFloat(cell);
-                        if (!isNaN(n)) {
-                            sum += n;
-                        }
-                    });
-                    var sumProbe = {};
-                    sumProbe[fieldKey] = String(sum);
-                    return branchMatches({ fieldKey: fieldKey, operator: op, value: expected }, sumProbe);
-                }
-                if (aggregate === 'count') {
-                    var answered = cells.filter(function (cell) {
-                        return cell !== null && cell !== undefined && String(cell) !== '' && !(Array.isArray(cell) && cell.length === 0);
-                    }).length;
-                    var countProbe = {};
-                    countProbe[fieldKey] = String(answered);
-                    return branchMatches({ fieldKey: fieldKey, operator: op, value: expected }, countProbe);
-                }
-                return false;
-            }
-            var pairs = choicePairsFor(fieldKey);
-            var matchOpt = function (v, expectedVal) {
-                return valueMatchesOption(v, expectedVal, pairs);
-            };
-            var list = [];
-            var flatten = function (node) {
-                if (Array.isArray(node)) {
-                    node.forEach(flatten);
-                    return;
-                }
-                if (node && typeof node === 'object') {
-                    Object.keys(node).forEach(function (k) { flatten(node[k]); });
-                    return;
-                }
-                if (node !== undefined && node !== null && String(node) !== '') {
-                    list.push(String(node));
-                }
-            };
-            if (raw && typeof raw === 'object') {
-                flatten(raw);
-                if (op === 'checked') {
-                    return expected ? list.some(function (v) { return matchOpt(v, expected); }) : list.length > 0;
-                }
-                if (op === 'equals') {
-                    return list.some(function (v) { return matchOpt(v, expected); });
-                }
-                if (op === 'not_equals') {
-                    return !list.some(function (v) { return matchOpt(v, expected); });
-                }
-                if (op === 'contains') {
-                    return list.some(function (v) { return String(v).indexOf(expected) !== -1; });
-                }
-                if (op === 'between') {
-                    return list.some(function (v) { return numberBetween(v, expected); });
-                }
-                return false;
-            }
-            var val = String(raw);
-            if (op === 'equals') {
-                return matchOpt(val, expected);
-            }
-            if (op === 'not_equals') {
-                return !matchOpt(val, expected);
-            }
-            if (op === 'contains') {
-                return expected !== '' && val.toLowerCase().indexOf(expected.toLowerCase()) !== -1;
-            }
-            if (op === 'checked') {
-                return val !== '' && val !== '0';
-            }
-            if (op === 'gt' || op === 'gte' || op === 'lt' || op === 'lte') {
-                var left = parseFloat(val);
-                var right = parseFloat(expected);
-                if (!isFinite(left) || !isFinite(right)) {
-                    return false;
-                }
-                if (op === 'gt') {
-                    return left > right;
-                }
-                if (op === 'gte') {
-                    return left >= right;
-                }
-                if (op === 'lt') {
-                    return left < right;
-                }
-                return left <= right;
-            }
-            if (op === 'between') {
-                return numberBetween(val, expected);
-            }
-            return false;
-        };
-
-        var numberBetween = function (value, expected) {
-            var text = String(value == null ? '' : value).replace(/^\s+|\s+$/g, '');
-            if (!/^-?\d+(\.\d+)?$/.test(text)) {
-                return false;
-            }
-            var parts = String(expected || '').split(',');
-            if (parts.length < 2) {
-                return false;
-            }
-            var lowText = parts[0].replace(/^\s+|\s+$/g, '');
-            var highText = parts[1].replace(/^\s+|\s+$/g, '');
-            if (!/^-?\d+(\.\d+)?$/.test(lowText) || !/^-?\d+(\.\d+)?$/.test(highText)) {
-                return false;
-            }
-            var low = parseFloat(lowText);
-            var high = parseFloat(highText);
-            if (low > high) {
-                var swap = low;
-                low = high;
-                high = swap;
-            }
-            var number = parseFloat(text);
-            return number >= low && number <= high;
         };
 
         var pageHistory = [0];
@@ -4233,7 +4079,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             var branches = page.branches || [];
             for (var b = 0; b < branches.length; b++) {
-                if (branchMatches(branches[b], values)) {
+                if (ruleMatches(branches[b], values)) {
                     var gotoPage = String(branches[b].gotoPageKey || '');
                     if (gotoPage && pageKeyIndex[gotoPage] !== undefined) {
                         return { index: parseInt(pageKeyIndex[gotoPage], 10), explicit: true, end: false };

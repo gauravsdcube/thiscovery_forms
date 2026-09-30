@@ -383,6 +383,11 @@ class SubmitForm extends Model
 
     public function validateFields(): void
     {
+        \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
+            $this->values,
+            array_values($this->form->fields),
+            \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::today($this->form)
+        );
         (new \humhub\modules\thiscoveryForms\services\ConsentService())->validateSubmit($this);
         foreach ($this->form->fields as $field) {
             if ($this->consentRefusedSort !== null && (int)$field->sort_order > (int)$this->consentRefusedSort) {
@@ -751,6 +756,11 @@ class SubmitForm extends Model
             $answer->updated_by = null;
         }
 
+        $answerSchema = $answer::getTableSchema();
+        if ($answerSchema && isset($answerSchema->columns['formula_today']) && !$answer->formula_today) {
+            $answer->formula_today = \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::today($this->form);
+        }
+
         if (!$isTest && !$answer->edition_id) {
             if (is_int($pinnedEdition) && $pinnedEdition > 0) {
                 $answer->edition_id = $pinnedEdition;
@@ -814,6 +824,11 @@ class SubmitForm extends Model
             $liveFieldIds = array_flip($liveQuery->column());
             $editionFill = (int)$answer->edition_id > 0;
 
+            \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
+                $this->values,
+                array_values($this->form->fields),
+                \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::today($this->form)
+            );
             foreach ($this->form->fields as $field) {
                 if (!$field->collectsAnswer()) {
                     continue;

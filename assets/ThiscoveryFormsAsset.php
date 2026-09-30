@@ -9,6 +9,8 @@ class ThiscoveryFormsAsset extends AssetBundle
     public $sourcePath = '@thiscovery-forms/resources';
 
     public $js = [
+        'js/thiscoveryForms.formula.js',
+        'js/thiscoveryForms.formula.rules.js',
         'js/humhub.thiscoveryForms.js',
     ];
 

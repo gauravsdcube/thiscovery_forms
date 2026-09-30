@@ -232,6 +232,7 @@ class FormActionService
 
         $gotoPageKey = '';
         $gotoEnd = false;
+        $written = [];
         $emails = new EmailTemplateService();
         $pipe = new VariableSubstitutor();
 
@@ -257,7 +258,8 @@ class FormActionService
 
             if ($fn === self::FN_SET_VARIABLE || $fn === self::FN_CUSTOM) {
                 if ($name !== '') {
-                    $vars[$name] = $resolved;
+                    $vars[$name] = $this->evaluateStoredValue($form, $values, $resolved);
+                    $written[$name] = $vars[$name];
                 }
                 continue;
             }
@@ -271,10 +273,7 @@ class FormActionService
         }
 
         if ($answer) {
-            $answer->setVars($vars);
-            if (!$answer->isNewRecord) {
-                $answer->save(false, ['vars_json', 'updated_at']);
-            }
+            $this->storeActionVars($answer, $vars, $written ?? []);
         }
 
         return [
@@ -363,5 +362,59 @@ class FormActionService
                 'actor_key' => self::actorKey($answer, $member),
             ]
         );
+    }
+
+    /**
+     * A formula is calculated. Other text is stored as written.
+     *
+     * @param array<int|string,mixed> $values
+     */
+    private function evaluateStoredValue(CustomForm $form, array $values, string $resolved): string
+    {
+        try {
+            $tree = (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($resolved);
+            $context = \humhub\modules\thiscoveryForms\services\formula\Context::fromValues($values, array_values($form->fields));
+            $value = (new \humhub\modules\thiscoveryForms\services\formula\Evaluator($context))->evaluate($tree);
+            if (!$value->isEmpty()) {
+                return (string)$value->data;
+            }
+        } catch (\Throwable $e) {
+            return $resolved;
+        }
+        return $resolved;
+    }
+
+    /**
+     * @param array<string,string> $vars
+     * @param array<string,string> $written
+     */
+    private function storeActionVars(FormAnswer $answer, array $vars, array $written): void
+    {
+        $schema = $answer::getTableSchema();
+        $plain = $vars;
+        $formula = [];
+        if ($schema && isset($schema->columns['variables_json'])) {
+            foreach ($written as $name => $value) {
+                unset($plain[$name]);
+                $formula[$name] = ['t' => 'text', 'v' => (string)$value];
+            }
+        }
+        $columns = ['updated_at'];
+        $answer->setVars($plain);
+        $columns[] = 'vars_json';
+        if ($formula) {
+            $existing = json_decode((string)$answer->variables_json, true);
+            if (!is_array($existing)) {
+                $existing = [];
+            }
+            foreach ($formula as $name => $leaf) {
+                $existing[$name] = $leaf;
+            }
+            $answer->variables_json = json_encode($existing, JSON_UNESCAPED_UNICODE);
+            $columns[] = 'variables_json';
+        }
+        if (!$answer->isNewRecord) {
+            $answer->save(false, $columns);
+        }
     }
 }

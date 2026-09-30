@@ -2424,6 +2424,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 }
             } elseif ($type === FormField::TYPE_NUMBER) {
                 $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
+            } elseif ($type === FormField::TYPE_CALCULATED) {
+                $field->setFormulaConfig(
+                    (string)($row['formula'] ?? ''),
+                    (string)($row['formula_result'] ?? 'number'),
+                    (string)($row['formula_display'] ?? 'readonly'),
+                    $row['formula_places'] ?? 6
+                );
             } else {
                 $prefill = array_key_exists('prefill_profile', $row)
                     ? trim((string)$row['prefill_profile'])

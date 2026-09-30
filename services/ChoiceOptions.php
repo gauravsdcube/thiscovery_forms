@@ -83,7 +83,11 @@ class ChoiceOptions
                 if ($code === '') {
                     continue;
                 }
-                $out[] = ['code' => $code, 'label' => $label !== '' ? $label : $code];
+                $pair = ['code' => $code, 'label' => $label !== '' ? $label : $code];
+                if (isset($item['score']) && $item['score'] !== '' && $item['score'] !== null) {
+                    $pair['score'] = (string)$item['score'];
+                }
+                $out[] = $pair;
                 continue;
             }
             $pair = self::parseLine(trim((string)$item));

@@ -265,6 +265,16 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             }
             ?>
             <?= Html::input('number', $inputName, is_array($value) ? '' : $value, $numberAttrs) ?>
+        <?php elseif ($field->type === FormField::TYPE_CALCULATED): ?>
+            <?php
+            $formulaCfg = $field->getFormulaConfig();
+            $calcValues = $allValues;
+            \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill($calcValues, $allFields);
+            $calcShown = $calcValues[(int)$field->id] ?? '';
+            ?>
+            <?php if ($formulaCfg['display'] !== 'hidden'): ?>
+                <output class="form-control-plaintext" id="<?= Html::encode($inputId) ?>"><?= Html::encode((string)$calcShown) ?></output>
+            <?php endif; ?>
         <?php elseif ($field->type === FormField::TYPE_EMAIL): ?>
             <?= Html::input('email', $inputName, is_array($value) ? '' : $value, [
                 'class' => 'form-control cf-input',

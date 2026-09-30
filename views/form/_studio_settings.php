@@ -637,7 +637,7 @@ $activeSection = $activeSection ?? 'basics';
                 <div class="cf-field mb-3">
                     <span class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Custom functions and variables') ?></span>
                     <?= $this->render('_setting_guide', [
-                        'html' => '<p>' . Html::encode(Yii::t('ThiscoveryFormsModule.base', 'A custom function is a named formula you write once and reuse. It is not code — it is a text template that can include answers and other placeholders.')) . '</p>'
+                        'html' => '<p>' . Html::encode(Yii::t('ThiscoveryFormsModule.base', 'A named formula is written once and reused as fn:name. It uses the same formula language as a calculated question.')) . '</p>'
                             . '<ol class="cf-fn-guide">'
                             . '<li>' . Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Give it a short name using letters, numbers, or underscore only — for example riskBand.')) . '</li>'
                             . '<li>' . Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Put the formula in Value. Use {{answer:Question label}} for an answer, {{user.displayname}} for the person, or {{var:otherName}} for another variable already set.')) . '</li>'

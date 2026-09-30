@@ -2,6 +2,18 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.30.0
+
+### Formulas
+
+Show, hide, skip, and go-to rules use one formula. The same decimal arithmetic runs in PHP and in the browser. A calculated question stores the server result. A value typed into that question is ignored.
+
+- Numbers are calculated at 12 decimal places and stored at the question’s decimal places, at most 6. Halves round away from zero. `0.1 + 0.2` is `0.3`.
+- A sum or mean of values that are all empty stays empty. A comparison with an empty answer is false, except “is not equal”.
+- Choice rules compare option codes. `today()` is the calendar date in the form’s time zone, Europe/London unless the form sets another zone, and it stays on the response as `formula_today`.
+- A calculated question that is only hidden by its display setting is still stored. A show/hide rule that hides it clears the stored value.
+- EQ-5D dimension levels come from option codes 1 to 5. Any other code, including 9, is missing. There is no EQ-5D index.
+
 ## 1.29.0
 
 ### Loops

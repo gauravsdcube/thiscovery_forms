@@ -65,6 +65,7 @@ class FormField extends ActiveRecord
     public const TYPE_MAP = 'map';
     public const TYPE_RESPONDENT_META = 'respondent_meta';
     public const TYPE_PANEL_ATTR = 'panel_attr';
+    public const TYPE_CALCULATED = 'calculated';
 
     public const CARRY_SELECTED = 'selected';
     public const CARRY_UNSELECTED = 'unselected';
@@ -189,6 +190,7 @@ class FormField extends ActiveRecord
             self::TYPE_MAP => Yii::t('ThiscoveryFormsModule.base', 'Map'),
             self::TYPE_RESPONDENT_META => Yii::t('ThiscoveryFormsModule.base', 'Respondent metadata'),
             self::TYPE_PANEL_ATTR => Yii::t('ThiscoveryFormsModule.base', 'Panel member field'),
+            self::TYPE_CALCULATED => Yii::t('ThiscoveryFormsModule.base', 'Calculated'),
         ];
     }
 
@@ -1072,6 +1074,41 @@ class FormField extends ActiveRecord
             }
             $decoded[$key] = 0 + $raw;
         }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    /**
+     * @return array{formula:string,result:string,display:string,places:int}
+     */
+    public function getFormulaConfig(): array
+    {
+        $decoded = $this->decodedOptions();
+        if (!is_array($decoded) || array_is_list($decoded)) {
+            $decoded = [];
+        }
+        $result = (string)($decoded['result'] ?? 'number');
+        if (!in_array($result, ['number', 'text', 'boolean', 'date'], true)) {
+            $result = 'number';
+        }
+        $places = (int)($decoded['places'] ?? 6);
+        return [
+            'formula' => trim((string)($decoded['formula'] ?? '')),
+            'result' => $result,
+            'display' => (($decoded['display'] ?? '') === 'hidden') ? 'hidden' : 'readonly',
+            'places' => max(0, min(6, $places)),
+        ];
+    }
+
+    public function setFormulaConfig(string $formula, string $result = 'number', string $display = 'readonly', $places = 6): void
+    {
+        $decoded = $this->decodedOptions();
+        if (!is_array($decoded) || array_is_list($decoded)) {
+            $decoded = [];
+        }
+        $decoded['formula'] = mb_substr(trim($formula), 0, 4000);
+        $decoded['result'] = in_array($result, ['number', 'text', 'boolean', 'date'], true) ? $result : 'number';
+        $decoded['display'] = $display === 'hidden' ? 'hidden' : 'readonly';
+        $decoded['places'] = max(0, min(6, (int)$places));
         $this->writeDecodedOptions($decoded);
     }
 
@@ -2128,13 +2165,6 @@ class FormField extends ActiveRecord
         if (is_array($decoded) && !empty($decoded['rules'])) {
             return LogicEngine::normalize($decoded);
         }
-        if ($this->condition_field_id) {
-            return LogicEngine::fromLegacy(
-                (int)$this->condition_field_id,
-                $this->condition_operator,
-                $this->condition_value
-            );
-        }
         return LogicEngine::defaultLogic();
     }
 
@@ -2249,6 +2279,10 @@ class FormField extends ActiveRecord
             'min_select_all' => $this->isMinSelectAll() ? '1' : '',
             'exclusive_option' => implode('|', $this->getExclusiveOptions()),
             'other_specify' => $this->allowsOtherSpecify() ? '1' : '0',
+            'formula' => $this->getFormulaConfig()['formula'],
+            'formula_result' => $this->getFormulaConfig()['result'],
+            'formula_display' => $this->getFormulaConfig()['display'],
+            'formula_places' => $this->getFormulaConfig()['places'],
             'number_min' => $this->getNumberMin(),
             'number_max' => $this->getNumberMax(),
             'prefill_profile' => $this->getPrefillProfileAttribute() ?: '',
@@ -2370,6 +2404,10 @@ class FormField extends ActiveRecord
             'other_specify' => array_key_exists('other_specify', $payload) || array_key_exists('otherSpecify', $payload)
                 ? $payload['other_specify'] ?? $payload['otherSpecify']
                 : '1',
+            'formula' => (string)($payload['formula'] ?? ''),
+            'formula_result' => (string)($payload['formula_result'] ?? 'number'),
+            'formula_display' => (string)($payload['formula_display'] ?? 'readonly'),
+            'formula_places' => $payload['formula_places'] ?? 6,
             'number_min' => $payload['number_min'] ?? $payload['min'] ?? '',
             'number_max' => $payload['number_max'] ?? $payload['max'] ?? '',
             'prefill_profile' => (string)($payload['prefill_profile'] ?? $payload['prefillProfile'] ?? ''),
@@ -2543,6 +2581,13 @@ class FormField extends ActiveRecord
             $field->setCarryForward((string)($row['carry_from'] ?? ''), (string)($row['carry_mode'] ?? self::CARRY_SELECTED));
         } elseif ($field->type === self::TYPE_NUMBER) {
             $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
+        } elseif ($field->type === self::TYPE_CALCULATED) {
+            $field->setFormulaConfig(
+                (string)($row['formula'] ?? ''),
+                (string)($row['formula_result'] ?? 'number'),
+                (string)($row['formula_display'] ?? 'readonly'),
+                $row['formula_places'] ?? 6
+            );
         }
         if ($field->type === self::TYPE_QUESTION_GROUP && (!empty($row['randomise_enabled']) || !empty($row['loop_enabled']))) {
             $options = [];

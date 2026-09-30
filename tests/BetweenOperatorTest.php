@@ -9,11 +9,13 @@ use humhub\modules\thiscoveryForms\services\LogicEngine;
 
 $failures = [];
 $engine = new LogicEngine();
-$compare = new ReflectionMethod($engine, 'compare');
-$compare->setAccessible(true);
 
-$check = static function (string $id, $raw, string $expected, bool $want) use ($compare, $engine, &$failures): void {
-    $got = (bool)$compare->invoke($engine, $raw, FormField::OP_BETWEEN, $expected);
+$check = static function (string $id, $raw, string $expected, bool $want) use ($engine, &$failures): void {
+    $got = $engine->evaluateRule([
+        'fieldKey' => 'q',
+        'operator' => FormField::OP_BETWEEN,
+        'value' => $expected,
+    ], ['q' => $raw]);
     if ($got !== $want) {
         $failures[] = $id . ' got ' . ($got ? 'true' : 'false');
     }

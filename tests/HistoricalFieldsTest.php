@@ -25,7 +25,7 @@ foreach (Eq5dService::dimensionRoles() as $i => $role) {
     $field = ReviewLib::field($form, FormField::TYPE_RADIO, 'D' . ($i + 1), [
         'variable' => 'r12_d' . ($i + 1),
         'sort_order' => $i,
-        'options' => ['Level 1', 'Level 2'],
+        'options' => ['1 | Level 1', '2 | Level 2'],
     ]);
     $field->setInstrumentRole($role);
     $field->save(false);
@@ -43,7 +43,7 @@ $form = ReviewLib::reload($form);
 
 $values = [];
 foreach ($ids as $id) {
-    $values[$id] = 'Level 1';
+    $values[$id] = '1';
 }
 $profile = (new Eq5dService())->score($form, $values)['profile'];
 if ($profile !== '11111') {
@@ -60,7 +60,7 @@ foreach (array_merge($ids, [(int)$live->id]) as $id) {
     Yii::$app->db->createCommand()->insert('custom_form_answer_field', [
         'answer_id' => (int)$answer->id,
         'field_id' => $id,
-        'value' => 'Level 1',
+        'value' => $id === (int)$live->id ? 'Level 1' : '1',
     ])->execute();
 }
 $stats = (new DashboardService())->getFormDashboard(ReviewLib::reload($form));

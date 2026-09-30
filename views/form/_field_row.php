@@ -351,6 +351,38 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
         </div>
         <?php endif; ?>
 
+        <?php $formulaCfg = $field->getFormulaConfig(); ?>
+        <div class="row g-3 mt-1<?= $type === FormField::TYPE_CALCULATED ? '' : ' d-none' ?>" data-cf-formula-panel>
+            <div class="col-12">
+                <label class="form-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Formula') ?></label>
+                <?= Html::textarea($namePrefix . '[formula]', $formulaCfg['formula'], [
+                    'class' => 'form-control',
+                    'rows' => 2,
+                    'maxlength' => 4000,
+                ]) ?>
+            </div>
+            <div class="col-md-4">
+                <?= Html::dropDownList($namePrefix . '[formula_result]', $formulaCfg['result'], [
+                    'number' => Yii::t('ThiscoveryFormsModule.base', 'Number'),
+                    'text' => Yii::t('ThiscoveryFormsModule.base', 'Text'),
+                    'boolean' => Yii::t('ThiscoveryFormsModule.base', 'Yes or no'),
+                    'date' => Yii::t('ThiscoveryFormsModule.base', 'Date'),
+                ], ['class' => 'form-select']) ?>
+            </div>
+            <div class="col-md-4">
+                <?= Html::dropDownList($namePrefix . '[formula_display]', $formulaCfg['display'], [
+                    'readonly' => Yii::t('ThiscoveryFormsModule.base', 'Show the result'),
+                    'hidden' => Yii::t('ThiscoveryFormsModule.base', 'Hide the result'),
+                ], ['class' => 'form-select']) ?>
+            </div>
+            <div class="col-md-4">
+                <?= Html::input('number', $namePrefix . '[formula_places]', (string)$formulaCfg['places'], [
+                    'class' => 'form-control',
+                    'min' => 0,
+                    'max' => 6,
+                ]) ?>
+            </div>
+        </div>
         <div class="row g-3 mt-1<?= $type === FormField::TYPE_NUMBER ? '' : ' d-none' ?>" data-cf-number-panel>
             <div class="col-md-4">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Minimum') ?>
