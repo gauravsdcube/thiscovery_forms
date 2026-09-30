@@ -342,12 +342,7 @@ class Module extends ContentContainerModule
 
     public static function routingAligned(): bool
     {
-        $module = Yii::$app->getModule('thiscovery-forms');
-        if (!$module instanceof self) {
-            return true;
-        }
-        $value = (string)$module->settings->get(self::SETTING_ROUTING_ALIGNMENT, '1');
-        return !in_array($value, ['0', 'false', 'off'], true);
+        return true;
     }
 
     public static function fromBriefMaxUploadBytes(): int

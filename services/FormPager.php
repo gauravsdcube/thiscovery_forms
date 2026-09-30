@@ -115,8 +115,7 @@ class FormPager
         $pageKeyIndex = $built['pageKeyIndex'];
         $visited = [];
         $idx = 0;
-        $aligned = \humhub\modules\thiscoveryForms\Module::routingAligned();
-        $limit = $aligned ? count($pages) + 1 : 80;
+        $limit = count($pages) + 1;
         $guard = 0;
         while (isset($pages[$idx]) && $guard++ < $limit) {
             if (isset($visited[$idx])) {
@@ -125,7 +124,7 @@ class FormPager
             }
             $visited[$idx] = true;
             $next = $this->resolveNextPage($pages, $pageKeyIndex, $idx, $values, $fields);
-            if ($aligned && $next !== null && isset($visited[(int)$next])) {
+            if ($next !== null && isset($visited[(int)$next])) {
                 Yii::warning('Thiscovery Forms page cycle detected.', 'thiscovery-forms');
                 $next = $this->skipForward($pages, $pageKeyIndex, $idx + 1, $values, new LogicEngine(), $fields);
                 if ($next === null || isset($visited[(int)$next])) {
@@ -177,10 +176,6 @@ class FormPager
     {
         if (!isset($pages[$fromIndex])) {
             return null;
-        }
-
-        if (!\humhub\modules\thiscoveryForms\Module::routingAligned()) {
-            return $this->legacyNextPage($pages, $pageKeyIndex, $fromIndex, $values, $allFields);
         }
 
         if (!$allFields) {
@@ -362,50 +357,6 @@ class FormPager
                 return null;
             }
             $idx = (int)$target['index'];
-        }
-        return null;
-    }
-
-    /**
-     * 1.28.2 page walk: skipped pages are stepped over, and the walk stops at 80 steps.
-     */
-    private function legacyNextPage(array $pages, array $pageKeyIndex, int $fromIndex, array $values, array $allFields): ?int
-    {
-        if (!$allFields) {
-            $allFields = $this->fieldsFromPages($pages);
-        }
-        $engine = new LogicEngine();
-        $nav = $engine->pageNavigation(self::navigationFields($pages[$fromIndex]), $values, $allFields);
-        if ($nav) {
-            if ($nav['action'] === LogicEngine::ACTION_GOTO_END) {
-                return null;
-            }
-            if ($nav['action'] === LogicEngine::ACTION_GOTO_PAGE) {
-                $goto = (string)$nav['gotoPageKey'];
-                if ($goto !== '' && isset($pageKeyIndex[$goto])) {
-                    return (int)$pageKeyIndex[$goto];
-                }
-            }
-        }
-        $break = $pages[$fromIndex]['break'] ?? null;
-        if ($break instanceof FormField) {
-            $cfg = $break->getPageBreakConfig();
-            foreach ($cfg['branches'] as $branch) {
-                if (FormField::evaluateBranch($branch, $values, [], $allFields)) {
-                    $goto = (string)($branch['gotoPageKey'] ?? '');
-                    if ($goto !== '' && isset($pageKeyIndex[$goto])) {
-                        return (int)$pageKeyIndex[$goto];
-                    }
-                }
-            }
-        }
-        $idx = $fromIndex + 1;
-        $guard = 0;
-        while (isset($pages[$idx]) && $guard++ < 80) {
-            if (!$engine->shouldSkipPage($pages[$idx]['items'] ?? [], $values, $allFields)) {
-                return $idx;
-            }
-            $idx++;
         }
         return null;
     }

@@ -266,6 +266,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
         'class' => 'cf-studio__form',
         'id' => 'cf-studio-form',
         'enctype' => 'multipart/form-data',
+        'data-cf-formula-preview' => $contentContainer->createUrl('/thiscovery-forms/formula/preview'),
     ]) ?>
     <?= Html::hiddenInput('studio_tab', $openTab, ['data-cf-studio-tab' => true]) ?>
     <?= Html::hiddenInput('studio_section', $openSection, ['data-cf-studio-section-input' => true]) ?>

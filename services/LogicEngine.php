@@ -48,6 +48,7 @@ class LogicEngine
             'combinator' => 'and',
             'gotoPageKey' => '',
             'rules' => [],
+            'when' => null,
         ];
     }
 
@@ -73,11 +74,29 @@ class LogicEngine
             }
         }
 
+        $when = isset($logic['when']) && is_array($logic['when']) ? $logic['when'] : null;
+        if ($when === null && $rules) {
+            $parts = [];
+            foreach ($rules as $rule) {
+                $tree = \humhub\modules\thiscoveryForms\services\formula\RuleBuilder::fromSimple($rule);
+                if ($tree) {
+                    $parts[] = $tree;
+                }
+            }
+            if (count($parts) === 1) {
+                $when = $parts[0];
+            } elseif ($parts) {
+                $when = ['op' => $combinator === 'or' ? 'or' : 'and', 'args' => $parts];
+            }
+        }
+
         return [
+            'v' => 1,
             'action' => $action,
             'combinator' => $combinator,
-            'gotoPageKey' => trim((string)($logic['gotoPageKey'] ?? '')),
+            'gotoPageKey' => trim((string)($logic['gotoPageKey'] ?? $logic['goto'] ?? '')),
             'rules' => $rules,
+            'when' => $when,
         ];
     }
 
@@ -208,6 +227,9 @@ class LogicEngine
     public function rulesMet(array $logic, array $values, array $fields = []): bool
     {
         $logic = self::normalize($logic);
+        if (is_array($logic['when'] ?? null)) {
+            return $this->evaluateRule(['when' => $logic['when']], $values, $fields);
+        }
         if (!$logic['rules']) {
             return true;
         }
@@ -224,7 +246,7 @@ class LogicEngine
     public function isVisible(FormField $field, array $values, array $allFields = []): bool
     {
         $logic = $field->getLogic();
-        if (empty($logic['rules'])) {
+        if (empty($logic['rules']) && empty($logic['when'])) {
             return true;
         }
         $met = $this->rulesMet($logic, $values, $allFields);

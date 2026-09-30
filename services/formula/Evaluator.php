@@ -11,6 +11,9 @@ final class Evaluator
     {
     }
 
+    /** @var list<string> */
+    private array $fnStack = [];
+
     /** @param array<string,mixed> $tree */
     public function evaluate(array $tree): Value
     {
@@ -18,6 +21,17 @@ final class Evaluator
         $args = is_array($tree['args'] ?? null) ? $tree['args'] : [];
         if ($op === 'lit') {
             return $this->literal($tree);
+        }
+        if ($op === 'fn') {
+            $name = (string)($tree['name'] ?? '');
+            $body = $this->context->named[$name] ?? null;
+            if (!is_array($body) || in_array($name, $this->fnStack, true)) {
+                return Value::empty();
+            }
+            $this->fnStack[] = $name;
+            $value = $this->evaluate($body);
+            array_pop($this->fnStack);
+            return $value;
         }
         if ($op === 'ref') {
             return $this->reference($tree);

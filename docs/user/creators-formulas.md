@@ -13,3 +13,7 @@ Choice rules use the option code, not the label. `today()` is the date in the fo
 A calculated question with “Hide the result” is still stored. A show/hide rule that hides it removes the stored value.
 
 Loop checks use `any_eq([symptom[*]], "wheeze")`, `all_eq`, `count_answered`, and `sum`. One row is `[symptom["instance-key"]]`.
+
+Named formulas are written `fn:name`. The starter formulas are body mass index, age, a PHQ-9 total and band, a GAD-7 total and band, and an EQ-5D profile string plus a level sum. There is no EQ-5D index.
+
+In the studio, Test formula asks the server to calculate the expression and shows which calendar date `today()` used.

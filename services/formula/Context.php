@@ -29,6 +29,8 @@ final class Context
     public array $scores = [];
     /** @var array<string,array<string,string>> */
     public array $labels = [];
+    /** @var array<string,array<string,mixed>> */
+    public array $named = [];
 
     public function __construct()
     {

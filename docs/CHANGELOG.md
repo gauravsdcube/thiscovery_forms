@@ -13,6 +13,8 @@ Show, hide, skip, and go-to rules use one formula. The same decimal arithmetic r
 - Choice rules compare option codes. `today()` is the calendar date in the form’s time zone, Europe/London unless the form sets another zone, and it stays on the response as `formula_today`.
 - A calculated question that is only hidden by its display setting is still stored. A show/hide rule that hides it clears the stored value.
 - EQ-5D dimension levels come from option codes 1 to 5. Any other code, including 9, is missing. There is no EQ-5D index.
+- Page routing no longer has a second, older walk.
+- Starter formulas cover body mass index, age, PHQ-9, GAD-7, and an EQ-5D profile. A named formula is written `fn:name`.
 
 ## 1.29.0
 

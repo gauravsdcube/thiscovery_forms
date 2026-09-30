@@ -359,7 +359,10 @@ $logicRules = $logic['rules'] ?: [['fieldKey' => '', 'operator' => FormField::OP
                     'class' => 'form-control',
                     'rows' => 2,
                     'maxlength' => 4000,
+                    'data-cf-formula-text' => true,
                 ]) ?>
+                <button type="button" class="btn btn-default btn-sm mt-2" data-cf-formula-test><?= Yii::t('ThiscoveryFormsModule.base', 'Test formula') ?></button>
+                <p class="form-text" data-cf-formula-result></p>
             </div>
             <div class="col-md-4">
                 <?= Html::dropDownList($namePrefix . '[formula_result]', $formulaCfg['result'], [

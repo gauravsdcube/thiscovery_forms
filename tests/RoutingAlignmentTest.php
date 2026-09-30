@@ -1,7 +1,6 @@
 <?php
 /**
- * NEW-8. routing_alignment off restores the 1.28.2 page walk.
- * On, the 1.28.3 route is unchanged.
+ * Page routing uses one walk. The old 80-step path is not available.
  */
 require __DIR__ . '/support/bootstrap.php';
 
@@ -73,20 +72,12 @@ try {
     }
 
     $module->settings->set(Module::SETTING_ROUTING_ALIGNMENT, '0');
-    if (Module::routingAligned()) {
-        $failures[] = 'flag did not turn off';
+    if (!Module::routingAligned()) {
+        $failures[] = 'the old page walk can still be turned on';
     }
     $off = $route($skipped, [1 => 'yes']);
-    if (!in_array(5, $off, true)) {
-        $failures[] = 'flag off dropped the page the old walk still visits ' . json_encode($off);
-    }
-    $offAction = $route($action, [1 => 'yes']);
-    if (!in_array(3, $offAction, true)) {
-        $failures[] = 'flag off still applied the field action ' . json_encode($offAction);
-    }
-    $offDangle = $route($dangling, [1 => 'yes']);
-    if (!in_array(3, $offDangle, true)) {
-        $failures[] = 'flag off unknown key ended the form ' . json_encode($offDangle);
+    if ($off !== $on) {
+        $failures[] = 'turning the old flag off changed the route ' . json_encode($off);
     }
 } finally {
     $module->settings->set(Module::SETTING_ROUTING_ALIGNMENT, $previous === '' ? '1' : $previous);

@@ -60,7 +60,7 @@
             if (key.indexOf('panel.') === 0 || key === 'arm' || key.indexOf('var:') === 0) return;
             fields[key] = leaf(values[key], fieldType(key));
         });
-        return { fields: fields, values: values || {} };
+        return { fields: fields, values: values || {}, today: (values && values.__today) || '2026-09-30' };
     }
     function lit(token) {
         if (token.lit === 'number') return num(token.v);
@@ -154,13 +154,134 @@
             });
             return anyNumber && total !== null ? num(total) : empty();
         }
-        if (node.op === 'round' && args[0].t === 'number') {
-            var places = args[1] && args[1].t === 'number' ? parseInt(args[1].v, 10) : 0;
-            var rounded = decimal.round(args[0].v, places);
-            return rounded === null ? empty() : num(rounded);
+        if (node.op === 'round' || node.op === 'floor' || node.op === 'ceil' || node.op === 'abs') {
+            if (!args[0] || args[0].t !== 'number') return empty();
+            if (node.op === 'abs') {
+                var abs = args[0].v.charAt(0) === '-' ? decimal.negate(args[0].v) : args[0].v;
+                return abs === null ? empty() : num(abs);
+            }
+            if (node.op === 'round') {
+                var places = args[1] && args[1].t === 'number' ? parseInt(args[1].v, 10) : 0;
+                var rounded = decimal.round(args[0].v, places);
+                return rounded === null ? empty() : num(rounded);
+            }
+            var whole = decimal.round(args[0].v, 0);
+            if (whole === null) return empty();
+            var order = decimal.cmp(args[0].v, whole);
+            if (node.op === 'floor' && order < 0) whole = decimal.sub(whole, '1');
+            if (node.op === 'ceil' && order > 0) whole = decimal.add(whole, '1');
+            return whole === null ? empty() : num(whole);
         }
-        if (node.op === 'if') return truth(args[0]) ? args[1] : args[2];
+        if (node.op === 'neg') {
+            if (!args[0] || args[0].t !== 'number') return empty();
+            var negated = decimal.negate(args[0].v);
+            return negated === null ? empty() : num(negated);
+        }
+        if (node.op === 'pow') {
+            if (!args[0] || args[0].t !== 'number' || !args[1] || args[1].t !== 'number' || args[1].v.indexOf('.') !== -1) return empty();
+            var times = parseInt(args[1].v, 10);
+            if (times < 0 || times > 20) return empty();
+            var pow = '1';
+            for (var p = 0; p < times; p++) {
+                pow = decimal.mul(pow, args[0].v);
+                if (pow === null) return empty();
+            }
+            return num(pow);
+        }
+        if (node.op === 'mean' || node.op === 'min' || node.op === 'max' || node.op === 'count') {
+            var bag = flatten(args);
+            if (node.op === 'count') {
+                if (!bag.some(function (item) { return item.t !== 'empty'; })) return empty();
+                return num(String(bag.filter(function (item) { return item.t !== 'empty'; }).length));
+            }
+            var nums = bag.filter(function (item) { return item.t === 'number'; }).map(function (item) { return item.v; });
+            if (!nums.length) return empty();
+            if (node.op === 'min' || node.op === 'max') {
+                var best = nums[0];
+                nums.forEach(function (n) {
+                    var cmp = decimal.cmp(n, best);
+                    if ((node.op === 'min' && cmp < 0) || (node.op === 'max' && cmp > 0)) best = n;
+                });
+                return num(best);
+            }
+            var meanTotal = '0';
+            nums.forEach(function (n) { meanTotal = decimal.add(meanTotal, n); });
+            var mean = decimal.div(meanTotal, String(nums.length));
+            return mean === null ? empty() : num(mean);
+        }
+        if (node.op === 'any_eq' || node.op === 'all_eq') {
+            var list = args[0] && args[0].t === 'list' ? args[0].v : (args[0] ? [args[0]] : []);
+            var needle = args[1] || empty();
+            var seen = false;
+            for (var i = 0; i < list.length; i++) {
+                if (!list[i] || list[i].t === 'empty') continue;
+                seen = true;
+                var hit = compare('eq', list[i], needle);
+                if (node.op === 'any_eq' && hit) return { t: 'bool', v: true };
+                if (node.op === 'all_eq' && !hit) return { t: 'bool', v: false };
+            }
+            return { t: 'bool', v: node.op === 'all_eq' && seen };
+        }
+        if (node.op === 'is_empty') return { t: 'bool', v: !args[0] || args[0].t === 'empty' };
+        if (node.op === 'concat') {
+            var text = '';
+            flatten(args).forEach(function (item) {
+                if (item && item.t !== 'empty') text += String(item.v);
+            });
+            return text(text.slice(0, 2000));
+        }
+        if (node.op === 'today') return { t: 'date', v: ctx.today || '1970-01-01' };
+        if (node.op === 'date_diff') return dateDiff(args);
+        if (node.op === 'add_days' || node.op === 'add_months') return shiftDate(node.op, args);
+        if (node.op === 'if') return truth(args[0]) ? args[1] : (args[2] || empty());
+        if (node.op === 'min_valid') {
+            if (!args[0] || args[0].t !== 'number') return empty();
+            var rest = flatten(args.slice(1)).filter(function (item) { return item.t === 'number'; });
+            if (rest.length < parseInt(args[0].v, 10)) return empty();
+            var validTotal = '0';
+            rest.forEach(function (item) { validTotal = decimal.add(validTotal, item.v); });
+            return num(validTotal);
+        }
         return empty();
+    }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function parseIso(value) {
+        var match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value || '');
+        if (!match) return null;
+        return { y: parseInt(match[1], 10), m: parseInt(match[2], 10), d: parseInt(match[3], 10) };
+    }
+    function dateDiff(args) {
+        var start = parseIso(args[0] && args[0].t === 'date' ? args[0].v : '');
+        var end = parseIso(args[1] && args[1].t === 'date' ? args[1].v : '');
+        var unit = String(args[2] && args[2].v || '').toLowerCase();
+        if (!start || !end) return empty();
+        if (unit === 'days') {
+            var ms = Date.UTC(end.y, end.m - 1, end.d) - Date.UTC(start.y, start.m - 1, start.d);
+            return num(String(Math.round(ms / 86400000)));
+        }
+        var total = (end.y - start.y) * 12 + (end.m - start.m);
+        if (end.d < start.d) total--;
+        if (unit === 'months') return num(String(total));
+        if (unit === 'years') {
+            var whole = Math.trunc(total / 12);
+            if (total < 0 && total % 12 !== 0) whole--;
+            return num(String(whole));
+        }
+        return empty();
+    }
+    function shiftDate(op, args) {
+        var date = parseIso(args[0] && args[0].t === 'date' ? args[0].v : '');
+        if (!date || !args[1] || args[1].t !== 'number') return empty();
+        var steps = parseInt(args[1].v, 10);
+        if (op === 'add_days') {
+            var utc = new Date(Date.UTC(date.y, date.m - 1, date.d + steps));
+            return { t: 'date', v: utc.getUTCFullYear() + '-' + pad(utc.getUTCMonth() + 1) + '-' + pad(utc.getUTCDate()) };
+        }
+        var monthIndex = date.m - 1 + steps;
+        var year = date.y + Math.floor(monthIndex / 12);
+        var month = ((monthIndex % 12) + 12) % 12;
+        var dim = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+        return { t: 'date', v: year + '-' + pad(month + 1) + '-' + pad(Math.min(date.d, dim)) };
     }
     function literal(value) {
         var canonical = decimal.canonical(value);
@@ -212,6 +333,11 @@
         return truth(evaluate(tree, context(values)));
     }
     decimal.ruleTruth = ruleTruth;
-    decimal.evaluateTree = evaluate;
+    decimal.evaluateTree = function (tree, values) {
+        return evaluate(tree, context(values));
+    };
+    decimal.treeTruth = function (tree, values) {
+        return truth(evaluate(tree, context(values)));
+    };
     return decimal;
 }));

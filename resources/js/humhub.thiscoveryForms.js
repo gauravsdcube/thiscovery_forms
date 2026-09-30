@@ -2278,6 +2278,32 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             refreshTypeUi($(this).closest('.thiscovery-forms-field-row'));
         });
 
+        $root.on('click', '[data-cf-formula-test]', function () {
+            var $panel = $(this).closest('[data-cf-formula-panel]');
+            var url = String($('#cf-studio-form').attr('data-cf-formula-preview') || '');
+            var $result = $panel.find('[data-cf-formula-result]');
+            if (!url) {
+                $result.text('The formula test is not available on this page.');
+                return;
+            }
+            $.ajax({
+                url: url,
+                method: 'POST',
+                data: {
+                    formula: $panel.find('[data-cf-formula-text]').val() || '',
+                    values: '{}'
+                }
+            }).done(function (data) {
+                if (data && data.ok) {
+                    $result.text((data.result === '' ? 'Empty' : data.result) + ' (today ' + data.today + ')');
+                } else {
+                    $result.text(data && data.error ? data.error : 'The formula could not be checked.');
+                }
+            }).fail(function () {
+                $result.text('The formula could not be checked.');
+            });
+        });
+
         $root.on('change', '[data-cf-field-type]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
             var type = String($(this).val() || '');
@@ -3916,6 +3942,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         };
 
         var logicMet = function (logic, values) {
+            var formula = (typeof globalThis !== 'undefined' ? globalThis : window).thiscoveryFormula;
+            if (logic && logic.when && formula && formula.treeTruth) {
+                return formula.treeTruth(logic.when, values);
+            }
             if (!logic || !logic.rules || !logic.rules.length) {
                 return true;
             }
@@ -3970,7 +4000,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var pageHistory = [0];
         var currentPage = 0;
-        var routingAligned = module.config.routingAligned !== false;
+        var routingAligned = true;
         var pagesConfig = module.config.pages || [];
         var pageKeyIndex = module.config.pageKeyIndex || {};
         var multiPage = $root.attr('data-cf-multipage') === '1' && pagesConfig.length > 1;

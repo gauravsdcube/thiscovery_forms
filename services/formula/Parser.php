@@ -173,6 +173,14 @@ final class Parser
         if ($this->eatKeyword('datetime')) {
             return $this->dateCall('datetime', $token);
         }
+        if ($token['t'] === 'ident' && $token['v'] === 'fn' && (($this->tokens[$this->index + 1]['t'] ?? '') === ':')) {
+            $name = $this->tokens[$this->index + 2] ?? null;
+            if (!$name || $name['t'] !== 'ident') {
+                throw new FormulaException('A named formula needs a name.', $token['line'], $token['col']);
+            }
+            $this->index += 3;
+            return ['op' => 'fn', 'name' => $name['v']];
+        }
         if ($token['t'] === 'ident') {
             $this->index++;
             if ($this->peek()['t'] !== '(') {
