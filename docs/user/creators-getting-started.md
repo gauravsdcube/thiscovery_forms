@@ -14,7 +14,7 @@ You need **Create forms** (space) or **Create global forms** (network) to start 
 1. Open **Forms** in the space (or the global Forms list).
 2. Choose **Create**.
 3. Pick a **type**, start from a saved **template**, or — if enabled — **Brief or Word / PDF** under **From a brief**.
-4. You land in the **studio** (the form editor). From-brief creates a **Draft survey** after you review proposed questions.
+4. You land in the **studio** on **Settings → Basics**. Name the form, then choose **Save form**. Saving creates the form. Until you save, the share link, question import, the variable list, the flow chart, translations, and versions are not available. From-brief creates a **Draft survey** after you review proposed questions.
 
 Type cannot be changed later in a meaningful way — pick the closest match. See [Form types](creators-form-types.md) for when to use each one. Creating from a brief is covered in [Create from brief or document](creators-from-brief.md).
 
@@ -31,9 +31,9 @@ The studio has two top tabs: **Form builder** and **Settings**.
 
 Under **Settings**, the left rail groups are:
 
-- **Form** — Basics, End of survey, Who can take part, Participant display
+- **Form** — Basics, Variables, End of survey, Who can take part, Participant display
 - **Features** — Consent, Loops, Randomisation, Quotas
-- **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Route map (after the first save), and **Consensus** on Consensus / Delphi forms
+- **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Flow chart (after the first save), and **Consensus** on Consensus / Delphi forms
 - **Programme** — Panel & waves, Rounds, or Approval when that type needs them
 - **Quality & style** — Response integrity, Translations, CSS (themes and colours)
 - **Publish** — Share, Export, and **Versions** after the first save when Thiscovery Versioning is enabled for Forms
@@ -70,7 +70,7 @@ Set status to **Open** when you are ready to share the live link. Close it when 
 - **Open** (from the list) or the **share link** — real responses, subject to your settings (anonymous, multiple submissions, waves, and so on).
 - **Preview** / test link — for you and stakeholders. Same look, logic, and resume settings; answers are marked as tests and excluded from results. Preview does not save progress unless **Allow save and resume** is on.
 
-**Settings → Share** has both links. Copy the live link only after the form is Open and you have tried Preview.
+**Settings → Share** has the fill link. It uses a random token instead of the form number. **Issue a new link** stops the previous link from opening the form. Copy the live link only after the form is Open and you have tried Preview.
 
 ## Folders
 
@@ -80,9 +80,9 @@ On **Settings → Basics** you can file the form in a folder, or leave it **Unfi
 
 ## Typical first build
 
-1. Create a **Survey** (or the type you need).
-2. On **Form builder**, add questions and page breaks.
-3. On **Settings → Basics**, set title, status **Draft**, and who can view answers.
+1. Create a **Survey** (or the type you need). The studio opens on **Settings → Basics**.
+2. Type the title, then **Save form**. That creates the form and turns on the share link, import, the variable list, the flow chart, translations, and versions.
+3. On **Form builder**, add questions and page breaks. Save again. Status stays **Draft** until you publish an edition.
 4. On **Settings → Who can take part**, set anonymous, resume, and related options.
 5. **Save**, then **Preview**. Walk through as a respondent would.
 6. Fix wording and logic. Save again.

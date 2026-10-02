@@ -4937,3 +4937,99 @@ body.cf-fill-standalone #topbar-second {
 .cf-route-map__page { margin-bottom: .75em; }
 .cf-route-map__jumps { margin: .25em 0 0; padding-left: 1.25em; }
 .cf-route-map__jumps code { white-space: normal; word-break: break-word; }
+
+.cf-studio__settings--route { max-width: 46rem; }
+
+.cf-flow {
+    list-style: none;
+    margin: 1rem 0 0;
+    padding: 0;
+}
+
+.cf-flow__term {
+    display: inline-block;
+    margin: 0;
+    padding: .35rem .9rem;
+    border-radius: 999px;
+    background: #1f2937;
+    color: #fff;
+    font-size: .85rem;
+    font-weight: 650;
+}
+
+.cf-flow__link {
+    width: 2px;
+    height: 1.1rem;
+    margin: .2rem 0 .2rem 1.1rem;
+    background: #9ca3af;
+    list-style: none;
+}
+
+.cf-flow__page {
+    margin: 0;
+    padding: .85rem 1rem;
+    border: 1px solid #d1d5db;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.cf-flow__page h4 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.cf-flow__meta {
+    display: flex;
+    gap: .75rem;
+    align-items: center;
+    margin: .25rem 0 0;
+    color: #6b7280;
+    font-size: .85rem;
+}
+
+.cf-flow__logic {
+    margin: .6rem 0 0;
+    padding-left: 1.4rem;
+}
+
+.cf-flow__logic li {
+    margin: .35rem 0;
+}
+
+.cf-flow__q {
+    font-weight: 650;
+}
+
+.cf-flow__rule,
+.cf-flow__branch code,
+.cf-flow__logic code {
+    white-space: normal;
+    word-break: break-word;
+}
+
+.cf-flow__none,
+.cf-flow__next {
+    margin: .45rem 0 0;
+    color: #4b5563;
+    font-size: .85rem;
+}
+
+.cf-flow__branch {
+    margin: .45rem 0 .45rem 1.1rem;
+    padding: .4rem .65rem;
+    border-left: 3px solid #b45309;
+    background: #fffbeb;
+    font-size: .85rem;
+}
+
+.cf-var-meta {
+    display: flex;
+    align-items: flex-start;
+    gap: .35rem;
+    margin-bottom: .75rem;
+}
+
+.cf-var-list code {
+    white-space: normal;
+    word-break: break-word;
+}

@@ -2,6 +2,20 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.32.0 (October 2, 2026)
+
+### Studio
+
+- A new form opens on **Settings → Basics**. Name it and save. Until that save, the share link, question import, the variable list, the flow chart, translations, and versions are not available. Questions added on Form builder are stored with that first save.
+- **Settings → Variables** lists each saved variable with its question, type, and page, and the revision number of the last save. The list changes when you save.
+- **Settings → Flow chart** draws every saved question on its page, from Start to End of survey. A show or hide rule is written under that question. A branch is marked on its own line. The chart uses the same revision number.
+
+### Fill link
+
+- The distribution URL uses a random token instead of the form number. **Issue a new link** on **Settings → Share** retires the previous link.
+- A guest who only has the form number can no longer open the form. Someone who is signed in and allowed to see the form can still open it from the forms list.
+- Apply migration `m261002_180000_fill_token`. Existing forms receive a token. Replace any link already sent that used the form number.
+
 ## 1.31.1 (October 2, 2026)
 
 - Change: The SPARCS2 survey definitions and the `import-sparcs2` console command are no longer part of the module. A study questionnaire belongs on the form, not in the product.

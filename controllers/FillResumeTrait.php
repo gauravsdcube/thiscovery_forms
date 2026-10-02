@@ -32,9 +32,9 @@ trait FillResumeTrait
      * Shown after a page-exit quota ended or redirected the response (V3-47). It only renders
      * the messages the quota left in this session; there is nothing to fill.
      */
-    public function actionQuotaClosed($id)
+    public function actionQuotaClosed($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->applyFillLayout($form);
         return $this->render('thankyou', [
             'formModel' => $form,
@@ -90,6 +90,49 @@ trait FillResumeTrait
         if ($form->title) {
             $this->view->setPageTitle($form->title);
         }
+    }
+
+    /**
+     * The form for a respondent link. A fill token is the public address.
+     * A numeric id still works for someone who is signed in, and for an old preview,
+     * panel, or access link. A guest with only the id is refused.
+     */
+    protected function findFillForm($id = null): CustomForm
+    {
+        $token = trim((string)Yii::$app->request->get('t', Yii::$app->request->post('fill_token', '')));
+        if ($token !== '') {
+            $form = CustomForm::findByFillToken($token);
+            if (!$form || !$this->fillFormInScope($form)) {
+                throw new NotFoundHttpException();
+            }
+            CustomForm::assertNotTrashed($form);
+            return $form;
+        }
+
+        if ($id === null || $id === '' || !ctype_digit((string)$id)) {
+            throw new NotFoundHttpException(Yii::t(
+                'ThiscoveryFormsModule.base',
+                'This form link is incomplete. Please use the full share URL from the form Share tab.'
+            ));
+        }
+        $form = $this->findForm($id);
+        if (Yii::$app->user->isGuest) {
+            $preview = trim((string)Yii::$app->request->get('preview', Yii::$app->request->post('preview', '')));
+            $panel = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
+            $access = trim((string)Yii::$app->request->get('access', ''));
+            if (!$form->isValidTestToken($preview) && $panel === '' && $access === '') {
+                throw new NotFoundHttpException();
+            }
+        }
+        return $form;
+    }
+
+    protected function fillFormInScope(CustomForm $form): bool
+    {
+        if (property_exists($this, 'contentContainer') && $this->contentContainer) {
+            return (int)$form->content->contentcontainer_id === (int)$this->contentContainer->contentcontainer_id;
+        }
+        return $form->isGlobal();
     }
 
     protected function isPreviewMode(CustomForm $form): bool
@@ -763,9 +806,9 @@ trait FillResumeTrait
         );
     }
 
-    public function actionRunActions($id)
+    public function actionRunActions($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
         Yii::$app->response->format = Response::FORMAT_JSON;
         if (!Yii::$app->request->isPost) {
@@ -831,9 +874,9 @@ trait FillResumeTrait
     /**
      * Guest-safe file upload for fill (HumHub /file/file/upload requires login).
      */
-    public function actionUpload($id)
+    public function actionUpload($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
         $this->forcePostRequest();
         Yii::$app->response->format = Response::FORMAT_JSON;
@@ -911,9 +954,9 @@ trait FillResumeTrait
         return ['files' => $files];
     }
 
-    public function actionDeleteFile($id)
+    public function actionDeleteFile($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
         $this->forcePostRequest();
         Yii::$app->response->format = Response::FORMAT_JSON;
@@ -965,13 +1008,18 @@ trait FillResumeTrait
      *
      * URL: /thiscovery-forms/global/form-file?id=<formId>&guid=<fileGuid>
      */
-    public function actionFormFile($id, $guid)
+    public function actionFormFile($id = null, $guid = null)
     {
-        $form = CustomForm::findOne((int)$id);
-        if (!$form) {
-            throw new NotFoundHttpException('Form not found.');
+        $token = trim((string)Yii::$app->request->get('t', ''));
+        if ($token !== '') {
+            $form = $this->findFillForm(null);
+        } else {
+            $form = CustomForm::findOne((int)$id);
+            if (!$form) {
+                throw new NotFoundHttpException('Form not found.');
+            }
+            CustomForm::assertNotTrashed($form);
         }
-        CustomForm::assertNotTrashed($form);
 
         $this->assertFillAccess($form);
 

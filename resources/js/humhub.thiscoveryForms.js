@@ -980,7 +980,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         // Top tabs: Form builder | Settings. Settings has a left rail of sections.
         var formPanes = {
-            basics: 1, end: 1, access: 1, display: 1,
+            basics: 1, variables: 1, end: 1, access: 1, display: 1,
             consent: 1, loops: 1, randomisation: 1, quotas: 1,
             sharing: 1, enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
             integrity: 1, css: 1, share: 1, export: 1
@@ -989,7 +989,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             panel: 1, rounds: 1, approval: 1, translations: 1, versions: 1, route: 1
         };
         var footerSections = {
-            basics: 1, end: 1, access: 1, display: 1,
+            basics: 1, variables: 1, end: 1, access: 1, display: 1,
             consent: 1, loops: 1, randomisation: 1, quotas: 1,
             sharing: 1, enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
             integrity: 1, css: 1, share: 1, export: 1

@@ -6,7 +6,7 @@ How people open the form, how you watch progress, and how you export data.
 
 | Link | Use |
 | --- | --- |
-| Fill / share link | Real respondents. Works when status is **Open** and they are allowed to take part. For a public audience, tick **Allow anonymous submissions** as well. |
+| Fill / share link | Real respondents. The link uses a random token, not the form number. **Issue a new link** on **Settings → Share** stops the previous one. Works when status is **Open** and they are allowed to take part. For a public audience, tick **Allow anonymous submissions** as well. |
 | Preview / test link | Stakeholders try the form. Answers are **not** counted as participant submissions. |
 | Dashboard share | Aggregate results without sign-in, only if **Share dashboard without sign-in** is enabled on **Settings → Sharing and display** and you have saved. You can regenerate the link if it has leaked. |
 

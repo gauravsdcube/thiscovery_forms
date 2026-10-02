@@ -67,7 +67,7 @@ class GlobalController extends Controller
                 'panel-member-add', 'panel-member-remove', 'panel-import', 'panel-sample',
                 'panel-wave-save', 'panel-wave-status',
                 'email-templates', 'email-template-edit', 'email-template-delete',
-                'regenerate-preview', 'regenerate-dashboard-share',
+                'regenerate-preview', 'regenerate-dashboard-share', 'regenerate-fill-token',
                 'help', 'help-download',
                 'publish-version', 'restore-version', 'delete-revision', 'delete-edition',
                 'trash', 'restore-form', 'purge-form',
@@ -201,22 +201,14 @@ class GlobalController extends Controller
 
     public function actionView($id = null)
     {
-        // Missing id used to end up as a vague unauthorized/login redirect to the guest homepage.
-        if ($id === null || $id === '' || !ctype_digit((string)$id)) {
-            throw new NotFoundHttpException(Yii::t(
-                'ThiscoveryFormsModule.base',
-                'This form link is incomplete. Please use the full share URL from the form Share tab.'
-            ));
-        }
-
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         if (Yii::$app->user->isGuest) {
             // Log first-hit diagnostics while we investigate intermittent guest redirects.
             Yii::info(sprintf(
                 'guest form view id=%s uri=%s secure=%s xfproto=%s ua=%s',
-                $id,
+                (int)$form->id,
                 Yii::$app->request->absoluteUrl,
                 Yii::$app->request->isSecureConnection ? '1' : '0',
                 Yii::$app->request->headers->get('X-Forwarded-Proto', '-'),
@@ -234,9 +226,9 @@ class GlobalController extends Controller
         return $this->renderFillView($form, $submit, $existing);
     }
 
-    public function actionSaveProgress($id)
+    public function actionSaveProgress($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         if (!Yii::$app->request->isPost) {
@@ -249,17 +241,17 @@ class GlobalController extends Controller
         return $this->handleSaveProgress($form, $submit, $existing);
     }
 
-    public function actionResume($id)
+    public function actionResume($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         return $this->handleResumeLookup($form);
     }
 
-    public function actionEmailResume($id)
+    public function actionEmailResume($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         return $this->handleEmailResumeCode($form);

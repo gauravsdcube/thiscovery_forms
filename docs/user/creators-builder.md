@@ -213,10 +213,14 @@ The builder shows the structure you will get on the fill page. Final colours and
 
 Arabic and Urdu fill pages use right-to-left layout, including a mirrored thermometer. Enable those languages on **Settings → Languages** and translate them under **Settings → Translations**.
 
+## Flow chart
+
+**Settings → Flow chart** draws the saved form. Pages run from **Start** to **End of survey**, and every question is listed on its page. A plain line is the path when no branch matches. An amber line is a go-to, a page branch, a skip, or a screen-out, with the rule beside it. A show or hide rule is written under that question. The revision number is the latest save. Save before you read the chart: unsaved builder edits are not drawn.
+
 ## Checking your work
 
 1. Save.
-2. Preview and complete the form as a respondent.
+2. Open **Settings → Flow chart** and check each branch, then preview and complete the form as a respondent.
 3. Try each skip path, including “back” if you allow editing or resume.
 4. Confirm required questions cannot be skipped unless logic hides them.
 5. Confirm emails and `{{var:…}}` text look right (use a test inbox).

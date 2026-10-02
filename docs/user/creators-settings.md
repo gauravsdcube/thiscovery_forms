@@ -4,9 +4,9 @@ The studio has two top tabs: **Form builder** and **Settings**.
 
 Under **Settings**, a left-hand list opens each area in the main pane. Groups match the product:
 
-- **Form** — Basics, End of survey, Who can take part, Participant display
+- **Form** — Basics, Variables, End of survey, Who can take part, Participant display
 - **Features** — Consent, Loops, Randomisation, Quotas. Each needs the matching switch under **Administration → Modules → Thiscovery Forms** as well as the switch on the form. See [Consent](econsent.md), [Loops](loops.md), [Randomisation](randomisation.md), and [Quotas](quotas.md).
-- **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Route map, plus Consensus when relevant
+- **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Flow chart, plus Consensus when relevant
 - **Programme** — Panel & waves / Rounds / Approval when the type needs them
 - **Quality & style** — Response integrity, Translations, CSS
 - **Publish** — Share; Export (CSV columns, analysis codes, and PII scrubbing); Versions when Thiscovery Versioning is available
@@ -25,11 +25,17 @@ Type is shown on Basics but chosen at create time.
 | Folder | Filing; **Unfiled** is fine |
 | Who can view answers | Who may open the answers / dashboard for this form |
 
+A new form opens on Basics. Name it and save before using the share link, question import, the variable list, the flow chart, translations, or versions.
+
 **Who can view answers**
 
 - **Author and managers only** — you and people with Manage.
 - **Managers and respondents** — managers, plus someone who has submitted this form.
 - **Anyone with View Answers permission** — uses the space or global **View form answers** permission.
+
+## Variables
+
+**Settings → Variables** lists every saved variable name with its question, question type, and page. The revision number is the latest saved copy. The list changes when you save. Edits that are still only in the builder are not listed yet. Questions with no variable name are counted under the table.
 
 ## End of survey
 

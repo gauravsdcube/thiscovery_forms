@@ -152,9 +152,9 @@ class FormController extends ContentContainerController
         ]);
     }
 
-    public function actionView($id)
+    public function actionView($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         $submit = new SubmitForm(['form' => $form]);
@@ -167,9 +167,9 @@ class FormController extends ContentContainerController
         return $this->renderFillView($form, $submit, $existing);
     }
 
-    public function actionSaveProgress($id)
+    public function actionSaveProgress($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         if (!Yii::$app->request->isPost) {
@@ -182,17 +182,17 @@ class FormController extends ContentContainerController
         return $this->handleSaveProgress($form, $submit, $existing);
     }
 
-    public function actionResume($id)
+    public function actionResume($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         return $this->handleResumeLookup($form);
     }
 
-    public function actionEmailResume($id)
+    public function actionEmailResume($id = null)
     {
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         return $this->handleEmailResumeCode($form);

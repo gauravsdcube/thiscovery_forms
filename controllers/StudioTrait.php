@@ -350,6 +350,19 @@ trait StudioTrait
         return $this->redirect(Url::toEdit($clone));
     }
 
+    public function actionRegenerateFillToken($id)
+    {
+        $form = $this->findForm($id);
+        if (!$form->canManage()) {
+            throw new ForbiddenHttpException();
+        }
+        if (Yii::$app->request->isPost) {
+            $form->rotateFillToken();
+            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'A new fill link was created. The previous link no longer works.'));
+        }
+        return $this->redirect(Url::toEdit($form) . '?tab=share');
+    }
+
     public function actionRegeneratePreview($id)
     {
         $form = $this->findForm($id);
@@ -644,11 +657,11 @@ trait StudioTrait
         return ['success' => true, 'html' => $html, 'count' => $i];
     }
 
-    public function actionSubmitJson($id)
+    public function actionSubmitJson($id = null)
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
 
-        $form = $this->findForm($id);
+        $form = $this->findFillForm($id);
         $this->assertFillAccess($form);
 
         if (!Yii::$app->request->isPost) {

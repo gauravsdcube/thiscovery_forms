@@ -85,6 +85,12 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
 <div class="cf-studio__settings">
             <section class="cf-settings-pane<?= $activeSection === 'basics' ? ' is-active' : '' ?>" data-cf-settings-pane="basics" role="tabpanel"<?= $activeSection === 'basics' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Basics') ?></h3>
+                <?php if (!empty($isNew)): ?>
+                    <div class="alert alert-info" role="status">
+                        <strong><?= Yii::t('ThiscoveryFormsModule.base', 'Start by naming the form.') ?></strong>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Type the title below, then choose Save form. Saving creates the form. Until you save, the share link, question import, the variable list, the flow chart, translations, and versions are not available. Questions you add on Form builder are stored with that first save.') ?>
+                    </div>
+                <?php endif; ?>
                 <?php ob_start(); ?>
                 <div class="cf-field">
                     <span class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Form type') ?></span>
@@ -98,6 +104,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                         'class' => 'form-control form-control-lg',
                         'required' => true,
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. Membership feedback'),
+                        'autofocus' => !empty($isNew),
                     ]) ?>
                 </div>
                 <div class="form-group cf-field">
@@ -160,6 +167,14 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     true,
                     Yii::t('ThiscoveryFormsModule.base', 'Status, folder, and who can view answers.')
                 ) ?>
+            </section>
+
+            <section class="cf-settings-pane<?= $paneOpen('variables') ? ' is-active' : '' ?>" data-cf-settings-pane="variables" role="tabpanel"<?= $paneOpen('variables') ? '' : ' hidden' ?>>
+                <?= $this->render('_studio_variables', [
+                    'formModel' => $formModel,
+                    'isNew' => !empty($isNew),
+                    'fieldList' => $fieldList,
+                ]) ?>
             </section>
 
             <section class="cf-settings-pane<?= $paneOpen('consent') ? ' is-active' : '' ?>" data-cf-settings-pane="consent" role="tabpanel"<?= $paneOpen('consent') ? '' : ' hidden' ?>>

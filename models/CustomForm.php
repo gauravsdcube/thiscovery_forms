@@ -33,6 +33,7 @@ use yii\helpers\Html;
 
 /**
  * @property int $id
+ * @property string|null $fill_token random value in the public fill link
  * @property string $title
  * @property string $kind
  * @property string|null $description
@@ -1682,6 +1683,50 @@ class CustomForm extends ContentActiveRecord implements Searchable
         return rtrim(strtr(base64_encode(random_bytes(24)), '+/', '-_'), '=');
     }
 
+    /**
+     * The value in the public fill link. A new form receives one on save.
+     */
+    public function getFillToken(): string
+    {
+        if (!$this->hasAttribute('fill_token')) {
+            return '';
+        }
+        $token = trim((string)$this->fill_token);
+        if ($token !== '') {
+            return $token;
+        }
+        $token = self::generateShareToken();
+        $this->fill_token = $token;
+        if (!$this->isNewRecord) {
+            $this->updateAttributes(['fill_token' => $token]);
+        }
+        return $token;
+    }
+
+    /** Replaces the public fill link. The previous link no longer opens the form. */
+    public function rotateFillToken(): string
+    {
+        $token = self::generateShareToken();
+        $this->fill_token = $token;
+        if (!$this->isNewRecord && $this->hasAttribute('fill_token')) {
+            $this->updateAttributes(['fill_token' => $token]);
+        }
+        return $token;
+    }
+
+    public static function findByFillToken(string $token): ?self
+    {
+        $token = trim($token);
+        if ($token === '' || !preg_match('/^[A-Za-z0-9_-]{20,64}$/', $token)) {
+            return null;
+        }
+        $schema = static::getTableSchema();
+        if ($schema === null || !isset($schema->columns['fill_token'])) {
+            return null;
+        }
+        return static::find()->andWhere(['fill_token' => $token])->one();
+    }
+
     public function getTestToken(): string
     {
         $token = trim((string)$this->getSetting('test_token', ''));
@@ -1857,6 +1902,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
     {
         if (!parent::beforeSave($insert)) {
             return false;
+        }
+
+        if ($this->hasAttribute('fill_token') && trim((string)$this->fill_token) === '') {
+            $this->fill_token = self::generateShareToken();
         }
 
         if ($this->kind === '' || $this->kind === null) {

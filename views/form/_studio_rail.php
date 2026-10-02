@@ -31,6 +31,7 @@ $navItem = static function (string $section, string $title, string $icon, string
         <div class="cf-palette__group">
             <div class="cf-palette__group-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Form') ?></div>
             <?= $navItem('basics', Yii::t('ThiscoveryFormsModule.base', 'Basics'), 'fa-file-text-o', Yii::t('ThiscoveryFormsModule.base', 'Title, description, status')) ?>
+            <?= $navItem('variables', Yii::t('ThiscoveryFormsModule.base', 'Variables'), 'fa-tag', Yii::t('ThiscoveryFormsModule.base', 'Saved variable names and their questions')) ?>
             <?= $navItem('end', Yii::t('ThiscoveryFormsModule.base', 'End of survey'), 'fa-flag-checkered', Yii::t('ThiscoveryFormsModule.base', 'Thank you, redirect, already submitted')) ?>
             <?= $navItem('access', Yii::t('ThiscoveryFormsModule.base', 'Who can take part'), 'fa-users', Yii::t('ThiscoveryFormsModule.base', 'Anonymous fill, editing, save and resume')) ?>
             <?= $navItem('display', Yii::t('ThiscoveryFormsModule.base', 'Participant display'), 'fa-eye', Yii::t('ThiscoveryFormsModule.base', 'Title, description, progress, pages')) ?>
@@ -51,9 +52,7 @@ $navItem = static function (string $section, string $title, string $icon, string
             <?= $navItem('email', Yii::t('ThiscoveryFormsModule.base', 'Email templates'), 'fa-envelope-o', Yii::t('ThiscoveryFormsModule.base', 'Invite, wave, reminder, completion')) ?>
             <?= $navItem('languages', Yii::t('ThiscoveryFormsModule.base', 'Languages'), 'fa-globe', Yii::t('ThiscoveryFormsModule.base', 'Source language and translations')) ?>
             <?= $navItem('actions', Yii::t('ThiscoveryFormsModule.base', 'Actions and functions'), 'fa-bolt', Yii::t('ThiscoveryFormsModule.base', 'On submit, custom functions')) ?>
-            <?php if (!$isNew): ?>
-                <?= $navItem('route', Yii::t('ThiscoveryFormsModule.base', 'Route map'), 'fa-code-fork', Yii::t('ThiscoveryFormsModule.base', 'Pages, jumps and logic problems')) ?>
-            <?php endif; ?>
+            <?= $navItem('route', Yii::t('ThiscoveryFormsModule.base', 'Flow chart'), 'fa-code-fork', Yii::t('ThiscoveryFormsModule.base', 'Pages, branches, and show or hide rules')) ?>
             <?php if ($formModel->isConsensus()): ?>
                 <?= $navItem('consensus', Yii::t('ThiscoveryFormsModule.base', 'Consensus'), 'fa-balance-scale', Yii::t('ThiscoveryFormsModule.base', 'Identity, threshold, freeze')) ?>
             <?php endif; ?>

@@ -11,13 +11,23 @@ class Url
 {
     public static function toView(CustomForm $form, $scheme = false): string
     {
+        return self::fillRoute($form, 'view', [], $scheme);
+    }
+
+    /**
+     * Respondent-facing route. The query carries the fill token, not the form id.
+     *
+     * @param array<string,scalar|null> $extra
+     */
+    protected static function fillRoute(CustomForm $form, string $action, array $extra = [], $scheme = false): string
+    {
+        $params = array_merge(['t' => $form->getFillToken()], $extra);
+        unset($params['id']);
         if ($form->isGlobal()) {
-            // Prefer path-style id so query strings are not dropped by HTTP→HTTPS redirects.
-            $url = BaseUrl::to(['/thiscovery-forms/global/view', 'id' => $form->id], $scheme);
+            $url = BaseUrl::to(array_merge(['/thiscovery-forms/global/' . $action], $params), $scheme);
             return $scheme ? self::ensureHttps($url) : $url;
         }
-
-        $url = $form->content->container->createUrl('/thiscovery-forms/form/view', ['id' => $form->id], $scheme);
+        $url = $form->content->container->createUrl('/thiscovery-forms/form/' . $action, $params, $scheme);
         return $scheme ? self::ensureHttps($url) : $url;
     }
 
@@ -58,77 +68,46 @@ class Url
 
     public static function toResume(CustomForm $form, ?string $code = null, $scheme = false): string
     {
-        $params = ['id' => $form->id];
+        $extra = [];
         if ($code) {
-            $params['resume'] = $code;
+            $extra['resume'] = $code;
         }
-
-        if ($form->isGlobal()) {
-            $url = BaseUrl::to(array_merge(['/thiscovery-forms/global/view'], $params), $scheme);
-            return $scheme ? self::ensureHttps($url) : $url;
-        }
-
-        $url = $form->content->container->createUrl('/thiscovery-forms/form/view', $params, $scheme);
-        return $scheme ? self::ensureHttps($url) : $url;
+        return self::fillRoute($form, 'view', $extra, $scheme);
     }
 
     public static function toSaveProgress(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/save-progress', 'id' => $form->id]);
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/save-progress', ['id' => $form->id]);
+        return self::fillRoute($form, 'save-progress');
     }
 
     /** The closing page after a quota ended or redirected a response mid-way (V3-47). */
     public static function toQuotaClosed(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/quota-closed', 'id' => $form->id]);
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/quota-closed', ['id' => $form->id]);
+        return self::fillRoute($form, 'quota-closed');
     }
 
     public static function toFillUpload(CustomForm $form, ?int $fieldId = null): string
     {
-        $params = ['id' => $form->id];
+        $extra = [];
         if ($fieldId) {
-            $params['field_id'] = (int)$fieldId;
+            $extra['field_id'] = (int)$fieldId;
         }
-        if ($form->isGlobal()) {
-            return BaseUrl::to(array_merge(['/thiscovery-forms/global/upload'], $params));
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/upload', $params);
+        return self::fillRoute($form, 'upload', $extra);
     }
 
     public static function toFillDeleteFile(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/delete-file', 'id' => $form->id]);
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/delete-file', ['id' => $form->id]);
+        return self::fillRoute($form, 'delete-file');
     }
 
     public static function toLookupResume(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/resume', 'id' => $form->id]);
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/resume', ['id' => $form->id]);
+        return self::fillRoute($form, 'resume');
     }
 
     public static function toEmailResume(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/email-resume', 'id' => $form->id]);
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/email-resume', ['id' => $form->id]);
+        return self::fillRoute($form, 'email-resume');
     }
 
     /**
@@ -512,11 +491,7 @@ class Url
 
     public static function toSubmitJson(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/submit-json', 'id' => $form->id]);
-        }
-
-        return $form->content->container->createUrl('/thiscovery-forms/form/submit-json', ['id' => $form->id]);
+        return self::fillRoute($form, 'submit-json');
     }
 
     public static function toSaveTemplate(CustomForm $form): string
@@ -776,10 +751,7 @@ class Url
 
     public static function toRunActions(CustomForm $form): string
     {
-        if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/run-actions', 'id' => $form->id]);
-        }
-        return $form->content->container->createUrl('/thiscovery-forms/form/run-actions', ['id' => $form->id]);
+        return self::fillRoute($form, 'run-actions');
     }
 
     public static function toHelp($container = null, ?string $page = null): string
@@ -808,14 +780,19 @@ class Url
 
     /**
      * Base URL for the public form-file endpoint (without guid).
-     * Returns e.g. "/thiscovery-forms/global/form-file?id=42"
+     * Returns a URL with the fill token, not the form id.
      */
     public static function toFormFile(CustomForm $form): string
     {
+        return self::fillRoute($form, 'form-file');
+    }
+
+    public static function toRegenerateFillToken(CustomForm $form): string
+    {
         if ($form->isGlobal()) {
-            return BaseUrl::to(['/thiscovery-forms/global/form-file', 'id' => $form->id]);
+            return BaseUrl::to(['/thiscovery-forms/global/regenerate-fill-token', 'id' => $form->id]);
         }
-        return $form->content->container->createUrl('/thiscovery-forms/form/form-file', ['id' => $form->id]);
+        return $form->content->container->createUrl('/thiscovery-forms/form/regenerate-fill-token', ['id' => $form->id]);
     }
 
     protected static function panelAction($panel, string $action, $container = null): string

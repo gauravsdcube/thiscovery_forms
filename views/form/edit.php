@@ -174,10 +174,10 @@ $this->registerJs('humhub.require("thiscoveryForms").initBuilder("#cf-builder");
 
 $fieldList = is_array($fields) ? $fields : [];
 $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
-$openTab = (string)Yii::$app->request->get('tab', 'builder');
+$openTab = (string)Yii::$app->request->get('tab', $isNew ? 'settings' : 'builder');
 $openSection = (string)Yii::$app->request->get('section', 'basics');
 $formSettingSections = [
-    'basics', 'end', 'access', 'display',
+    'basics', 'variables', 'end', 'access', 'display',
     'consent', 'loops', 'randomisation', 'quotas',
     'sharing', 'enrol', 'email', 'languages',
     'actions', 'consensus',
@@ -272,6 +272,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                'loops' => Url::toHelp($contentContainer, 'loops'),
                'randomisation' => Url::toHelp($contentContainer, 'randomisation'),
                'quotas' => Url::toHelp($contentContainer, 'quotas'),
+               'variables' => Url::toHelp($contentContainer, 'creators-settings'),
                'route' => Url::toHelp($contentContainer, 'creators-builder'),
                'integrity' => Url::toHelp($contentContainer, 'creators-response-integrity'),
                'panel' => Url::toHelp($contentContainer, 'creators-panels'),
@@ -501,7 +502,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 <div class="form-group">
                     <div class="cf-label-row">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Form URL') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The link people use to fill the form. It works when the form is Open and they are allowed to take part. For guests, also turn on Allow anonymous submissions.')]) ?>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The link people use to fill the form. It contains a random token, not the form number. It works when the form is Open and they are allowed to take part. For guests, also turn on Allow anonymous submissions. Issue a new link when the current one should stop working.')]) ?>
                     </div>
                     <div class="input-group">
                         <input type="text" class="form-control" readonly value="<?= Html::encode($shareUrl) ?>" data-cf-share-url>
@@ -517,6 +518,10 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Open form') ?>
                         <i class="fa fa-external-link"></i>
                     </a>
+                    <button type="submit" class="btn btn-link btn-sm" form="cf-regen-fill-form"
+                        onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'The current fill link will stop working. Continue?')) ?>);">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Issue a new link') ?>
+                    </button>
                 </p>
                 </div>
             </details>
@@ -779,11 +784,9 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
         </div>
     <?php endif; ?>
 
-    <?php if (!$isNew): ?>
-        <div class="cf-studio__panel<?= $openSection === 'route' ? ' is-active' : '' ?>" data-cf-panel="route">
-            <?= $this->render('_studio_route', ['formModel' => $formModel]) ?>
-        </div>
-    <?php endif; ?>
+    <div class="cf-studio__panel<?= $openSection === 'route' ? ' is-active' : '' ?>" data-cf-panel="route">
+        <?= $this->render('_studio_route', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
+    </div>
 
     <div class="cf-studio__panel<?= $openSection === 'translations' ? ' is-active' : '' ?>" data-cf-panel="translations">
         <?= $this->render('_studio_translations', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
@@ -811,6 +814,8 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
             <?= Html::endForm() ?>
         <?php endif; ?>
         <?= Html::beginForm(Url::toSaveTemplate($formModel), 'post', ['id' => 'cf-template-form', 'class' => 'd-none']) ?>
+        <?= Html::endForm() ?>
+        <?= Html::beginForm(Url::toRegenerateFillToken($formModel), 'post', ['id' => 'cf-regen-fill-form', 'class' => 'd-none']) ?>
         <?= Html::endForm() ?>
         <?= Html::beginForm(Url::toRegeneratePreview($formModel), 'post', ['id' => 'cf-regen-preview-form', 'class' => 'd-none']) ?>
         <?= Html::endForm() ?>
