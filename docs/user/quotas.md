@@ -21,4 +21,4 @@ Lowering a target does not remove people who already finished. The fill percent 
 
 An optional least-filled arm uses the open arm quotas. If every arm the person qualifies for is full, the fullest quota’s action runs and the arm is not kept.
 
-`quota.full` is written to the quota audit when the target is reached. It is not sent as a webhook.
+`quota.full` is written to the quota audit when the target is reached. If the form has an address under Email when a quota fills, that address is sent a message. The event is not posted to another system. Webhooks are a later release.

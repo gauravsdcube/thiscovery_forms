@@ -2709,7 +2709,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
                         ];
                         if (isset($branch['fieldKey']) || isset($branch['operator'])) {
                             $item['fieldKey'] = (string)($branch['fieldKey'] ?? '');
-                            $item['operator'] = (string)($branch['operator'] ?? '');
+                            $item['operator'] = (string)($branch['operator'] ?? 'equals');
+                            $item['value'] = (string)($branch['value'] ?? '');
                         }
                         $branches[] = $item;
                     }
@@ -2719,7 +2720,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'title' => $row['page_title'] ?? '',
                     'branches' => $branches,
                     'otherwise' => $row['page_otherwise'] ?? '',
-                ]);
+                ], true);
                 $field->required = false;
             } elseif ($type === FormField::TYPE_RAND_BLOCK) {
                 $blockShow = trim((string)($row['randomise_show'] ?? ''));
@@ -2987,16 +2988,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 continue;
             }
 
-            $logicRules = is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [];
-            $formula = trim((string)($row['logic_formula'] ?? ''));
-            $keptLogic = json_decode((string)($row['logic_keep'] ?? ''), true);
-            if (LogicEngine::containsLegacy($logicRules)
-                || ($formula === '' && !empty($row['condition_field']))
-                || ($formula === '' && is_array($keptLogic) && LogicEngine::containsLegacy($keptLogic))) {
-                Yii::$app->session->setFlash('error', LogicEngine::legacyMessage());
+            $goto = (string)($row['logic_goto'] ?? '');
+            try {
+                $formula = LogicEngine::postedFormula($row, $choiceFields) ?? '';
+            } catch (\InvalidArgumentException $e) {
+                Yii::$app->session->setFlash('error', $e->getMessage());
                 return false;
             }
-            $goto = (string)($row['logic_goto'] ?? '');
             $formula = FormulaRefs::renameText($formula, $renames);
             if ($formula !== '' || array_key_exists('logic_formula', $row)) {
                 try {

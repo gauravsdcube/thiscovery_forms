@@ -13,8 +13,9 @@ use yii\db\Query;
 
 /**
  * Exact quota counts. The counter row is locked in the submit transaction.
- * Reservations are off unless the quota turns them on. quota.full is not sent:
- * webhooks are deferred. The audit row is still written when the target is reached.
+ * Reservations are off unless the quota turns them on. When the accepted count
+ * reaches the target, quota.full is written to the quota audit and, if the form
+ * has an address, emailed. It is not posted to another system: webhooks are a later release.
  */
 class QuotaService
 {
@@ -220,7 +221,7 @@ class QuotaService
             $label = (string)$quota['name'];
             $quotaRules = $this->rulesOf($quota);
             if (!empty($quotaRules['legacy'])) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Quota “{name}” uses the old rule format. Write it as a formula.', [
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Quota “{name}” uses a rule that could not be turned into a formula.', [
                     'name' => $label,
                 ]);
                 continue;
@@ -332,7 +333,11 @@ class QuotaService
             return true;
         }
         if (!empty($rules['legacy']) || LogicEngine::containsLegacy($rules)) {
-            return false;
+            $upgraded = is_array($rules) ? LogicEngine::upgrade($rules, $fields) : null;
+            if (!is_array($upgraded) || empty($upgraded['when'])) {
+                return false;
+            }
+            $rules = $upgraded;
         }
         return (new LogicEngine())->evaluateRule($rules, $values, $fields);
     }
@@ -1547,6 +1552,14 @@ class QuotaService
             return LogicEngine::fromFormula((string)$rules['formula']);
         }
         if (LogicEngine::containsLegacy($rules)) {
+            $upgraded = LogicEngine::upgrade($rules);
+            if (is_array($upgraded) && !empty($upgraded['when'])) {
+                return [
+                    'v' => 1,
+                    'when' => $upgraded['when'],
+                    'text' => (string)($upgraded['text'] ?? ''),
+                ];
+            }
             return ['v' => 1, 'legacy' => true];
         }
         return [];

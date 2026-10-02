@@ -91,11 +91,15 @@ class LogicEngine
         ];
     }
 
+    /**
+     * Shown only when an old rule cannot be converted, for example an unknown loop aggregate.
+     * A normal field, operator, and value rule is converted by upgrade() and is not an error.
+     */
     public static function legacyMessage(): string
     {
         return \Yii::t(
             'ThiscoveryFormsModule.base',
-            'This rule uses the old field, operator, and value format. Write it as a formula, for example [age] = 18.'
+            'This rule uses the old field, operator, and value format and could not be turned into a formula. Loop checks must use any, all, count, or sum.'
         );
     }
 
@@ -117,6 +121,267 @@ class LogicEngine
             }
         }
         return false;
+    }
+
+    /**
+     * A rule saved as field, operator, and value (including and/or groups) becomes a formula.
+     * Null means it cannot be converted, for example an unknown loop aggregate.
+     *
+     * @param array<string,mixed> $logic
+     * @param FormField[] $fields
+     * @return array<string,mixed>|null
+     */
+    public static function upgrade(array $logic, array $fields = []): ?array
+    {
+        if (isset($logic['when']) && is_array($logic['when']) && !self::containsLegacy($logic['when'])) {
+            $clean = self::normalize($logic);
+            $clean['rules'] = [];
+            return $clean;
+        }
+        if (!self::containsLegacy($logic)) {
+            return self::normalize($logic);
+        }
+        $rules = $logic['rules'] ?? null;
+        if (!is_array($rules) || $rules === []) {
+            if (isset($logic['fieldKey']) || isset($logic['all']) || isset($logic['any']) || isset($logic['operator'])) {
+                $rules = [$logic];
+            } else {
+                return null;
+            }
+        }
+        $combinator = strtolower((string)($logic['combinator'] ?? 'and')) === 'or' ? 'any' : 'all';
+        $tree = \humhub\modules\thiscoveryForms\services\formula\RuleBuilder::fromSimple([$combinator => $rules]);
+        if ($tree === null) {
+            return null;
+        }
+        $tree = self::readableTree($tree, self::fieldIndex($fields));
+        try {
+            $text = self::printFormula($tree);
+            $parsed = (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($text);
+        } catch (\Throwable $e) {
+            return null;
+        }
+        $out = self::defaultLogic();
+        $action = (string)($logic['action'] ?? self::ACTION_SHOW);
+        if ($action === self::ACTION_SKIP) {
+            $action = self::ACTION_HIDE;
+        }
+        $out['action'] = isset(self::actionLabels()[$action]) ? $action : self::ACTION_SHOW;
+        $out['gotoPageKey'] = trim((string)($logic['gotoPageKey'] ?? $logic['goto'] ?? ''));
+        $out['text'] = $text;
+        $out['when'] = $parsed;
+        $out['v'] = 1;
+        return $out;
+    }
+
+    /**
+     * @param array<string,mixed> $logic
+     * @param FormField[] $fields
+     */
+    public static function formulaTextFromLegacy(array $logic, array $fields = []): ?string
+    {
+        $upgraded = self::upgrade($logic, $fields);
+        if (!is_array($upgraded)) {
+            return null;
+        }
+        $text = trim((string)($upgraded['text'] ?? ''));
+        return $text === '' ? null : $text;
+    }
+
+    /**
+     * Formula text posted by the studio or an import file.
+     * A formula already written is kept. A field, operator, and value rule, including the
+     * old condition columns, is converted. Null means the row has no rule.
+     *
+     * @param array<string,mixed> $row
+     * @param FormField[] $fields
+     * @throws \InvalidArgumentException when a rule is present and cannot be converted
+     */
+    public static function postedFormula(array $row, array $fields = []): ?string
+    {
+        $formula = trim((string)($row['logic_formula'] ?? ''));
+        if ($formula !== '') {
+            return $formula;
+        }
+        $rules = is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [];
+        $kept = json_decode((string)($row['logic_keep'] ?? ''), true);
+        $condition = trim((string)($row['condition_field'] ?? ''));
+        if ($rules !== []) {
+            $converted = self::formulaTextFromLegacy([
+                'action' => (string)($row['logic_action'] ?? self::ACTION_SHOW),
+                'combinator' => (string)($row['logic_combinator'] ?? 'and'),
+                'gotoPageKey' => (string)($row['logic_goto'] ?? ''),
+                'rules' => $rules,
+            ], $fields);
+            if ($converted !== null) {
+                return $converted;
+            }
+        }
+        if ($condition !== '') {
+            $converted = self::formulaTextFromLegacy([
+                'rules' => [[
+                    'fieldKey' => $condition,
+                    'operator' => (string)($row['condition_operator'] ?? 'equals'),
+                    'value' => (string)($row['condition_value'] ?? ''),
+                ]],
+            ], $fields);
+            if ($converted !== null) {
+                return $converted;
+            }
+        }
+        if (is_array($kept) && self::containsLegacy($kept)) {
+            $converted = self::formulaTextFromLegacy($kept, $fields);
+            if ($converted !== null) {
+                return $converted;
+            }
+        }
+        $unconverted = ($rules !== [] && self::containsLegacy($rules))
+            || $condition !== ''
+            || (is_array($kept) && self::containsLegacy($kept));
+        if ($unconverted) {
+            throw new \InvalidArgumentException(self::legacyMessage());
+        }
+        return null;
+    }
+
+    /**
+     * @param FormField[] $fields
+     * @return array<int,FormField>
+     */
+    private static function fieldIndex(array $fields): array
+    {
+        $byId = [];
+        foreach ($fields as $field) {
+            if ($field instanceof FormField && (int)$field->id > 0) {
+                $byId[(int)$field->id] = $field;
+            }
+        }
+        return $byId;
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     * @param array<int,FormField> $byId
+     * @return array<string,mixed>
+     */
+    private static function readableTree(array $node, array $byId): array
+    {
+        if (($node['op'] ?? '') === 'ref' && ($node['ref'] ?? '') === 'field') {
+            $name = (string)($node['name'] ?? '');
+            if (!preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $name)) {
+                $id = 0;
+                if (ctype_digit($name)) {
+                    $id = (int)$name;
+                } elseif (str_starts_with($name, 'id') && ctype_digit(substr($name, 2))) {
+                    $id = (int)substr($name, 2);
+                }
+                $variable = $id > 0 && isset($byId[$id]) ? trim((string)$byId[$id]->variable) : '';
+                if (preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $variable)) {
+                    $node['name'] = $variable;
+                } elseif ($id > 0) {
+                    $node['name'] = 'id' . $id;
+                }
+            }
+        }
+        if (isset($node['args']) && is_array($node['args'])) {
+            foreach ($node['args'] as $i => $arg) {
+                if (is_array($arg)) {
+                    $node['args'][$i] = self::readableTree($arg, $byId);
+                }
+            }
+        }
+        return $node;
+    }
+
+    /** @param array<string,mixed> $node */
+    private static function printFormula(array $node, ?string $parentOp = null): string
+    {
+        $op = (string)($node['op'] ?? '');
+        $args = is_array($node['args'] ?? null) ? $node['args'] : [];
+        if ($op === 'and' || $op === 'or') {
+            $parts = [];
+            foreach ($args as $arg) {
+                if (!is_array($arg)) {
+                    throw new \InvalidArgumentException('A converted rule is incomplete.');
+                }
+                $parts[] = self::printFormula($arg, $op);
+            }
+            $text = implode($op === 'and' ? ' and ' : ' or ', $parts);
+            if ($parentOp !== null && $parentOp !== $op) {
+                return '(' . $text . ')';
+            }
+            return $text;
+        }
+        $symbols = ['eq' => '=', 'ne' => '!=', 'gt' => '>', 'gte' => '>=', 'lt' => '<', 'lte' => '<='];
+        if (isset($symbols[$op]) && count($args) === 2 && is_array($args[0]) && is_array($args[1])) {
+            return self::printValue($args[0]) . ' ' . $symbols[$op] . ' ' . self::printValue($args[1]);
+        }
+        $calls = ['contains_text', 'is_answered', 'any_eq', 'all_eq', 'between', 'count_answered', 'sum'];
+        if (in_array($op, $calls, true)) {
+            $inner = [];
+            foreach ($args as $arg) {
+                if (!is_array($arg)) {
+                    throw new \InvalidArgumentException('A converted rule is incomplete.');
+                }
+                $inner[] = self::printValue($arg);
+            }
+            return $op . '(' . implode(', ', $inner) . ')';
+        }
+        throw new \InvalidArgumentException('A converted rule could not be written as a formula.');
+    }
+
+    /** @param array<string,mixed> $node */
+    private static function printValue(array $node): string
+    {
+        if (($node['op'] ?? '') === 'lit') {
+            $lit = (string)($node['lit'] ?? '');
+            if ($lit === 'number') {
+                return (string)($node['v'] ?? '0');
+            }
+            if ($lit === 'bool') {
+                return !empty($node['v']) ? 'true' : 'false';
+            }
+            if ($lit === 'empty') {
+                return 'empty';
+            }
+            $text = (string)($node['v'] ?? '');
+            return '"' . str_replace(['\\', '"'], ['\\\\', '\\"'], $text) . '"';
+        }
+        if (($node['op'] ?? '') === 'ref') {
+            return self::printRef($node);
+        }
+        return self::printFormula($node);
+    }
+
+    /** @param array<string,mixed> $node */
+    private static function printRef(array $node): string
+    {
+        $kind = (string)($node['ref'] ?? '');
+        if ($kind === 'arm') {
+            return '[arm]';
+        }
+        $name = (string)($node['name'] ?? '');
+        if ($kind === 'panel') {
+            return '[panel:' . $name . ']';
+        }
+        if ($kind === 'var') {
+            return '[var:' . $name . ']';
+        }
+        if ($kind === 'meta') {
+            return '[meta:' . $name . ']';
+        }
+        if ($kind === 'url') {
+            return '[url:' . $name . ']';
+        }
+        $body = $name;
+        if (!empty($node['all'])) {
+            $body .= '[*]';
+        } elseif (isset($node['instance'])) {
+            $body .= '["' . str_replace('"', '\\"', (string)$node['instance']) . '"]';
+        } elseif (isset($node['row'])) {
+            $body .= '.' . (string)$node['row'];
+        }
+        return '[' . $body . ']';
     }
 
     public static function fromFormula(string $text, string $action = self::ACTION_SHOW, string $goto = ''): array
@@ -245,7 +510,11 @@ class LogicEngine
 
     public function evaluateRule(array $rule, array $values, array $fields = []): bool
     {
-        if (self::containsLegacy($rule)) {
+        $upgraded = self::upgrade($rule, $fields);
+        if (is_array($upgraded)) {
+            $rule = $upgraded;
+        }
+        if (self::containsLegacy($rule) && empty($rule['when'])) {
             return false;
         }
         if (isset($rule['when']) && is_array($rule['when'])) {

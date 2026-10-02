@@ -237,11 +237,7 @@ class FormSnapshotService
             $rawId = $row['id'] ?? '';
             $field->id = ($rawId !== '' && (int)$rawId > 0) ? (int)$rawId : (1000000 + $i);
             $field->sort_order = (int)($row['sort_order'] ?? ($i * 10));
-            $formula = trim((string)($row['logic_formula'] ?? ''));
-            $rules = is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [];
-            if (LogicEngine::containsLegacy($rules) || trim((string)($row['condition_field'] ?? '')) !== '') {
-                throw new \InvalidArgumentException(LogicEngine::legacyMessage());
-            }
+            $formula = LogicEngine::postedFormula($row) ?? '';
             if ($formula !== '') {
                 $field->setLogic(LogicEngine::fromFormula(
                     $formula,

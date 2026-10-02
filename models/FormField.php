@@ -1718,7 +1718,7 @@ class FormField extends ActiveRecord
             && ($this->getRatingScale()['display'] ?? self::RATING_DISPLAY_PILLS) === self::RATING_DISPLAY_THERMOMETER;
     }
 
-    public function setPageBreakConfig(array $config): void
+    public function setPageBreakConfig(array $config, bool $keepLegacy = false): void
     {
         $pageKey = trim((string)($config['pageKey'] ?? ''));
         if ($pageKey === '') {
@@ -1730,7 +1730,30 @@ class FormField extends ActiveRecord
                 continue;
             }
             if (isset($branch['fieldKey']) || isset($branch['operator'])) {
-                throw new \InvalidArgumentException(LogicEngine::legacyMessage());
+                if ($keepLegacy) {
+                    $goto = trim((string)($branch['gotoPageKey'] ?? ''));
+                    if ($goto === '') {
+                        continue;
+                    }
+                    $branches[] = [
+                        'fieldKey' => (string)($branch['fieldKey'] ?? ''),
+                        'operator' => (string)($branch['operator'] ?? 'equals'),
+                        'value' => (string)($branch['value'] ?? ''),
+                        'gotoPageKey' => $goto,
+                    ];
+                    continue;
+                }
+                $text = LogicEngine::formulaTextFromLegacy([
+                    'rules' => [[
+                        'fieldKey' => (string)($branch['fieldKey'] ?? ''),
+                        'operator' => (string)($branch['operator'] ?? 'equals'),
+                        'value' => (string)($branch['value'] ?? ''),
+                    ]],
+                ], $this->logicPeers());
+                if ($text === null) {
+                    throw new \InvalidArgumentException(LogicEngine::legacyMessage());
+                }
+                $branch['formula'] = $text;
             }
             $formula = trim((string)($branch['formula'] ?? $branch['text'] ?? ''));
             $goto = trim((string)($branch['gotoPageKey'] ?? ''));
@@ -2437,22 +2460,43 @@ class FormField extends ActiveRecord
         return $empty;
     }
 
+    /** @var array<int,FormField[]> */
+    private static array $logicPeers = [];
+
+    /** @return FormField[] */
+    private function logicPeers(): array
+    {
+        $formId = (int)$this->form_id;
+        if ($formId <= 0) {
+            return [];
+        }
+        if (!isset(self::$logicPeers[$formId])) {
+            self::$logicPeers[$formId] = self::find()->where(['form_id' => $formId])->all();
+        }
+        return self::$logicPeers[$formId];
+    }
+
     public function getLogic(): array
     {
         $decoded = json_decode((string)$this->logic_json, true);
         if (!is_array($decoded)) {
             return LogicEngine::defaultLogic();
         }
-        if (LogicEngine::containsLegacy($decoded) && empty($decoded['when'])) {
+        $upgraded = LogicEngine::upgrade($decoded, $this->logicPeers());
+        if ($upgraded === null) {
             return LogicEngine::defaultLogic();
         }
-        return LogicEngine::normalize($decoded);
+        return $upgraded;
     }
 
     public function setLogic(array $logic): void
     {
         if (LogicEngine::containsLegacy($logic)) {
-            throw new \InvalidArgumentException(LogicEngine::legacyMessage());
+            $upgraded = LogicEngine::upgrade($logic, $this->logicPeers());
+            if ($upgraded === null || empty($upgraded['when'])) {
+                throw new \InvalidArgumentException(LogicEngine::legacyMessage());
+            }
+            $logic = $upgraded;
         }
         $text = trim((string)($logic['formula'] ?? $logic['text'] ?? ''));
         if ($text !== '' && empty($logic['when'])) {

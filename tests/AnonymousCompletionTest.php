@@ -96,6 +96,15 @@ foreach ($sends as $send) {
     if ($send->answer_id !== null) {
         $failures[] = 'the email log links the member to answer ' . $send->answer_id;
     }
+    if ($send->member_id !== null) {
+        $failures[] = 'the email log stored the member';
+    }
+    if ($send->email !== null && $send->email !== '') {
+        $failures[] = 'the email log stored the email address';
+    }
+    if (str_starts_with((string)$send->actor_key, 'member:')) {
+        $failures[] = 'the email log stored the member in the actor key';
+    }
     if (substr((string)$send->created_at, 11) !== '00:00:00') {
         $failures[] = 'the email log kept the send time ' . $send->created_at;
     }

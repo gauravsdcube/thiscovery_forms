@@ -139,12 +139,12 @@ class FormActionService
     }
 
     /**
-     * Duplicate-check key for a fully anonymous form. It never names the answer.
+     * Duplicate-check key for a fully anonymous form. It names neither the answer nor the member.
      */
     public static function anonymousActorKey(?FormPanelMember $member): string
     {
         if ($member && !$member->isNewRecord) {
-            return 'member:' . (int)$member->id;
+            return 'anon:' . substr(hash('sha256', 'cf-anon-member:' . (int)$member->id), 0, 32);
         }
         $session = (string)(Yii::$app->session->id ?: 'none');
         return 'session:' . substr(hash('sha256', $session), 0, 32);

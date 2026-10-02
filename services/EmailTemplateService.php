@@ -188,8 +188,10 @@ class EmailTemplateService
         $row->actor_key = isset($meta['actor_key']) ? substr((string)$meta['actor_key'], 0, 64) : null;
         $row->email = $to;
         if (!empty($meta['anonymous'])) {
-            // Anonymous forms: no answer link, and only the calendar date, so a send
-            // cannot be matched to an answer by time.
+            // A fully anonymous form keeps no member, no address, and no answer on the log.
+            // Only the calendar date is stored, so a send cannot be matched to a person.
+            $row->member_id = null;
+            $row->email = null;
             $row->answer_id = null;
             $row->created_at = date('Y-m-d') . ' 00:00:00';
         }
@@ -277,7 +279,7 @@ class EmailTemplateService
         }
         $meta = [
             'form_id' => $form->id,
-            'member_id' => $member->id ?? null,
+            'member_id' => $anonymous ? null : ($member->id ?? null),
             'answer_id' => $anonymous ? null : $answer->id,
             'kind' => FormEmailSend::KIND_COMPLETION,
         ];

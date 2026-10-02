@@ -2,6 +2,72 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.31.0 (October 2, 2026)
+
+Production release. It includes everything since 1.28: loops, quotas, electronic consent, randomisation, the formula engine, and the studio. The numbered review fixes are in 1.30.1 through 1.30.7 below. This section is the description of what is being released.
+
+### Formulas
+
+Show, hide, skip, and go-to rules are formulas. The same decimal arithmetic runs in PHP and in the browser. A calculated question stores the server result. A value typed into that question is ignored.
+
+Numbers are calculated at 12 decimal places and stored at the question’s decimal places, at most 6. Halves round away from zero. A number can have at most 30 whole digits. `0.1 + 0.2` is `0.3`. `pow` is available, including for body mass index.
+
+Choice rules compare option codes. An option coded 0 counts as ticked. `today()` is the calendar date in the form’s time zone, Europe/London unless the form sets another zone, and it stays on the response. A calculated question that is only hidden by its display setting is still stored. A show/hide rule that hides it clears the stored value.
+
+Starter formulas cover body mass index, age, PHQ-9, GAD-7, and an EQ-5D profile. There is no EQ-5D index. A named formula is written `fn:name`. Renaming a variable updates every formula that uses it.
+
+A form authored before formulas, with a field, an operator, and a value, opens as a formula and keeps its show, hide, and routing. Saving the form stores the formula. Importing a JSON or CSV in the old shape does the same, including the old condition columns and page-break branches. A loop aggregate other than any, all, count, or sum cannot be converted and is refused.
+
+The fill page applies formula go-to, go-to-end, and skip-page rules, so the route shown and the route stored are the same. A rule on a hidden question does not route. Publishing refuses a question shown by its own answer, a go-to target that does not exist, and a rule that reads a later page.
+
+### Anonymity
+
+On a fully anonymous form, the completion email log stores no member, no email address, and no answer. Only the calendar date is kept. A second completion for the same person is still skipped. The member’s weight is not copied onto the answer. A manager can correct an anonymous response. The edit is audited and the response stays anonymous.
+
+Consent on a fully anonymous form is checkbox attestation only. The record keeps no name, witness, drawing, or time of day.
+
+### Studio
+
+Saving a form shows “Form saved.” Settings are grouped, and each group can be collapsed. Consent, loops, randomisation, and quotas each have their own page. Each setting has a ? guide. Help covers those areas, formulas, the status lock, trash, and the export analysis codes.
+
+Incomplete responses are kept unless that setting is turned off. Status stays locked until an edition has been published. Removing a question asks for confirmation. Moving a form to the trash keeps it there.
+
+### Loops
+
+Loops are off unless an administrator turns them on and the form turns them on. A question group can repeat from a fixed list, from selected options, from a number, or from rows the person adds. That group can contain one other repeating group.
+
+Each repeat is stored on its own answer cell. The long export includes the answers on a roster row. A loop item whose code is 0 can be translated. Logic can use any, all, count, or sum.
+
+### Quotas
+
+Quotas are off unless an administrator turns them on and the form turns them on. The counter is locked when a response is submitted. Partial answers are kept and the outcome is over quota. Editing a completed response does not take another place.
+
+When the accepted count reaches the target, `quota.full` is written to the quota audit. If the form has an address for “Email when a quota fills”, that address is sent a message. The event is not posted to another system.
+
+Reservations are off unless that quota turns them on. A full cell can end the survey, redirect to an allowlisted HTTPS address, go to another page, or mark the response and let it finish without taking a place.
+
+### Electronic consent
+
+Electronic consent is off unless an administrator turns it on and the form turns it on. A published information sheet is frozen. The record stores a hash of the text the person was shown. The server enforces the signature method, the witness details, and must-read. Refusing a required statement ends the form as not consented, and the completion email is not sent.
+
+### Randomisation
+
+Randomisation is off unless an administrator turns it on and the form turns it on. Shuffles use an unbiased draw, and each question’s seed is independent. The order stored with the first response is the order that was shown. Another response does not reuse it.
+
+Arm assignment supports simple weighted, block, least filled, and stratified block. Parallel starts lock the allocation row and retry a deadlock. A finished response is recorded as complete whether or not arm assignment is on. An over-quota response keeps its arm.
+
+### Responses, export, and editions
+
+A response opened on an older signed edition is checked against that edition and stores it. The long export includes roster answers. Export can be limited to responses that are ready for analysis, and those labels stay on one line. A question with no variable binds to one live question of the same label and type when a snapshot is restored. A live question can keep its variable name when a removed question still has that name.
+
+### Later
+
+Webhooks are not in this release. `quota.full` is audited and, when an address is set, emailed. It is not posted to another system. Consent events are audited and are not posted either.
+
+Resume codes are stored as a keyed hash. A code the respondent still has continues to work. The plain text cannot be read back from the database. No production form is carrying resume codes that need to be restored.
+
+One live question on a form may use a variable name. Production has no pair of live questions that share a name.
+
 ## 1.30.7 (October 2, 2026)
 
 Corrections from the full test suite.

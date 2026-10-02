@@ -349,7 +349,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Email when a quota fills') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Optional address to notify when a quota reaches its target. The event is recorded on the quota. It is not sent as a webhook.')]) ?>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Sends this address a message when a quota reaches its target. The event is also recorded on the quota. It is not posted to another system.')]) ?>
                         <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.org']) ?>
                     </div>
                     <?php if (empty($isNew)): ?>
