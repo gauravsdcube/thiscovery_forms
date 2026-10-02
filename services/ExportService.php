@@ -535,6 +535,20 @@ class ExportService
                 $allowed[(int)$col['field']->id] = true;
             }
         }
+        // A roster question has no fixed wide-export column, so it would be dropped here and
+        // the long export would list the row with an empty name. Include it unless it was
+        // excluded or scrubbed.
+        $excluded = array_fill_keys(ExportSettings::excludeColumns($form), true);
+        $scrub = ExportSettings::isPiiScrub($form);
+        foreach ($fields as $field) {
+            if (!$field->collectsAnswer() || isset($allowed[(int)$field->id]) || !$loops->isLoopField($form, $field)) {
+                continue;
+            }
+            if (isset($excluded['field.' . (int)$field->id]) || ($scrub && ExportSettings::fieldDropsWhenScrub($field))) {
+                continue;
+            }
+            $allowed[(int)$field->id] = true;
+        }
         $redactor = ExportSettings::isPiiScrub($form) ? new PiiRedactor() : null;
         $clean = static function (string $value) use ($redactor): string {
             return $redactor ? (string)$redactor->redact($value) : $value;

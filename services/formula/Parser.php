@@ -12,7 +12,7 @@ final class Parser
     /** Functions a formula may call. Anything else is an error, not a silent blank (V3-54). */
     public const FUNCTIONS = [
         'and', 'or', 'not', 'sum', 'mean', 'min', 'max', 'count', 'count_eq', 'count_answered', 'count_selected',
-        'round', 'floor', 'ceil', 'abs', 'sqrt', 'if', 'coalesce', 'ifempty', 'min_valid', 'concat', 'lower',
+        'round', 'floor', 'ceil', 'abs', 'sqrt', 'pow', 'if', 'coalesce', 'ifempty', 'min_valid', 'concat', 'lower',
         'upper', 'length', 'contains_text', 'today', 'date_diff', 'add_days', 'add_months', 'year', 'month',
         'any_eq', 'all_eq', 'between', 'is_empty', 'is_answered', 'selected', 'selected_all', 'selected_only',
         'code_of', 'score_of',

@@ -251,6 +251,7 @@ $anon = ReviewLib::form($space, 'EV F4 anonymous quota', [
 ]);
 $anon->setSetting('quotas_enabled', '1');
 $anon->save(false);
+ReviewLib::clearFields($anon);
 $anonField = ReviewLib::field($anon, FormField::TYPE_TEXT, 'City', ['variable' => 'city']);
 $svc->saveQuota($anon, null, [
     'name' => 'Anonymous panel',

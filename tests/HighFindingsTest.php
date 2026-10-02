@@ -59,16 +59,13 @@ $importError = (new QuestionImportExportService())->appendFieldPayloads($importF
     'logic_formula' => '[age] = "yes"',
     'logic_action' => 'show',
 ]]);
-$check($importError === null, 'import failed: ' . (string)$importError);
+// The colliding name is renamed, so [age] would follow it and the question would be
+// shown by its own answer. LOG-9 refuses that save and keeps the existing question.
+$check(is_string($importError) && str_contains($importError, 'own answer'), 'a self-showing import was accepted: ' . (string)$importError);
 $imported = FormField::find()->where(['form_id' => (int)$importForm->id, 'label' => 'Imported age'])->one();
 $existingAge->refresh();
-$check($imported instanceof FormField, 'imported age question is missing');
+$check($imported === null, 'the refused import was stored');
 $check($existingAge->variable === 'age', 'the existing age variable was renamed');
-if ($imported instanceof FormField) {
-    $check($imported->variable !== 'age', 'imported age kept the existing variable');
-    $check(str_contains((string)$imported->getLogic()['text'], '[' . $imported->variable . ']'), 'imported skip logic does not point at the imported question');
-    $check(!str_contains((string)$imported->getLogic()['text'], '[age]'), 'imported skip logic still names the existing age question');
-}
 
 $source = ReviewLib::form($space, 'EV high DAT-6', ['allow_anonymous' => 0, 'allow_multiple' => 1]);
 ReviewLib::clearFields($source);

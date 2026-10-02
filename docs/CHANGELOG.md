@@ -2,6 +2,21 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.30.7 (October 2, 2026)
+
+Corrections from the full test suite.
+
+- The BMI formula can use `pow`.
+- Moving a form to the trash keeps it there when the form is closed.
+- A response opened on an older signed edition is checked against that edition and stores it.
+- The option order saved with the first response is the order that was shown, and another response does not reuse it.
+- A question with no variable binds to one live question of the same label and type.
+- A loop item whose code is 0 can be translated.
+- A manager can correct an anonymous response. The edit is audited and the response stays anonymous.
+- A select in creator HTML keeps a prefixed name, so it cannot post as a fill field.
+- The long export includes the answers on a roster row.
+- A live question can keep its variable name when a removed question still has that name. A new question is given the next free name.
+
 ## 1.30.6 (October 2, 2026)
 
 Help and the export page, for release.

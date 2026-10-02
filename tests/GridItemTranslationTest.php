@@ -150,7 +150,7 @@ ReviewLib::asUser(null);
 $submit = new SubmitForm();
 $submit->form = $form;
 $bwValue = ['best' => 'Item', 'worst' => 'Other'];
-$mdValue = ['sets' => []];
+$mdValue = ['version' => 0, 'sets' => []];
 foreach ($mdSets as $set) {
     $set = array_values(array_map('strval', $set));
     $mdValue['sets'][] = ['best' => $set[0], 'worst' => ($set[1] ?? $set[0])];

@@ -665,14 +665,15 @@ class TranslationImportExportService
         }
 
         if ($part === 'loop_item') {
-            if (!empty($parsed['code'])) {
+            // Code "0" is a real repeat code. empty("0") is true in PHP, so it must not be skipped.
+            if (isset($parsed['code']) && (string)$parsed['code'] !== '') {
                 $data['loop_items'][(string)$parsed['code']] = $value;
             }
             return;
         }
 
         $listKey = ['grid_row' => 'rows', 'grid_column' => 'columns', 'item' => 'items'][$part] ?? null;
-        if ($listKey && !empty($parsed['code'])) {
+        if ($listKey && isset($parsed['code']) && (string)$parsed['code'] !== '') {
             if (!is_array($data[$listKey] ?? null) || array_is_list($data[$listKey])) {
                 $data[$listKey] = [];
             }

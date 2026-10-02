@@ -1470,6 +1470,12 @@ class FormField extends ActiveRecord
     /**
      * @return array<int, array{code:string,label:string}>
      */
+    /** @var array<string, array<int, array{code:string,label:string}>> */
+    private static array $drawnOptionOrder = [];
+
+    /** @var array<string, int> session+field => answer that was shown that order */
+    private static array $sessionOptionClaim = [];
+
     public function getShuffledChoicePairs(?int $userId = null, ?FormAnswer $answer = null): array
     {
         $pairs = $this->getChoicePairs();
@@ -1481,9 +1487,14 @@ class FormField extends ActiveRecord
         }
         $pendingOk = $answer && $answer->isNewRecord && $this->form && $rand::active($this->form);
         if ($answer && (!$answer->isNewRecord || $pendingOk) && $this->isRandomizeOptions()) {
-            $order = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->optionOrder($this, $answer);
-            if ($order) {
-                return $this->pairsInOrder($pairs, $order);
+            // Use an order already stored for this response. Do not draw a new one here:
+            // the first page is shown before the answer exists, from the session seed below,
+            // and the first save must store that same order (LOG-6).
+            $key = trim((string)$this->variable) ?: ('q' . (int)$this->id);
+            $storedOrders = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->orders($answer);
+            $existing = $storedOrders['options'][$key] ?? null;
+            if (is_array($existing) && $existing) {
+                return $this->pairsInOrder($pairs, array_map('strval', $existing));
             }
         }
         // Every respondent gets their own order, never one shared by all guests (LOG-6).
@@ -1511,27 +1522,37 @@ class FormField extends ActiveRecord
             return $pairs;
         }
 
-        // Seeded by the session first: the first page is shown before any answer exists, and
-        // the first save stores the order from the same session, so stored = shown. After
-        // that the stored order wins (above). Without a session, fall back to the answer.
+        // The first page is shown before an answer exists, from the session. The first response
+        // in that session stores that same order. Another response in the session gets its own
+        // order, so guests do not share one (LOG-6). A stored order, above, wins after that.
+        $build = function (string $seedKey) use ($rest, $pinned): array {
+            $engine = new \humhub\modules\thiscoveryForms\services\RandomisationEngine();
+            $order = $engine->shuffle(range(0, count($rest) - 1), $engine->seedInt($seedKey, 'options:' . (int)$this->id));
+            $shuffled = [];
+            foreach ($order as $idx) {
+                $shuffled[] = $rest[$idx];
+            }
+            return array_merge($shuffled, $pinned);
+        };
         $sessionId = Yii::$app->has('session') ? (string)Yii::$app->session->id : '';
-        if ($sessionId !== '') {
-            $seedKey = 'session:' . $sessionId;
-        } elseif ($answer && trim((string)$answer->resume_code) !== '') {
-            $seedKey = 'resume:' . trim((string)$answer->resume_code);
-        } elseif ($answer && !$answer->isNewRecord) {
-            $seedKey = 'answer:' . (int)$answer->id;
-        } else {
-            $seedKey = 'guest:' . (int)$this->form_id;
+        $sessionKey = $sessionId !== '' ? 'session:' . $sessionId : 'guest:' . (int)$this->form_id;
+        $sessionOrder = $build($sessionKey);
+        if (!$answer || $answer->isNewRecord) {
+            return $sessionOrder;
         }
-        $engine = new \humhub\modules\thiscoveryForms\services\RandomisationEngine();
-        $order = $engine->shuffle(range(0, count($rest) - 1), $engine->seedInt($seedKey, 'options:' . (int)$this->id));
-
-        $shuffled = [];
-        foreach ($order as $idx) {
-            $shuffled[] = $rest[$idx];
+        $cacheKey = (int)$answer->id . ':' . (int)$this->id;
+        if (isset(self::$drawnOptionOrder[$cacheKey])) {
+            return self::$drawnOptionOrder[$cacheKey];
         }
-        return array_merge($shuffled, $pinned);
+        $claimKey = $sessionKey . ':' . (int)$this->id;
+        if (!isset(self::$sessionOptionClaim[$claimKey]) || self::$sessionOptionClaim[$claimKey] === (int)$answer->id) {
+            self::$sessionOptionClaim[$claimKey] = (int)$answer->id;
+            self::$drawnOptionOrder[$cacheKey] = $sessionOrder;
+            return $sessionOrder;
+        }
+        $own = $build('answer:' . (int)$answer->id);
+        self::$drawnOptionOrder[$cacheKey] = $own;
+        return $own;
     }
 
     /**

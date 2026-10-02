@@ -296,11 +296,20 @@ class FormSnapshotService
         foreach ($fields as $field) {
             $oldId = (int)$field->id;
             $resolved = ($oldId && isset($byId[$oldId]) && !isset($used[$oldId])) ? $byId[$oldId] : null;
-            if (!$resolved) {
-                $var = strtolower(trim((string)$field->variable));
-                if ($var !== '' && !empty($byVar[$var])) {
-                    $resolved = $pick($byVar[$var]);
+            $var = strtolower(trim((string)$field->variable));
+            if (!$resolved && $var !== '' && !empty($byVar[$var])) {
+                $resolved = $pick($byVar[$var]);
+            }
+            if (!$resolved && $var === '') {
+                // No variable: bind one live row of the same label and type, and only once (DAT-4).
+                $label = strtolower(trim((string)$field->label));
+                $candidates = [];
+                foreach ($live as $row) {
+                    if (strtolower(trim((string)$row->label)) === $label && (string)$row->type === (string)$field->type) {
+                        $candidates[] = $row;
+                    }
                 }
+                $resolved = $pick($candidates);
             }
             // No label-and-type fallback: two "Please specify" boxes would be bound to one row
             // and their answers merged. Variable names are unique per form (DAT-10), so a

@@ -1554,6 +1554,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
             if (!$this->content || $this->content->isNewRecord) {
                 return;
             }
+            // Trash sets the deleted state, then closes the form. Closing must not publish it again.
+            if ((int)$this->content->state === Content::STATE_DELETED) {
+                return;
+            }
             $target = $this->isDraft() ? Content::STATE_DRAFT : Content::STATE_PUBLISHED;
             if ((int)$this->content->state !== $target) {
                 $this->content->getStateService()->update($target);
@@ -2585,17 +2589,27 @@ class CustomForm extends ContentActiveRecord implements Searchable
         /** @var array<string,string> $renames old variable => new variable */
         $renames = [];
         $postedIds = [];
+        $keptNames = [];
         foreach ($orderedRows as $item) {
             if (isset($item['row']['id']) && $item['row']['id'] !== '') {
-                $postedIds[(int)$item['row']['id']] = true;
+                $postedId = (int)$item['row']['id'];
+                $postedIds[$postedId] = true;
+                $postedName = strtolower(trim((string)($item['row']['variable'] ?? '')));
+                if ($postedName !== '' && isset($existing[$postedId])
+                    && $postedName === strtolower(trim((string)$existing[$postedId]->variable))) {
+                    // The live question is keeping its name, so a removed copy of that name
+                    // does not block it.
+                    $keptNames[$postedName] = true;
+                }
             }
         }
         foreach ($existing as $field) {
-            // A removed question keeps its name reserved, unless this save brings it back. So
-            // does one this save removes (it is not posted).
-            if (trim((string)$field->variable) !== '' && !isset($postedIds[(int)$field->id])) {
-                $usedVariables[strtolower((string)$field->variable)] = true;
-                $usedBy[strtolower((string)$field->variable)] = Yii::t('ThiscoveryFormsModule.base', 'a removed question');
+            // A removed question keeps its name reserved, unless this save brings it back or a
+            // live question is already keeping it. A question this save removes is not posted.
+            $name = strtolower(trim((string)$field->variable));
+            if ($name !== '' && !isset($postedIds[(int)$field->id]) && !isset($keptNames[$name])) {
+                $usedVariables[$name] = true;
+                $usedBy[$name] = Yii::t('ThiscoveryFormsModule.base', 'a removed question');
             }
         }
         foreach ($orderedRows as $item) {

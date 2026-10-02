@@ -28,15 +28,16 @@ UploadQuota::record(880015, 1, UploadQuota::MAX_QUESTION_BYTES - 100);
 $check(UploadQuota::allows(880015, 1, 200, false, '203.0.113.9') !== null, 'the per-question size cap was not enforced');
 
 $ip = '203.0.113.' . random_int(20, 250);
+$formId = random_int(800000, 899999);
 for ($i = 0; $i < UploadQuota::GUEST_LIMIT; $i++) {
-    $allowed = UploadQuota::allows(880016, 1, 100, true, $ip);
+    $allowed = UploadQuota::allows($formId, 1, 100, true, $ip);
     if ($allowed !== null) {
         $check(false, 'guest upload ' . $i . ' was rejected early');
         break;
     }
 }
-$check(UploadQuota::allows(880016, 1, 100, true, $ip) !== null, 'guest uploads were not rate limited');
-$check(UploadQuota::allows(880016, 1, 100, false, $ip) === null, 'a signed-in upload was caught by the guest limit');
+$check(UploadQuota::allows($formId, 1, 100, true, $ip) !== null, 'guest uploads were not rate limited');
+$check(UploadQuota::allows($formId, 1, 100, false, $ip) === null, 'a signed-in upload was caught by the guest limit');
 
 if ($failures) {
     echo 'FAILED ' . count($failures) . "\n";

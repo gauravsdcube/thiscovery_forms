@@ -20,6 +20,9 @@ class HtmlSanitizer
         // Creator HTML may contain its own inputs, but never with the name of a fill field:
         // every input/select/textarea name gets a cfhtml_ prefix, so it cannot overwrite an
         // answer, the consent block or a token (SEC-19). Radio groups still share a name.
+        // An empty select is invalid HTML, so the purifier drops it and a consent-shaped
+        // name would never be renamed. Keep one option so the select survives and is prefixed.
+        $html = (string)preg_replace('/<select\b([^>]*)>\s*<\/select>/i', '<select$1><option value=""></option></select>', $html);
         return (string)preg_replace_callback(
             '/(<(?:input|select|textarea)\b[^>]*?\bname=")([^"]*)(")/i',
             static fn(array $m) => $m[1] . (str_starts_with($m[2], 'cfhtml_') ? $m[2] : 'cfhtml_' . $m[2]) . $m[3],

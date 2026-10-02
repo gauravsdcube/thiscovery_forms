@@ -923,6 +923,25 @@ class SubmitForm extends Model
             $this->onPathFieldIds = null;
         }
 
+        $pinnedEdition = $this->resolvePinnedEdition($isTest);
+        if ($pinnedEdition === false) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form edition could not be confirmed. Please reload the page and try again.'));
+            return null;
+        }
+        // A signed older edition is the one the person saw. Check the answers against that
+        // edition and store it, instead of the edition that is current now (DAT-7, V3-52).
+        if (is_int($pinnedEdition) && $pinnedEdition > 0 && $this->form
+            && (int)$this->form->current_edition_id > 0
+            && $pinnedEdition !== (int)$this->form->current_edition_id) {
+            $shown = new FormAnswer();
+            $shown->edition_id = $pinnedEdition;
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())->applyFillDefinition($this->form, $shown, false);
+            if (!empty($this->form->editionLoadFailed)) {
+                $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form edition could not be confirmed. Please reload the page and try again.'));
+                return null;
+            }
+        }
+
         if (!$this->validate()) {
             return null;
         }
@@ -931,21 +950,6 @@ class SubmitForm extends Model
         $this->managerEdit = !$isTest && self::isManagerEdit($this->form, $existing);
         if ($this->managerEdit && $this->changeReason() === '') {
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Give a reason for changing this response.'));
-            return null;
-        }
-
-        $pinnedEdition = $this->resolvePinnedEdition($isTest);
-        if ($pinnedEdition === false) {
-            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form edition could not be confirmed. Please reload the page and try again.'));
-            return null;
-        }
-        // A new response is checked against the current edition. If the page was opened on an
-        // earlier one, it would be validated against one and stamped with the other: ask the
-        // respondent to check the updated form instead (V3-52). Drafts keep their own edition.
-        $isNewResponse = !$existing || $existing->isNewRecord || !(int)$existing->edition_id;
-        if (!$asDraft && $isNewResponse && is_int($pinnedEdition) && $pinnedEdition > 0
-            && $this->form && (int)$this->form->current_edition_id > 0 && $pinnedEdition !== (int)$this->form->current_edition_id) {
-            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form was updated while you were filling it in. Your answers are kept: please check them and submit again.'));
             return null;
         }
 
@@ -972,6 +976,10 @@ class SubmitForm extends Model
         }
         if ($this->weight !== null) {
             $answer->weight = $this->weight;
+        }
+        // A response stored without a respondent stays anonymous when a manager corrects it.
+        if (!$anonymous && !$answer->isNewRecord && $answer->created_by === null) {
+            $anonymous = true;
         }
         if ($anonymous) {
             $answer->forceAnonymous = true;
