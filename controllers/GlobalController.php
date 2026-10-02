@@ -125,8 +125,11 @@ class GlobalController extends Controller
 
     protected function handleEdit(CustomForm $form, bool $isNew, array $seedFields = [])
     {
-        // Keep Administration left menu when editing from the admin Forms area.
-        $this->subLayout = '@humhub/modules/admin/views/layouts/main';
+        // Keep Administration left menu when editing from the admin Forms area,
+        // unless configuration opens the whole Forms area full page.
+        if (!\humhub\modules\thiscoveryForms\Module::opensWithoutAdminMenu()) {
+            $this->subLayout = '@humhub/modules/admin/views/layouts/main';
+        }
 
         $request = Yii::$app->request;
         $unsavedFields = null;

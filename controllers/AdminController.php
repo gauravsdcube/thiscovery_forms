@@ -6,6 +6,7 @@ use humhub\modules\admin\components\Controller;
 use humhub\modules\admin\permissions\ManageModules;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\ModuleSettings;
+use humhub\modules\thiscoveryForms\Module;
 use humhub\modules\thiscoveryForms\permissions\CreateGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\services\FolderService;
@@ -55,6 +56,30 @@ class AdminController extends Controller
             || Yii::$app->user->can(ManageModules::class)
             || Yii::$app->user->can(ManageGlobalForm::class)
             || Yii::$app->user->can(CreateGlobalForm::class);
+    }
+
+    public function beforeAction($action)
+    {
+        if (Module::opensWithoutAdminMenu() && !self::keepsAdminMenu($action->id)) {
+            $this->subLayout = '@thiscovery-forms/views/layouts/default';
+        }
+
+        return parent::beforeAction($action);
+    }
+
+    /**
+     * Module configuration stays beside the administration menu so this option can be turned off.
+     */
+    public static function keepsAdminMenu(string $actionId): bool
+    {
+        return in_array($actionId, [
+            'settings',
+            'theme-edit',
+            'theme-delete',
+            'theme-export',
+            'theme-import',
+            'ai-usage',
+        ], true);
     }
 
     public function actionIndex()

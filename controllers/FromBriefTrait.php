@@ -36,7 +36,7 @@ trait FromBriefTrait
         }
 
         $container = $this->studioContainer();
-        if ($container === null) {
+        if ($container === null && !Module::opensWithoutAdminMenu()) {
             $this->subLayout = '@humhub/modules/admin/views/layouts/main';
         }
 
@@ -75,7 +75,7 @@ trait FromBriefTrait
         }
 
         $container = $this->studioContainer();
-        if ($container === null) {
+        if ($container === null && !Module::opensWithoutAdminMenu()) {
             $this->subLayout = '@humhub/modules/admin/views/layouts/main';
         }
 

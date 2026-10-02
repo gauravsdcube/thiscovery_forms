@@ -53,6 +53,9 @@ class Module extends ContentContainerModule
     public const SETTING_ECONSENT = 'econsent_enabled';
     public const SETTING_QUOTAS = 'quotas_enabled';
     public const SETTING_LOOPS = 'loops_enabled';
+
+    /** When 1, the Forms area in Administration uses the full page and hides the left menu. */
+    public const SETTING_OPEN_WITHOUT_ADMIN_MENU = 'open_without_admin_menu';
     public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
     public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
     public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
@@ -240,6 +243,16 @@ class Module extends ContentContainerModule
             return array_keys(CustomForm::getKindLabels());
         }
         return $module->getEnabledKinds();
+    }
+
+    /**
+     * The Forms area in Administration opens full page, without the left administration menu.
+     * Module configuration stays in that menu so the option can be turned off.
+     */
+    public static function opensWithoutAdminMenu(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        return $module instanceof self && !empty((int)$module->settings->get(self::SETTING_OPEN_WITHOUT_ADMIN_MENU, 0));
     }
 
     public static function isFromBriefEnabled(): bool

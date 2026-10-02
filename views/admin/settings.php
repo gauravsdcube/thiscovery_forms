@@ -187,6 +187,19 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
             </a>
         </p>
 
+        <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Administration layout') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. When on, the Forms area opens on the full page and the administration menu on the left is hidden. This configuration page keeps that menu.') ?>
+        </p>
+        <div class="cf-check-setting">
+            <label>
+                <?= Html::checkbox('ModuleSettings[openWithoutAdminMenu]', !empty($model->openWithoutAdminMenu), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('openWithoutAdminMenu')) ?>
+            </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The forms list, studio, answers, panels, email templates, and help use the full page. The left administration menu is not shown. This page stays in the menu so you can turn the option off.')]) ?>
+        </div>
+
         <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Save'), ['class' => 'btn btn-primary']) ?>
         <?php ActiveForm::end(); ?>
 

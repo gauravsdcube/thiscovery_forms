@@ -19,6 +19,14 @@ Network-level (global) forms live outside a space. People reach them from the Fo
 
 **Administration → Modules → Thiscovery Forms → Configure**
 
+### Administration layout
+
+**Open forms full page, without the administration menu** is off by default.
+
+When it is on, the Forms area in Administration — the list, studio, answers, panels, email templates, and help — uses the full page. The administration menu on the left is not shown. This configuration page keeps that menu, so you can turn the option off here.
+
+Space forms are unchanged. They still use the space menu.
+
 ### Form types
 
 Tick the types people may **create**. Existing forms of a disabled type stay available; nobody can start a new one of that type until you tick it again.

@@ -270,8 +270,9 @@ trait StudioTrait
     protected function renderCreateWizard(CustomForm $form)
     {
         $container = $this->studioContainer();
-        // Global (Administration) create wizard keeps the admin left menu.
-        if ($container === null) {
+        // Global (Administration) create wizard keeps the admin left menu,
+        // unless configuration opens the whole Forms area full page.
+        if ($container === null && !\humhub\modules\thiscoveryForms\Module::opensWithoutAdminMenu()) {
             $this->subLayout = '@humhub/modules/admin/views/layouts/main';
         }
         $templates = CustomForm::findAvailableTemplates($container);

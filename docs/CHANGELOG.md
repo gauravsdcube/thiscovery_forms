@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.33.0 (October 2, 2026)
+
+- Change: Module configuration can open the Forms area in Administration on the full page. When **Open forms full page, without the administration menu** is on, the forms list, studio, answers, panels, email templates, and help hide the left administration menu. The configuration page keeps that menu so the option can be turned off. Space forms are unchanged. The option is off until an administrator turns it on.
+
 ## 1.32.0 (October 2, 2026)
 
 ### Studio
