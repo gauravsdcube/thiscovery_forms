@@ -1,7 +1,9 @@
 <?php
 /**
  * SCO-5. Delphi consensus adds the agree band. It does not freeze the single
- * most common code, and excluded codes are left out of the share.
+ * most common code, and excluded codes are left out of the share. Disagreement is
+ * consensus out (reported, not frozen); a question can set its own bands, excluded codes and
+ * IQR limit; median and IQR are reported. SCO-9: a closed round freezes without a summary.
  */
 require __DIR__ . '/support/bootstrap.php';
 
@@ -100,6 +102,48 @@ $form->save(false);
 $form = ReviewLib::reload($form);
 $disagree = $svc->computeFrozenFieldIds($form, $round);
 $check(!in_array((int)$field->id, $disagree, true), 'the disagree band still froze the most common code');
+
+$rows = static fn(array $values): array => array_map(static fn($v) => ['value' => $v, 'weight' => 1], $values);
+$out = $svc->itemConsensus($form, $field, $rows(['1', '1', '9']));
+$check($out['status'] === RoundService::CONSENSUS_OUT, 'a disagree majority was not consensus out: ' . json_encode($out));
+
+// The question's own bands win over the form's, and its excluded code leaves the denominator.
+$field = \humhub\modules\thiscoveryForms\models\FormField::findOne((int)$field->id);
+$field->setValidation(['consensus_agree_from' => '1', 'consensus_agree_to' => '3', 'consensus_exclude' => '99']);
+$field->save(false);
+$own = $svc->itemConsensus($form, $field, $rows(['1', '2', '99', '99']));
+$check($own['status'] === RoundService::CONSENSUS_IN && (float)$own['agree'] === 100.0, 'the question\'s own band or exclusion was ignored: ' . json_encode($own));
+
+// Median and IQR on a numeric scale; an IQR limit can hold consensus back.
+$spread = $svc->itemConsensus($form, $field, $rows(['1', '2', '3', '3']));
+$check($spread['median'] !== null && $spread['iqr'] !== null, 'median or IQR missing: ' . json_encode($spread));
+$field->setValidation(['consensus_agree_from' => '1', 'consensus_agree_to' => '3', 'consensus_iqr_max' => '0.5']);
+$field->save(false);
+$held = $svc->itemConsensus($form, $field, $rows(['1', '3', '1', '3']));
+$check($held['status'] === RoundService::CONSENSUS_NONE, 'consensus was reached with an IQR above the limit: ' . json_encode($held));
+
+// SCO-9: a closed round freezes its consensus items without a published summary.
+$previousIds = FormAnswer::find()->select('id')->where(['form_id' => (int)$form->id])->column();
+if ($previousIds) {
+    Yii::$app->db->createCommand()->delete('custom_form_answer_field', ['answer_id' => $previousIds])->execute();
+    FormAnswer::deleteAll(['id' => $previousIds]);
+}
+foreach (['7', '8', '9'] as $value) {
+    $store((int)$form->id, (int)$round->id, (int)$field->id, $value);
+}
+$field->setValidation([]);
+$field->save(false);
+$form->freeze_on_consensus = 1;
+$form->consensus_threshold = 70;
+$form->save(false);
+$form = ReviewLib::reload($form);
+$round->summary_html = null;
+$round->published_at = null;
+$round->frozen_field_ids_json = null;
+$round->save(false);
+$unpublished = $svc->frozenFor($form, $round);
+$check(in_array((int)$field->id, $unpublished, true), 'an unpublished closed round froze nothing');
+$check(FormRound::findOne((int)$round->id)->frozen_field_ids_json !== null, 'the frozen list was not stored');
 
 if ($failures) {
     echo 'FAILED ' . count($failures) . "\n";

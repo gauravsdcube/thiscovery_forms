@@ -83,6 +83,10 @@ $features = [
         'label' => Yii::t('ThiscoveryFormsModule.base', 'Hash IP addresses used for fraud checks'),
         'guide' => Yii::t('ThiscoveryFormsModule.base', 'On: store HMAC hashes of the IP and a /24 (or IPv6 prefix) network hash — never the raw address — so duplicate checks can run. Off: store no IP hashes and skip IP-based duplicate matching. Shared NAT (hospital, campus, VPN) can still look like several people on one hash when On. Technical hashes are only shown to managers.'),
     ],
+    'duplicate_network_signal' => [
+        'label' => Yii::t('ThiscoveryFormsModule.base', 'Show responses from nearby network addresses'),
+        'guide' => Yii::t('ThiscoveryFormsModule.base', 'Off by default. Hospitals, universities and mobile carriers put many people behind a few addresses, so the same address alone is only shown as information and never counted. A shared browser session, or the same address with the same browser, still counts as a duplicate signal.'),
+    ],
     'auto_exclude' => [
         'label' => Yii::t('ThiscoveryFormsModule.base', 'Allow automatic exclusion when several signals agree'),
         'guide' => Yii::t('ThiscoveryFormsModule.base', 'Off by default. When On, a response can be marked Excluded only if the score is very low and at least two different signal types fired. A single issue still cannot exclude someone. You can always reinstate the response.'),
@@ -283,7 +287,7 @@ $siteDefaultOn = !empty($defaults['enabled']);
         ],
         'speed_min_seconds' => [
             Yii::t('ThiscoveryFormsModule.base', 'Speeding: minimum seconds per question'),
-            Yii::t('ThiscoveryFormsModule.base', 'Flag when the time per question shown is shorter than this, even before a median is known. A short route is not compared with the total time of a long one. The old default of 15 is treated as 2 seconds per question.'),
+            Yii::t('ThiscoveryFormsModule.base', 'Flag when the time per question shown is shorter than this, even before a median is known. A short route is not compared with the total time of a long one. The old default of 15 is treated as 2 seconds per question, and a value over 20 as an old total in seconds, spread over the questions shown.'),
         ],
         'straightline_min_items' => [
             Yii::t('ThiscoveryFormsModule.base', 'Straight-line: minimum items'),

@@ -186,7 +186,11 @@ class IntegrityService
     {
         return $this->gateAccess($form, $this->settings($form), $ctx);
     }
-    public function gateSubmit(CustomForm $form, array $post, FillContext $ctx): ?string
+    /**
+     * @param bool $poll true for the poll embed. It cannot show a CAPTCHA, so polls are gated by
+     *                   access and rate limit only; a CAPTCHA would reject every vote (V3-34).
+     */
+    public function gateSubmit(CustomForm $form, array $post, FillContext $ctx, bool $poll = false): ?string
     {
         $cfg = $this->settings($form);
         $accessError = $this->gateAccess($form, $cfg, $ctx, true);
@@ -195,8 +199,13 @@ class IntegrityService
             return $accessError;
         }
         $integrityOn = IntegritySettings::isOn($cfg, 'enabled');
-        if ($integrityOn && IntegritySettings::isOn($cfg, 'rate_limiting') && $this->isRateLimited($form, $cfg, true)) {
+        if ($integrityOn && IntegritySettings::isOn($cfg, 'rate_limiting') && $this->isRateLimited($form, $cfg, true, $ctx)) {
+            $this->refundAccessToken($form, $ctx);
             return Yii::t('ThiscoveryFormsModule.base', 'Too many submissions from this connection. Please wait a few minutes and try again.');
+        }
+        if ($poll) {
+            $this->discardCaptchaResult($form);
+            return null;
         }
         if (!IntegritySettings::isOn($cfg, 'captcha') || !$this->captchaAvailable($cfg)) {
             $this->clearCaptchaRequired($form);
@@ -212,6 +221,7 @@ class IntegrityService
             if (!$passed) {
                 $this->markCaptchaRequired($form);
                 $this->discardCaptchaResult($form);
+                $this->refundAccessToken($form, $ctx);
                 return Yii::t('ThiscoveryFormsModule.base', 'Please complete the verification check and try again.');
             }
             $this->clearCaptchaRequired($form);
@@ -312,7 +322,7 @@ class IntegrityService
             $flags = array_merge($flags, $attFlags);
         }
         if (!$skipScores && IntegritySettings::isOn($cfg, 'consistency_checks')) {
-            [$scores['consistency'], $conFlags] = $this->analyseConsistency($form, $values, $cfg);
+            [$scores['consistency'], $conFlags] = $this->analyseConsistency($form, $values, $cfg, $shown);
             $flags = array_merge($flags, $conFlags);
         }
         if (!$skipScores && IntegritySettings::isOn($cfg, 'freetext_checks')) {
@@ -324,6 +334,7 @@ class IntegrityService
             $flags = array_merge($flags, $simFlags);
             $meta->similar_answer_ids_json = $similarIds ? json_encode($similarIds) : null;
         }
+        $similarPending = $similarIds ?? [];
 
         $meta->bot_score = $scores['bot'];
         $meta->duplicate_score = $scores['duplicate'];
@@ -339,39 +350,7 @@ class IntegrityService
             $meta->analysis_status = FormIntegrityMeta::ANALYSIS_EXCLUDED;
             $meta->exclusion_reason = (string)$answer->outcome;
         } elseif (IntegritySettings::isOn($cfg, 'integrity_scoring')) {
-            $meta->overall_score = $this->overallScore($scores, $cfg);
-            $autoStatus = $this->statusFromScore((float)$meta->overall_score, $scores, $cfg);
-            if (!$meta->status_override) {
-                $fromStatus = $meta->integrity_status;
-                $fromAnalysis = $meta->analysis_status;
-                $meta->integrity_status = $autoStatus;
-                $meta->analysis_status = $this->analysisFromStatus($autoStatus);
-                if ($autoStatus === FormIntegrityMeta::STATUS_EXCLUDED) {
-                    $meta->exclusion_reason = Yii::t(
-                        'ThiscoveryFormsModule.base',
-                        'Automatically excluded: quality score {score} with multiple integrity signals.',
-                        ['score' => number_format((float)$meta->overall_score, 0)]
-                    );
-                    FormIntegrityAudit::record(
-                        (int)$form->id,
-                        (int)$answer->id,
-                        'auto_exclude',
-                        $fromStatus,
-                        $autoStatus,
-                        $meta->exclusion_reason
-                    );
-                    if ($fromAnalysis !== $meta->analysis_status) {
-                        FormIntegrityAudit::record(
-                            (int)$form->id,
-                            (int)$answer->id,
-                            'analysis_status',
-                            $fromAnalysis,
-                            $meta->analysis_status,
-                            $meta->exclusion_reason
-                        );
-                    }
-                }
-            }
+            $this->applyScoreStatus($form, (int)$answer->id, $meta, $scores, $cfg);
         } else {
             $meta->overall_score = 100;
             if (!$meta->status_override) {
@@ -386,6 +365,12 @@ class IntegrityService
         $meta->save(false);
         if ((string)$meta->analysis_status === FormIntegrityMeta::ANALYSIS_EXCLUDED) {
             (new \humhub\modules\thiscoveryForms\services\QuotaService())->releaseExcluded($form, $answer);
+        }
+        if (!$skipScores && IntegritySettings::isOn($cfg, 'similarity_detection')) {
+            // The earlier response of a similar pair is flagged too (INT-3), and the comparison
+            // against the whole form runs in the background when the queue is available.
+            $this->linkSimilar($form, (int)$answer->id, $similarPending, $cfg);
+            $this->queueSimilarityScan($form, $answer);
         }
         $this->clearCaptchaRequired($form);
         $this->clearOpenCaptchaRequired($form);
@@ -416,6 +401,12 @@ class IntegrityService
             $answer = FormAnswer::findOne((int)$meta->answer_id);
             if ($answer) {
                 (new \humhub\modules\thiscoveryForms\services\QuotaService())->releaseExcluded($form, $answer);
+            }
+        } elseif ($fromAnalysis === FormIntegrityMeta::ANALYSIS_EXCLUDED) {
+            // Reinstated: the quota place comes back (V3-47).
+            $answer = FormAnswer::findOne((int)$meta->answer_id);
+            if ($answer) {
+                (new \humhub\modules\thiscoveryForms\services\QuotaService())->restoreReinstated($form, $answer);
             }
         }
         FormIntegrityAudit::record($form->id, $meta->answer_id, 'status_override', $fromStatus, $status, $reason);
@@ -478,6 +469,10 @@ class IntegrityService
             foreach ($row->getFlags() as $flag) {
                 $cat = (string)($flag['category'] ?? '');
                 if ($cat === 'attention' && ($flag['code'] ?? '') !== 'failed') {
+                    continue;
+                }
+                // Information-only flags (same address on a shared network) are not counted (INT-7).
+                if (array_key_exists('severity', $flag) && (int)$flag['severity'] === 0) {
                     continue;
                 }
                 if (isset($flagCounts[$cat]) && empty($seen[$cat])) {
@@ -829,25 +824,101 @@ class IntegrityService
         }
     }
 
+    /** One address's shared allowance is this many times the per-person limit (V3-51). */
+    public const RATE_LIMIT_SHARED_FACTOR = 5;
+
+    /**
+     * Keyed by the exact IPv4 address, never by /24 network: a hospital or university NAT puts
+     * many real people behind one network, and the 9th of them was being blocked (V3-51, SEC-8).
+     * IPv6 is keyed by /64, since one client can rotate through addresses inside its own /64.
+     */
     public static function rateLimitKey(int $formId, string $ip): string
     {
-        $hashes = IntegritySettings::hashIp($ip);
-        $identity = $hashes['ip_network_hash'] ?: $hashes['ip_hash'] ?: hash('sha256', 'none');
+        $hashes = IntegritySettings::hashIp(\humhub\modules\thiscoveryForms\services\FormActionService::networkOf($ip));
+        $identity = $hashes['ip_hash'] ?: hash('sha256', 'none');
         return 'cf-int-rate-' . $formId . '-' . $identity;
     }
 
-    private function isRateLimited(CustomForm $form, array $cfg, bool $increment): bool
+    private function isRateLimited(CustomForm $form, array $cfg, bool $increment, ?FillContext $ctx = null): bool
     {
-        $key = self::rateLimitKey((int)$form->id, (string)Yii::$app->request->userIP);
+        // Two counters: the configured limit per browser session, and a larger allowance per
+        // address, so people sharing one address are not blocked, but a script that drops its
+        // cookies still is. An attempt that is already over the limit is not counted, and one
+        // whose save is rejected is refunded (refundRateLimit), so a person who keeps getting
+        // validation errors is never locked out (INT-8).
         $limit = max(1, (int)($cfg['rate_limit_count'] ?? 8));
         $window = max(1, (int)($cfg['rate_limit_window'] ?? 10)) * 60;
-        $cache = Yii::$app->cache;
-        $count = (int)$cache->get($key);
-        if ($increment) {
-            $count++;
-            $cache->set($key, $count, $window);
+        $keys = $this->rateLimitKeys($form);
+        $sharedLimit = $limit * self::RATE_LIMIT_SHARED_FACTOR;
+        return $this->withRateLock($keys, function () use ($keys, $limit, $sharedLimit, $window, $increment, $ctx): bool {
+            $cache = Yii::$app->cache;
+            $ipCount = (int)$cache->get($keys['ip']);
+            $sessionCount = $keys['session'] ? (int)$cache->get($keys['session']) : 0;
+            if (!$increment) {
+                // Over-limit attempts are never counted, so "at the limit" is the flag: this
+                // connection has used its whole allowance.
+                return $sessionCount >= $limit || $ipCount >= $sharedLimit;
+            }
+            if ($sessionCount >= $limit || $ipCount >= $sharedLimit) {
+                return true;
+            }
+            $cache->set($keys['ip'], $ipCount + 1, $window);
+            if ($keys['session']) {
+                $cache->set($keys['session'], $sessionCount + 1, $window);
+            }
+            if ($ctx) {
+                $ctx->rateCounted = true;
+            }
+            return false;
+        });
+    }
+
+    /** Give back the rate-limit count of a submit that was rejected after the gate (INT-8). */
+    public function refundRateLimit(CustomForm $form, FillContext $ctx): void
+    {
+        if (!$ctx->rateCounted) {
+            return;
         }
-        return $count > $limit;
+        $ctx->rateCounted = false;
+        $cfg = $this->settings($form);
+        $window = max(1, (int)($cfg['rate_limit_window'] ?? 10)) * 60;
+        $keys = $this->rateLimitKeys($form);
+        $this->withRateLock($keys, function () use ($keys, $window): void {
+            foreach (array_filter($keys) as $key) {
+                $count = (int)Yii::$app->cache->get($key);
+                if ($count > 0) {
+                    Yii::$app->cache->set($key, $count - 1, $window);
+                }
+            }
+        });
+    }
+
+    /** @return array{ip:string, session:?string} */
+    private function rateLimitKeys(CustomForm $form): array
+    {
+        $sessionId = Yii::$app->has('session') ? (string)Yii::$app->session->id : '';
+        return [
+            'ip' => self::rateLimitKey((int)$form->id, (string)Yii::$app->request->userIP),
+            'session' => $sessionId !== '' ? 'cf-int-rate-s-' . (int)$form->id . '-' . hash('sha256', $sessionId) : null,
+        ];
+    }
+
+    /**
+     * Read-and-write of the counters happens under a mutex, so two concurrent submits cannot
+     * both read the same count and both slip under the limit.
+     */
+    private function withRateLock(array $keys, callable $fn)
+    {
+        $mutex = Yii::$app->has('mutex') ? Yii::$app->mutex : null;
+        $lock = 'cf-int-rate-' . md5($keys['ip']);
+        $locked = $mutex ? $mutex->acquire($lock, 2) : false;
+        try {
+            return $fn();
+        } finally {
+            if ($locked) {
+                $mutex->release($lock);
+            }
+        }
     }
 
     private function applyClientTimings(FormIntegrityMeta $meta, array $post): void
@@ -926,38 +997,32 @@ class IntegrityService
                 $flags[] = $this->flag('duplicate', 'same_token', Yii::t('ThiscoveryFormsModule.base', 'Invitation token reused on another response'));
             }
         }
-        if ($meta->ip_hash || $meta->session_hash || $meta->ip_network_hash) {
-            $orExact = ['or'];
-            if ($meta->ip_hash) {
-                $orExact[] = ['m.ip_hash' => $meta->ip_hash];
-            }
-            if ($meta->session_hash) {
-                $orExact[] = ['m.session_hash' => $meta->session_hash];
-            }
-            $srcDup = 0;
-            if (count($orExact) > 1) {
-                $srcDup = (int)FormIntegrityMeta::find()->alias('m')
-                    ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
-                    ->andWhere(['m.form_id' => $form->id, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
-                    ->andWhere(['<>', 'm.answer_id', $answer->id])
-                    ->andWhere($orExact)
-                    ->count();
-            }
-            if ($srcDup) {
-                $hits++;
-                $flags[] = $this->flag('duplicate', 'same_source', Yii::t('ThiscoveryFormsModule.base', 'Another response from the same IP or browser session'));
-            } elseif ($meta->ip_network_hash) {
-                // Soft signal: same /24 (or IPv6 prefix) without an exact IP match.
-                $netDup = (int)FormIntegrityMeta::find()->alias('m')
-                    ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
-                    ->andWhere(['m.form_id' => $form->id, 'm.ip_network_hash' => $meta->ip_network_hash, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
-                    ->andWhere(['<>', 'm.answer_id', $answer->id])
-                    ->count();
-                if ($netDup) {
-                    $hits++;
-                    $flags[] = $this->flag('duplicate', 'same_network', Yii::t('ThiscoveryFormsModule.base', 'Another response from a nearby network address (shared network pattern)'));
-                }
-            }
+        // INT-7: hospitals, universities and mobile carriers put many people behind one
+        // address. A shared session, or the same address with the same browser, is a duplicate
+        // signal; the same address alone is shown for information only, and the nearby-network
+        // signal is off unless the form turns it on.
+        $others = static fn() => FormIntegrityMeta::find()->alias('m')
+            ->innerJoin('custom_form_answer a', 'a.id = m.answer_id')
+            ->andWhere(['m.form_id' => $form->id, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
+            ->andWhere(['<>', 'm.answer_id', $answer->id]);
+        $strong = false;
+        if ($meta->session_hash && $others()->andWhere(['m.session_hash' => $meta->session_hash])->exists()) {
+            $strong = true;
+            $hits++;
+            $flags[] = $this->flag('duplicate', 'same_session', Yii::t('ThiscoveryFormsModule.base', 'Another response from the same browser session'));
+        }
+        if (!$strong && $meta->ip_hash && $meta->user_agent_hash
+            && $others()->andWhere(['m.ip_hash' => $meta->ip_hash, 'm.user_agent_hash' => $meta->user_agent_hash])->exists()) {
+            $strong = true;
+            $hits++;
+            $flags[] = $this->flag('duplicate', 'same_source', Yii::t('ThiscoveryFormsModule.base', 'Another response from the same address and browser'));
+        }
+        if (!$strong && $meta->ip_hash && $others()->andWhere(['m.ip_hash' => $meta->ip_hash])->exists()) {
+            $flags[] = $this->flag('duplicate', 'same_address', Yii::t('ThiscoveryFormsModule.base', 'Another response from the same network address (common on shared networks; not counted)'), ['severity' => 0]);
+        }
+        if (!$strong && !empty($cfg['duplicate_network_signal']) && $meta->ip_network_hash
+            && $others()->andWhere(['m.ip_network_hash' => $meta->ip_network_hash])->exists()) {
+            $flags[] = $this->flag('duplicate', 'same_network', Yii::t('ThiscoveryFormsModule.base', 'Another response from a nearby network address (not counted)'), ['severity' => 0]);
         }
         $allowMultiple = $form->allow_multiple || !empty($cfg['allow_multiple']);
         $score = $hits ? min($weight, $weight * (0.45 + ($hits - 1) * 0.28)) : 0;
@@ -973,7 +1038,7 @@ class IntegrityService
         $duration = (int)$meta->duration_seconds;
         $shown = max(1, (int)$meta->shown_question_count);
         $perQuestion = $duration / $shown;
-        $minPer = $this->secondsPerQuestionFloor($cfg);
+        $minPer = $this->secondsPerQuestionFloor($cfg, $shown);
         $percent = max(5, min(90, (int)($cfg['speed_percent'] ?? 40)));
         $median = (int)$meta->median_seconds;
         $flags = [];
@@ -995,16 +1060,20 @@ class IntegrityService
     }
 
     /**
-     * The stored default of 15 was a total-seconds floor. That flags a short
-     * legitimate route. 15 is read as 2 seconds per question shown.
+     * Seconds per question shown. The old setting was a total-seconds floor: its default of
+     * 15 reads as 2 seconds per question, and any value over 20 (no one needs 20 seconds per
+     * question to be genuine) is a total, spread over the questions shown (V3-51).
      */
-    private function secondsPerQuestionFloor(array $cfg): int
+    private function secondsPerQuestionFloor(array $cfg, int $shown = 1): int
     {
         $configured = (int)($cfg['speed_min_seconds'] ?? 2);
         if ($configured === 15 || $configured < 1) {
             return 2;
         }
-        return max(1, $configured);
+        if ($configured > 20) {
+            return max(1, min(20, (int)ceil($configured / max(1, $shown))));
+        }
+        return $configured;
     }
 
     /**
@@ -1014,7 +1083,17 @@ class IntegrityService
      */
     public function shownFieldIds(CustomForm $form, array $values): array
     {
-        $fields = array_values($form->getAllFields()->all());
+        // Live questions, plus a removed question only when this response answered it (it was
+        // filling an edition that still had it). A removed question the respondent never saw is
+        // not "shown", so it cannot fail an attention check or inflate the speed baseline (V3-33).
+        $fields = [];
+        foreach ($form->getAllFields()->all() as $field) {
+            $raw = $values[(int)$field->id] ?? ($values[(string)$field->id] ?? null);
+            $answered = $raw !== null && $raw !== '' && $raw !== [];
+            if (!$field->isRemoved() || $answered) {
+                $fields[] = $field;
+            }
+        }
         $pageOrders = [];
         $current = RandomisationService::$current;
         if ($current && (int)$current->form_id === (int)$form->id && RandomisationService::active($form)) {
@@ -1042,8 +1121,12 @@ class IntegrityService
         $minItems = max(3, (int)($cfg['straightline_min_items'] ?? 5));
         $flags = [];
         $score = 0.0;
+        // INT-6: identical answers are often the true answer on health instruments ("Not at
+        // all" to every PHQ-9 item), so they are flagged only where the set includes
+        // reverse-keyed items, which make the same answer inconsistent. Questions tagged
+        // "leave out" are skipped, and sequences are judged on consecutive questions only.
         foreach ($form->getAllFields()->all() as $field) {
-            if (!isset($shown[(int)$field->id])) {
+            if (!isset($shown[(int)$field->id]) || $field->isStraightlineExempt()) {
                 continue;
             }
             if (!in_array($field->type, [FormField::TYPE_GRID_SINGLE, FormField::TYPE_GRID_MULTI], true)) {
@@ -1053,6 +1136,16 @@ class IntegrityService
             if (!is_array($val) || count($val) < $minItems) {
                 continue;
             }
+            $reverse = array_fill_keys($field->getReverseRows(), true);
+            $hasReverse = false;
+            foreach (array_keys($val) as $rowKey) {
+                if (isset($reverse[(string)$rowKey])) {
+                    $hasReverse = true;
+                }
+            }
+            if (!$hasReverse || count($reverse) >= count($val)) {
+                continue;
+            }
             $flat = [];
             foreach ($val as $cell) {
                 $flat[] = is_array($cell) ? implode('|', $cell) : (string)$cell;
@@ -1060,33 +1153,42 @@ class IntegrityService
             $unique = array_unique($flat);
             if (count($unique) === 1 && $flat[0] !== '') {
                 $score = max($score, $weight * 0.8);
-                $flags[] = $this->flag('straightline', 'identical_grid', Yii::t('ThiscoveryFormsModule.base', 'Identical answers across “{label}”', [
+                $flags[] = $this->flag('straightline', 'identical_grid', Yii::t('ThiscoveryFormsModule.base', 'Identical answers across “{label}”, which has reverse-keyed rows', [
                     'label' => $field->label,
                 ]), ['field_id' => (int)$field->id]);
             }
         }
-        $ratings = [];
+        // Consecutive rating questions only: a run breaks at any other answered question.
+        $ratingRuns = [[]];
         foreach ($form->getAllFields()->all() as $field) {
-            if (!isset($shown[(int)$field->id]) || $field->type !== FormField::TYPE_RATING) {
+            if (!isset($shown[(int)$field->id]) || !$field->collectsAnswer()) {
                 continue;
             }
             $v = $values[$field->id] ?? '';
-            if ($v === '' || $v === null) {
+            if ($field->type !== FormField::TYPE_RATING || $field->isStraightlineExempt() || $v === '' || $v === null || is_array($v)) {
+                if ($ratingRuns[count($ratingRuns) - 1] !== []) {
+                    $ratingRuns[] = [];
+                }
                 continue;
             }
-            $ratings[] = (int)$v;
+            $ratingRuns[count($ratingRuns) - 1][] = ['v' => (int)$v, 'reverse' => $field->isReverseKeyed()];
         }
-        if (count($ratings) >= $minItems) {
+        foreach ($ratingRuns as $run) {
+            if (count($run) < $minItems) {
+                continue;
+            }
+            $ratings = array_column($run, 'v');
             $seq = implode(',', $ratings);
             $asc = implode(',', range(min($ratings), max($ratings)));
             $desc = implode(',', range(max($ratings), min($ratings), -1));
-            $unique = array_unique($ratings);
-            if (count($unique) === 1) {
-                $score = max($score, $weight * 0.75);
-                $flags[] = $this->flag('straightline', 'flat_ratings', Yii::t('ThiscoveryFormsModule.base', 'No variation across rating questions'));
+            if (count(array_unique($ratings)) === 1) {
+                if (in_array(true, array_column($run, 'reverse'), true) && in_array(false, array_column($run, 'reverse'), true)) {
+                    $score = max($score, $weight * 0.75);
+                    $flags[] = $this->flag('straightline', 'flat_ratings', Yii::t('ThiscoveryFormsModule.base', 'No variation across rating questions that include reverse-keyed items'));
+                }
             } elseif ($seq === $asc || $seq === $desc) {
                 $score = max($score, $weight * 0.7);
-                $flags[] = $this->flag('straightline', 'sequential', Yii::t('ThiscoveryFormsModule.base', 'Sequential pattern in rating answers ({pattern})', [
+                $flags[] = $this->flag('straightline', 'sequential', Yii::t('ThiscoveryFormsModule.base', 'Sequential pattern in consecutive rating answers ({pattern})', [
                     'pattern' => $seq,
                 ]));
             }
@@ -1101,7 +1203,10 @@ class IntegrityService
             }
             $answers = array_column($run, 'value');
             $unique = array_unique($answers);
-            if (count($unique) === 1 && $answers[0] !== '') {
+            $mixed = in_array(true, array_column($run, 'reverse'), true) && in_array(false, array_column($run, 'reverse'), true);
+            if (count($unique) === 1 && $answers[0] !== '' && !$mixed) {
+                // Same answer to every item and none reverse-keyed: often the honest answer (INT-6).
+            } elseif (count($unique) === 1 && $answers[0] !== '') {
                 $score = max($score, $weight * 0.75);
                 $flags[] = $this->flag('straightline', 'flat_choices', Yii::t('ThiscoveryFormsModule.base', 'No variation across {n} consecutive choice questions', [
                     'n' => count($run),
@@ -1133,7 +1238,7 @@ class IntegrityService
             $run = [];
         };
         foreach ($form->getAllFields()->all() as $field) {
-            if (!isset($shown[(int)$field->id]) || !$field->collectsAnswer() || $field->isHiddenFromRespondent() || $field->isAttentionCheck()) {
+            if (!isset($shown[(int)$field->id]) || !$field->collectsAnswer() || $field->isHiddenFromRespondent() || $field->isAttentionCheck() || $field->isStraightlineExempt()) {
                 $flush();
                 continue;
             }
@@ -1160,6 +1265,7 @@ class IntegrityService
                 'value' => (string)$raw,
                 'options' => $options,
                 'sig' => $sig,
+                'reverse' => $field->isReverseKeyed(),
             ];
         }
         $flush();
@@ -1169,6 +1275,7 @@ class IntegrityService
 
     private function analyseAttention(CustomForm $form, array $values, array $shown): array
     {
+        $loopIds = (new \humhub\modules\thiscoveryForms\services\LoopService())->loopFieldIds($form);
         $flags = [];
         $failed = 0;
         $total = 0;
@@ -1179,7 +1286,18 @@ class IntegrityService
             $total++;
             $expected = $field->getAttentionExpected();
             $actual = $values[$field->id] ?? '';
-            $pass = $this->attentionPasses($field, $actual, $expected);
+            if (isset($loopIds[(int)$field->id]) && is_array($actual)) {
+                // In a loop, every repeat must pass, not any one of them (V3-51).
+                $pass = $actual !== [];
+                foreach ($actual as $cell) {
+                    if (!$this->attentionPasses($field, $cell, $expected)) {
+                        $pass = false;
+                        break;
+                    }
+                }
+            } else {
+                $pass = $this->attentionPasses($field, $actual, $expected);
+            }
             if (!$pass) {
                 $failed++;
                 $flags[] = $this->flag('attention', 'failed', Yii::t('ThiscoveryFormsModule.base', 'Attention check failed on “{label}”', [
@@ -1199,14 +1317,28 @@ class IntegrityService
         return [$score, $flags];
     }
 
-    private function analyseConsistency(CustomForm $form, array $values, array $cfg): array
+    /** @param array<int,true>|null $shown questions on this respondent's route and visible */
+    private function analyseConsistency(CustomForm $form, array $values, array $cfg, ?array $shown = null): array
     {
         $weight = (float)($cfg['weight_consistency'] ?? 10);
         $flags = [];
         $hits = 0;
+        $fieldsById = [];
+        foreach ($form->getAllFields()->all() as $f) {
+            $fieldsById[(int)$f->id] = $f;
+        }
         foreach (($cfg['consistency_rules'] ?? []) as $rule) {
             if (!is_array($rule) || empty($rule['conditions'])) {
                 continue;
+            }
+            // A rule only applies when the respondent was shown every question it reads: an empty
+            // answer to a skipped question is not an inconsistency (INT-2).
+            if ($shown !== null) {
+                foreach ($rule['conditions'] as $cond) {
+                    if (!isset($shown[(int)($cond['field_id'] ?? 0)])) {
+                        continue 2;
+                    }
+                }
             }
             $matched = true;
             foreach ($rule['conditions'] as $cond) {
@@ -1215,10 +1347,13 @@ class IntegrityService
                 $actualStr = is_array($actual) ? implode(',', $actual) : (string)$actual;
                 $expected = (string)($cond['value'] ?? '');
                 $op = $cond['operator'] ?? 'equals';
+                // Code or label, like attention checks: "Agree" matches the code it stands for (INT-9).
+                $field = $fieldsById[$fieldId] ?? null;
+                $same = $field ? $this->attentionPasses($field, $actual, $expected) : $this->valuesMatch($actualStr, $expected);
                 $ok = match ($op) {
-                    'not_equals' => !$this->valuesMatch($actualStr, $expected),
+                    'not_equals' => !$same,
                     'contains' => $expected !== '' && mb_stripos($actualStr, $expected) !== false,
-                    default => $this->valuesMatch($actualStr, $expected),
+                    default => $same,
                 };
                 if (!$ok) {
                     $matched = false;
@@ -1335,7 +1470,136 @@ class IntegrityService
         return [$score, $flags];
     }
 
-    private function analyseSimilarity(CustomForm $form, FormAnswer $answer, array $values, array $cfg): array
+    /** Responses the submit request compares against; the background scan reads up to FULL. */
+    public const SIMILARITY_POOL = 250;
+    public const SIMILARITY_POOL_FULL = 5000;
+
+    /**
+     * Score and status from the signal scores, unless a person has overridden the status. An
+     * automatic exclusion is audited. Used at completion and when similarity is re-scored.
+     *
+     * @param array<string,float> $scores
+     */
+    private function applyScoreStatus(CustomForm $form, int $answerId, FormIntegrityMeta $meta, array $scores, array $cfg): void
+    {
+        $meta->overall_score = $this->overallScore($scores, $cfg);
+        $autoStatus = $this->statusFromScore((float)$meta->overall_score, $scores, $cfg);
+        if ($meta->status_override) {
+            return;
+        }
+        $fromStatus = $meta->integrity_status;
+        $fromAnalysis = $meta->analysis_status;
+        $meta->integrity_status = $autoStatus;
+        $meta->analysis_status = $this->analysisFromStatus($autoStatus);
+        if ($autoStatus === FormIntegrityMeta::STATUS_EXCLUDED && $fromStatus !== FormIntegrityMeta::STATUS_EXCLUDED) {
+            $meta->exclusion_reason = Yii::t(
+                'ThiscoveryFormsModule.base',
+                'Automatically excluded: quality score {score} with multiple integrity signals.',
+                ['score' => number_format((float)$meta->overall_score, 0)]
+            );
+            FormIntegrityAudit::record($form->id, $answerId, 'auto_exclude', $fromStatus, $autoStatus, $meta->exclusion_reason);
+            if ($fromAnalysis !== $meta->analysis_status) {
+                FormIntegrityAudit::record($form->id, $answerId, 'analysis_status', $fromAnalysis, $meta->analysis_status, $meta->exclusion_reason);
+            }
+        }
+    }
+
+    private function similarityScoreFor(int $count, array $cfg): float
+    {
+        $weight = (float)($cfg['weight_similarity'] ?? 5);
+        return $count ? min($weight, $weight * (0.4 + min(0.6, $count * 0.15))) : 0.0;
+    }
+
+    /**
+     * Record a similar pair on the earlier response too, and re-score it: the first response
+     * of a copied pair used to be scored before its twin existed, so it was never flagged.
+     *
+     * @param int[] $similarIds
+     */
+    private function linkSimilar(CustomForm $form, int $answerId, array $similarIds, array $cfg): void
+    {
+        foreach (array_unique(array_map('intval', $similarIds)) as $otherId) {
+            $other = FormIntegrityMeta::findOne(['answer_id' => $otherId]);
+            if (!$other) {
+                continue;
+            }
+            $ids = $other->getSimilarAnswerIds();
+            if (in_array($answerId, $ids, true)) {
+                continue;
+            }
+            $ids[] = $answerId;
+            $this->storeSimilarity($form, $other, $ids, $cfg);
+        }
+    }
+
+    /** @param int[] $ids */
+    private function storeSimilarity(CustomForm $form, FormIntegrityMeta $meta, array $ids, array $cfg): void
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $meta->similar_answer_ids_json = $ids ? json_encode($ids) : null;
+        $meta->similarity_score = $this->similarityScoreFor(count($ids), $cfg);
+        $flags = array_values(array_filter($meta->getFlags(), static fn($f) => !is_array($f) || ($f['category'] ?? '') !== 'similarity'));
+        if ($ids) {
+            $flags[] = $this->flag('similarity', 'cluster', Yii::t('ThiscoveryFormsModule.base', 'Unusually similar to {n,plural,=1{1 other response} other{# other responses}}', [
+                'n' => count($ids),
+            ]), ['ids' => $ids]);
+        }
+        $meta->setFlags($flags);
+        $answer = FormAnswer::findOne((int)$meta->answer_id);
+        $wasExcluded = (string)$meta->analysis_status === FormIntegrityMeta::ANALYSIS_EXCLUDED;
+        // Responses left out for their outcome (screened out, over quota, not consented) are not
+        // scored, so they are not re-scored either.
+        $byOutcome = $answer && in_array((string)$answer->outcome, [FormAnswer::OUTCOME_NOT_CONSENTED, FormAnswer::OUTCOME_SCREENED_OUT, FormAnswer::OUTCOME_OVER_QUOTA], true);
+        if (IntegritySettings::isOn($cfg, 'integrity_scoring') && !$byOutcome) {
+            $this->applyScoreStatus($form, (int)$meta->answer_id, $meta, $meta->getComponentScores(), $cfg);
+        }
+        $meta->save(false);
+        if ($answer && !$wasExcluded && (string)$meta->analysis_status === FormIntegrityMeta::ANALYSIS_EXCLUDED) {
+            (new \humhub\modules\thiscoveryForms\services\QuotaService())->releaseExcluded($form, $answer);
+        }
+    }
+
+    private function queueSimilarityScan(CustomForm $form, FormAnswer $answer): void
+    {
+        if (!class_exists(\humhub\modules\queue\ActiveJob::class) || !Yii::$app->has('queue')) {
+            return;
+        }
+        $pool = (int)FormAnswer::find()
+            ->where(['form_id' => (int)$form->id, 'is_test' => 0, 'status' => FormAnswer::STATUS_COMPLETE])
+            ->count();
+        if ($pool <= self::SIMILARITY_POOL + 1) {
+            // The submit request already compared against every response.
+            return;
+        }
+        Yii::$app->queue->push(new \humhub\modules\thiscoveryForms\jobs\SimilarityScanJob([
+            'formId' => (int)$form->id,
+            'answerId' => (int)$answer->id,
+        ]));
+    }
+
+    /**
+     * Background comparison of one response against the whole form (up to
+     * SIMILARITY_POOL_FULL), with both sides of each similar pair recorded (INT-3).
+     */
+    public function rescanSimilarity(int $formId, int $answerId): void
+    {
+        $form = CustomForm::findOne($formId);
+        $answer = FormAnswer::findOne(['id' => $answerId, 'form_id' => $formId]);
+        $meta = FormIntegrityMeta::findOne(['answer_id' => $answerId]);
+        if (!$form || !$answer || !$meta) {
+            return;
+        }
+        $cfg = $this->settings($form);
+        if (!IntegritySettings::isOn($cfg, 'enabled') || !IntegritySettings::isOn($cfg, 'similarity_detection')) {
+            return;
+        }
+        $answer->populateRelation('form', $form);
+        [, , $similarIds] = $this->analyseSimilarity($form, $answer, $answer->getValuesMap(), $cfg, self::SIMILARITY_POOL_FULL);
+        $this->storeSimilarity($form, $meta, array_merge($meta->getSimilarAnswerIds(), $similarIds), $cfg);
+        $this->linkSimilar($form, $answerId, $similarIds, $cfg);
+    }
+
+    private function analyseSimilarity(CustomForm $form, FormAnswer $answer, array $values, array $cfg, int $pool = self::SIMILARITY_POOL): array
     {
         $weight = (float)($cfg['weight_similarity'] ?? 5);
         $threshold = max(50, min(99, (int)($cfg['similarity_threshold'] ?? 90)));
@@ -1343,17 +1607,33 @@ class IntegrityService
         $flags = [];
         $similarIds = [];
         $best = 0;
+        $comparable = 0;
+        foreach ($form->getAllFields()->all() as $field) {
+            $comparable += $this->isChoiceComparable($field) ? 1 : 0;
+        }
+        if ($comparable < 5 && array_filter($texts, static fn($t) => mb_strlen((string)$t) >= 12) === []) {
+            // Nothing that could show copying: no query on the submit path (DAT-15).
+            return [0, [], []];
+        }
         $others = FormAnswer::find()->alias('a')
             ->andWhere(['a.form_id' => $form->id, 'a.is_test' => 0, 'a.status' => FormAnswer::STATUS_COMPLETE])
             ->andWhere(['<>', 'a.id', $answer->id])
             ->with('answerFields')
             ->orderBy(['a.id' => SORT_DESC])
-            ->limit(250)
+            ->limit($pool)
             ->all();
+        // How often each answer occurs in the pool, so agreement on common answers (everyone
+        // picking "Neutral") is discounted as chance (V3-51).
+        $maps = [];
+        foreach ($others as $other) {
+            $other->populateRelation('form', $form);
+            $maps[(int)$other->id] = $other->getValuesMap();
+        }
+        $distributions = $this->answerDistributions($form, array_merge([$values], array_values($maps)));
         /** @var FormAnswer $other */
         foreach ($others as $other) {
-            $omap = $other->getValuesMap();
-            $choiceSim = $this->choiceSimilarity($form, $values, $omap);
+            $omap = $maps[(int)$other->id];
+            $choiceSim = $this->choiceSimilarity($form, $values, $omap, $distributions);
             $textSim = 0;
             $otexts = $this->answerTexts($form, $omap);
             foreach ($texts as $i => $t) {
@@ -1375,8 +1655,7 @@ class IntegrityService
                 'n' => count($similarIds),
             ]), ['ids' => $similarIds, 'score' => round($best, 1)]);
         }
-        $score = $similarIds ? min($weight, $weight * (0.4 + min(0.6, count($similarIds) * 0.15))) : 0;
-        return [$score, $flags, $similarIds];
+        return [$this->similarityScoreFor(count($similarIds), $cfg), $flags, $similarIds];
     }
 
     private function overallScore(array $scores, array $cfg): float
@@ -1461,6 +1740,29 @@ class IntegrityService
         return (int)round(($rates[$mid - 1] + $rates[$mid]) / 2);
     }
 
+    /**
+     * Give back a one-time invitation that the submit gate reserved, when the submission then
+     * fails (CAPTCHA, rate limit, validation or save). The invitee can simply try again (V3-32).
+     * The reservation itself stays atomic, so two simultaneous submits still cannot both use it.
+     */
+    public function refundAccessToken(CustomForm $form, FillContext $ctx): void
+    {
+        // Every rejected submit refunds its token use; it gives back its rate-limit count too.
+        $this->refundRateLimit($form, $ctx);
+        if (!$ctx->accessTokenConsumed || trim((string)$ctx->accessToken) === '') {
+            return;
+        }
+        Yii::$app->db->createCommand()->update('{{%custom_form_access_token}}', [
+            'use_count' => new \yii\db\Expression('use_count - 1'),
+        ], [
+            'and',
+            ['form_id' => (int)$form->id],
+            ['token_hash' => IntegritySettings::hashValue('tok:' . trim((string)$ctx->accessToken))],
+            ['>', 'use_count', 0],
+        ])->execute();
+        $ctx->accessTokenConsumed = false;
+    }
+
     public function consumeAccessToken(CustomForm $form, string $raw): bool
     {
         $raw = trim($raw);
@@ -1484,18 +1786,25 @@ class IntegrityService
     /**
      * Share of choice questions that hold the same value. The question id is not part of the comparison.
      */
-    public function choiceSimilarity(CustomForm $form, array $left, array $right): float
+    /**
+     * Percent of choice answers two responses share. With $distributions (answer frequencies
+     * per question across the pool) the agreement expected by chance is taken out, as in
+     * Cohen's kappa, so five shared "Neutral" answers are not 100% (V3-51); fewer than 5
+     * compared questions is not evidence either way.
+     *
+     * @param array<int, array<string, float>>|null $distributions
+     */
+    public function choiceSimilarity(CustomForm $form, array $left, array $right, ?array $distributions = null): float
     {
         $compared = 0;
         $same = 0;
+        $expected = 0.0;
         foreach ($form->getAllFields()->all() as $field) {
-            if (!$field->collectsAnswer() || in_array($field->type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_HTML, FormField::TYPE_FILE, FormField::TYPE_MAP], true)) {
+            if (!$this->isChoiceComparable($field)) {
                 continue;
             }
-            $a = $left[$field->id] ?? $left[(string)$field->id] ?? '';
-            $b = $right[$field->id] ?? $right[(string)$field->id] ?? '';
-            $a = is_array($a) ? json_encode($a) : (string)$a;
-            $b = is_array($b) ? json_encode($b) : (string)$b;
+            $a = $this->comparable($left[$field->id] ?? $left[(string)$field->id] ?? '');
+            $b = $this->comparable($right[$field->id] ?? $right[(string)$field->id] ?? '');
             if ($a === '' && $b === '') {
                 continue;
             }
@@ -1503,11 +1812,70 @@ class IntegrityService
             if ($a === $b) {
                 $same++;
             }
+            if ($distributions !== null) {
+                foreach ($distributions[(int)$field->id] ?? [] as $share) {
+                    $expected += $share * $share;
+                }
+            }
         }
         if ($compared < 1) {
             return 0.0;
         }
-        return round(100 * $same / $compared, 2);
+        $observed = $same / $compared;
+        if ($distributions === null) {
+            return round(100 * $observed, 2);
+        }
+        if ($compared < 5) {
+            return 0.0;
+        }
+        $chance = $expected / $compared;
+        if ($chance >= 0.999) {
+            // Everyone answers alike: agreeing says nothing about copying.
+            return 0.0;
+        }
+        return round(100 * max(0.0, ($observed - $chance) / (1 - $chance)), 2);
+    }
+
+    private function isChoiceComparable(FormField $field): bool
+    {
+        return $field->collectsAnswer()
+            && !in_array($field->type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_HTML, FormField::TYPE_FILE, FormField::TYPE_MAP], true);
+    }
+
+    /** @param mixed $value */
+    private function comparable($value): string
+    {
+        return is_array($value) ? (string)json_encode($value) : (string)$value;
+    }
+
+    /**
+     * Share of each answer per question, over the given responses.
+     *
+     * @param array<int, array<int|string,mixed>> $maps
+     * @return array<int, array<string, float>>
+     */
+    private function answerDistributions(CustomForm $form, array $maps): array
+    {
+        $out = [];
+        foreach ($form->getAllFields()->all() as $field) {
+            if (!$this->isChoiceComparable($field)) {
+                continue;
+            }
+            $counts = [];
+            $n = 0;
+            foreach ($maps as $map) {
+                $value = $this->comparable($map[$field->id] ?? $map[(string)$field->id] ?? '');
+                if ($value === '') {
+                    continue;
+                }
+                $counts[$value] = ($counts[$value] ?? 0) + 1;
+                $n++;
+            }
+            if ($n > 0) {
+                $out[(int)$field->id] = array_map(static fn($c) => $c / $n, $counts);
+            }
+        }
+        return $out;
     }
 
     private function answerSignature(CustomForm $form, array $values): string

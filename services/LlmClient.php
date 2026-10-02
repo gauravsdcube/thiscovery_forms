@@ -22,6 +22,23 @@ class LlmClient
     public const PROVIDER_OPENAI = 'openai';
     public const PROVIDER_ANTHROPIC = 'anthropic';
 
+    public static function baseAllowed(string $base): bool
+    {
+        $parts = parse_url($base);
+        if (!is_array($parts) || strtolower((string)($parts['scheme'] ?? '')) !== 'https') {
+            return false;
+        }
+        $host = strtolower((string)($parts['host'] ?? ''));
+        $allowed = array_merge(['api.openai.com', 'api.anthropic.com'], array_map('strtolower', (array)(Yii::$app->params['thiscoveryForms.llmHosts'] ?? [])));
+        foreach ($allowed as $entry) {
+            $entry = trim((string)$entry);
+            if ($entry !== '' && ($host === $entry || (str_starts_with($entry, '*.') && str_ends_with($host, substr($entry, 1))))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function isConfigured(): bool
     {
         return Module::isFromBriefLlmEnabled();
@@ -59,6 +76,18 @@ class LlmClient
         $defaultModel = $provider === self::PROVIDER_ANTHROPIC ? 'claude-sonnet-4-5' : 'gpt-4o-mini';
         $model = trim((string)$module->settings->get(Module::SETTING_LLM_MODEL, $defaultModel)) ?: $defaultModel;
         $base = rtrim(trim((string)$module->settings->get(Module::SETTING_LLM_API_BASE, '')), '/');
+        // The API key goes only to https on a known provider host, or to a host listed in the
+        // server config (params['thiscoveryForms.llmHosts']), never to any host set in the UI (SEC-18).
+        if ($base !== '' && !self::baseAllowed($base)) {
+            throw new Exception(Yii::t('ThiscoveryFormsModule.base', 'The LLM API address is not an allowed https host.'));
+        }
+        // Briefs can contain names, emails and phone numbers: redacted before they leave (SEC-18).
+        $redactor = new PiiRedactor();
+        foreach ($messages as $i => $message) {
+            if (is_array($message) && isset($message['content']) && is_string($message['content'])) {
+                $messages[$i]['content'] = (string)$redactor->redact($message['content']);
+            }
+        }
 
         try {
             if ($provider === self::PROVIDER_ANTHROPIC) {

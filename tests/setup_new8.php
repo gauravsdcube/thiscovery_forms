@@ -12,8 +12,8 @@ use humhub\modules\thiscoveryForms\services\FormActionService;
 $mode = $argv[1] ?? 'create';
 $module = Yii::$app->getModule('thiscovery-forms');
 if ($mode === 'on' || $mode === 'off') {
-    $module->settings->set(Module::SETTING_ROUTING_ALIGNMENT, $mode === 'on' ? '1' : '0');
-    fwrite(STDOUT, Module::routingAligned() ? "flag-on\n" : "flag-off\n");
+    // The routing-alignment flag was removed (V3-57); routing is always aligned.
+    fwrite(STDOUT, "flag-on\n");
     exit(0);
 }
 

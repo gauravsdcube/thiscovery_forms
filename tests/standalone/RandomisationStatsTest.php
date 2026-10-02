@@ -68,6 +68,22 @@ for ($s = 0; $s < $seeds; $s++) {
 }
 standalone_assert(abs($firstA / $seeds - 0.5) < 0.01, sprintf('arm A first-slot share %.3f (want 0.5)', $firstA / $seeds), $failures);
 
+// V3-48: a block size that is not a multiple of the weights is rounded up, so the ratio holds.
+$three = [['code' => 'A', 'weight' => 1], ['code' => 'B', 'weight' => 1], ['code' => 'C', 'weight' => 1]];
+$tally = array_count_values($engine->block($three, 4, 99));
+standalone_assert(count($engine->block($three, 4, 99)) === 6 && ($tally['A'] ?? 0) === 2 && ($tally['C'] ?? 0) === 2, '3 arms in a block of 4 were not balanced: ' . json_encode($tally), $failures);
+$weighted = [['code' => 'A', 'weight' => 2], ['code' => 'B', 'weight' => 1]];
+$tally = array_count_values($engine->block($weighted, 4, 5));
+standalone_assert(($tally['A'] ?? 0) === 4 && ($tally['B'] ?? 0) === 2, 'weights 2:1 in a block of 4 were not 2:1: ' . json_encode($tally), $failures);
+
+// V3-48: minimisation picks the least-filled arm about 80% of the time, not always.
+$least = 0;
+for ($s = 0; $s < 20000; $s++) {
+    $least += $engine->minimise(['A' => 5, 'B' => 9], $arms, ['A', 'B'], $engine->seedInt(bin2hex(pack('N', $s)), 'arm')) === 'A' ? 1 : 0;
+}
+// 80% least-filled + half of the 20% random draws = 90% A.
+standalone_assert(abs($least / 20000 - 0.9) < 0.01, sprintf('minimisation chose the least-filled arm %.3f (want 0.90)', $least / 20000), $failures);
+
 // Same seed, same order (reproducible on resume).
 standalone_assert($engine->shuffle(range(1, 6), 12345) === $engine->shuffle(range(1, 6), 12345), 'shuffle not reproducible', $failures);
 

@@ -51,11 +51,26 @@ $check(($built['email'] ?? '') === '', 'posted email overrode the built-in');
 $check(($built['age'] ?? '') === '41', 'extra declared value was dropped');
 
 $ip = '203.0.113.' . random_int(1, 250);
+// V3-40: a session gets the limit; an address (shared NAT) gets five times it.
 $limited = false;
-for ($i = 0; $i < 4; $i++) {
+for ($i = 0; $i < 3 * 5 + 1; $i++) {
     $limited = FormActionService::tooManyRuns((int)$form->id, $ip, 3, 60);
 }
-$check($limited, 'run-actions was not rate limited');
+$check($limited, 'run-actions was not rate limited per address');
+$check(FormActionService::networkOf('2001:db8:1:2:aaaa::1') === FormActionService::networkOf('2001:db8:1:2:bbbb::9'), 'rotating IPv6 addresses in one /64 were counted separately');
+$check(FormActionService::networkOf('2001:db8:1:2::1') !== FormActionService::networkOf('2001:db8:1:3::1'), 'two /64 networks shared a counter');
+$to = 'relay-' . uniqid() . '@example.org';
+$sent = 0;
+for ($i = 0; $i < 5; $i++) {
+    $sent += FormActionService::emailAllowed((int)$form->id, $to, '198.51.100.' . $i) ? 1 : 0;
+}
+$check($sent === 3, 'one address was sent ' . $sent . ' action emails (want 3 a day)');
+$foreign = new \humhub\modules\thiscoveryForms\models\FormEmailTemplate();
+$foreign->contentcontainer_id = 987654321;
+$check(!FormActionService::templateAllowed(ReviewLib::reload($form), $foreign), 'a template from another space was usable (V3-50)');
+$global = new \humhub\modules\thiscoveryForms\models\FormEmailTemplate();
+$global->contentcontainer_id = null;
+$check(FormActionService::templateAllowed(ReviewLib::reload($form), $global), 'a global template was refused');
 
 if ($failures) {
     echo 'FAILED ' . count($failures) . "\n";

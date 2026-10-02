@@ -41,15 +41,18 @@ trait PanelAdminTrait
         if (Yii::$app->user->isGuest) {
             return false;
         }
+        // Panels hold members' personal data: managing them needs Manage forms, not just the
+        // right to create a form (SEC-20).
         $container = $this->panelContainer();
+        if ($container instanceof \humhub\modules\space\models\Space) {
+            return $container->getPermissionManager(Yii::$app->user->getIdentity())->can(\humhub\modules\thiscoveryForms\permissions\ManageForm::class);
+        }
         if ($container) {
-            $probe = new CustomForm($container);
-            return $probe->canCreate() || $probe->canManage();
+            return (new CustomForm($container))->canManage();
         }
         return Yii::$app->user->isAdmin()
             || Yii::$app->user->can(ManageModules::class)
-            || Yii::$app->user->can(ManageGlobalForm::class)
-            || Yii::$app->user->can(CreateGlobalForm::class);
+            || Yii::$app->user->can(ManageGlobalForm::class);
     }
 
     protected function requireManagePanels(): void
@@ -318,6 +321,26 @@ trait PanelAdminTrait
         $member = FormPanelMember::findOne((int)Yii::$app->request->post('member_id', 0));
         if (!$member || (int)$member->panel_id !== (int)$panel->id) {
             throw new NotFoundHttpException();
+        }
+        // "Remove" keeps the person's record inactive; "erase" removes their contact details and
+        // either keeps their answers without identity or deletes them (GOV-4).
+        $erase = (string)Yii::$app->request->post('erase', '');
+        if (in_array($erase, ['keep', 'delete'], true)) {
+            $reason = trim((string)Yii::$app->request->post('reason', ''));
+            if ($reason === '') {
+                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Give a reason for erasing this person.'));
+            } else {
+                $n = (new \humhub\modules\thiscoveryForms\services\ErasureService())->eraseMember(
+                    $member,
+                    $erase === 'keep',
+                    Yii::$app->user->isGuest ? null : (int)Yii::$app->user->id,
+                    $reason
+                );
+                Yii::$app->session->setFlash('success', $erase === 'keep'
+                    ? Yii::t('ThiscoveryFormsModule.base', 'The person was erased; {n} responses were kept without their identity.', ['n' => $n])
+                    : Yii::t('ThiscoveryFormsModule.base', 'The person and {n} responses were erased.', ['n' => $n]));
+            }
+            return $this->redirect(Url::toPanelView($panel, $this->panelContainer()));
         }
         $member->status = FormPanelMember::STATUS_INACTIVE;
         $member->save(false, ['status', 'updated_at']);

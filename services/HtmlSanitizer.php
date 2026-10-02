@@ -17,6 +17,18 @@ class HtmlSanitizer
      */
     public function sanitize(string $html): string
     {
+        // Creator HTML may contain its own inputs, but never with the name of a fill field:
+        // every input/select/textarea name gets a cfhtml_ prefix, so it cannot overwrite an
+        // answer, the consent block or a token (SEC-19). Radio groups still share a name.
+        return (string)preg_replace_callback(
+            '/(<(?:input|select|textarea)\b[^>]*?\bname=")([^"]*)(")/i',
+            static fn(array $m) => $m[1] . (str_starts_with($m[2], 'cfhtml_') ? $m[2] : 'cfhtml_' . $m[2]) . $m[3],
+            $this->purify($html)
+        );
+    }
+
+    private function purify(string $html): string
+    {
         return HtmlPurifier::process($html, function ($config) {
             /** @var \HTMLPurifier_Config $config */
             $config->set('HTML.Doctype', 'HTML 4.01 Transitional');

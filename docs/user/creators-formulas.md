@@ -17,3 +17,30 @@ Loop checks use `any_eq([symptom[*]], "wheeze")`, `all_eq`, `count_answered`, an
 Named formulas are written `fn:name`. The starter formulas are body mass index, age, a PHQ-9 total and band, a GAD-7 total and band, and an EQ-5D profile string plus a level sum. There is no EQ-5D index.
 
 In the studio, Test formula asks the server to calculate the expression and shows which calendar date `today()` used.
+
+## Writing rules
+
+- **Lists:** `[mood] in [1, 2]` and `[mood] not_in ["x", [other]]` test an answer against a list.
+- **Powers:** a leading minus applies before `^`, so `-2^2` is `(-2)^2` = `4`. Write `-(2^2)` for -4. The power must be a whole number from 0 to 20; anything else gives an empty result.
+- **Dates:** write `date("2024-02-03")` with four-digit year, two-digit month and day. A date that does not exist, such as 2024-02-30, is refused when you save.
+- **Text on a list:** `contains_text([q], "x")` on a multiple-choice answer means one of the ticked options is `x`. On plain text it means the text contains `x`.
+- **Scores:** `score_of([q])` uses the option's score. On a scored question, an option with no score (for example "Prefer not to say") scores nothing.
+- **Number answers** are plain decimals. `1e5` is not accepted.
+- **Grid rows:** `[mood.sleep]` is one row of the grid `mood`. `[mood] = "agree"` is true when any row is "agree".
+- **Multiple choice:** `selected([sym], "a")` is true when "a" is ticked. `selected_all([sym], "a", "b")` needs both ticked (others may be too). `selected_only([sym], "a", "b")` needs exactly those two and nothing else. An option coded `0` counts as ticked.
+- **Answered or not:** `is_answered([q])` and `is_empty([q])`. Ranges: `between([age], 18, 65)`. Counts: `count_selected([sym]) >= 2`.
+- **Dates:** compare dates directly, for example `[visit] > date("2024-01-01")`, or use `date_diff`.
+- **Routing:** a question has one rule. To show a question and also branch on it, put the branch on the page break after it: branch rules are tried in order, and "Otherwise go to" names the page used when none matches (empty means the next page). "Hide this question if" replaces the old "Skip this question if", which did the same thing.
+- **Checks:** an unknown function is refused when you save, and a reference to a question that is not on the form is refused when you publish. Renaming a question's variable updates every formula that uses it.
+
+## Scoring an instrument
+
+Scores need no code. Use calculated questions:
+
+- **Sum score:** `sum(score_of([q1]), score_of([q2]), score_of([q3]))`. Give each option its score in the option list.
+- **Reverse coding:** score the option list in reverse, or write `4 - score_of([q5])` for a 0–4 item.
+- **Subscales:** one calculated question per subscale, each summing its own items. A total can then add the subscales together.
+- **Missing items:** `min_valid(6, ...)` gives a score only when at least 6 items are answered.
+- **Cut-offs and bands:** `if([total] >= 10, "Moderate", "Mild")`, nested for more bands.
+
+The starter library has PHQ-9 and GAD-7 totals and bands to copy from.

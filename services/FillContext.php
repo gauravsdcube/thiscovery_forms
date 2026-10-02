@@ -25,6 +25,8 @@ class FillContext
     public bool $tokenAccess = false;
     public string $accessToken = '';
     public bool $accessTokenConsumed = false;
+    /** This request was counted towards the submit rate limit, so a rejected save refunds it (INT-8). */
+    public bool $rateCounted = false;
     public ?string $blockReason = null;
 
     public function __construct(CustomForm $form)

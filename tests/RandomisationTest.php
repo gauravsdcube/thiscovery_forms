@@ -54,7 +54,6 @@ $check($drawn['usual'] > 4500 && $drawn['usual'] < 5500 && $drawn['new'] > 4500 
 
 $module = Yii::$app->getModule('thiscovery-forms');
 $module->settings->set(Module::SETTING_RANDOMISATION, '0');
-$module->settings->set(Module::SETTING_OPTION_ORDER, '0');
 
 ReviewLib::asUser(review_user('review_netadmin'));
 $form = ReviewLib::form(review_space(), 'EV F1 randomisation', [
@@ -94,7 +93,8 @@ $form = ReviewLib::reload($form);
 $colour = FormField::findOne((int)$colour->id);
 $offA = $colour->getShuffledOptions(null, $guestA);
 $offB = $colour->getShuffledOptions(null, $guestB);
-$check($offA === $offB, 'flag-off guests did not share the user seed order');
+// LOG-6: option order is per response even when arm randomisation is off. Guests must not share one order.
+$check($offA !== $offB, 'flag-off guests shared one option order');
 
 $svc = new RandomisationService();
 $svc->saveConfig($form, [
@@ -144,7 +144,8 @@ $form = ReviewLib::reload($form);
     'answer_id' => (new Query())->select('id')->from('custom_form_answer')->where(['form_id' => (int)$form->id]),
 ])->execute();
 $least = [];
-for ($i = 0; $i < 5; $i++) {
+// Least-filled keeps a random element (V3-48), so balance is checked over 40 starts.
+for ($i = 0; $i < 40; $i++) {
     $answer = new FormAnswer();
     $answer->form_id = (int)$form->id;
     $answer->status = FormAnswer::STATUS_IN_PROGRESS;
@@ -155,7 +156,8 @@ for ($i = 0; $i < 5; $i++) {
     $row = $svc->assignIfDue($answer, [], null, false);
     $least[] = (string)($row['arm_code'] ?? '');
 }
-$check(abs(count(array_keys($least, 'usual', true)) - count(array_keys($least, 'new', true))) <= 1, 'five least-filled assignments were unbalanced');
+$check(abs(count(array_keys($least, 'usual', true)) - count(array_keys($least, 'new', true))) <= 6, '40 least-filled assignments were unbalanced');
+$check(count(array_unique($least)) === 2, 'least-filled never used one of the arms');
 
 $testAnswer = new FormAnswer();
 $testAnswer->form_id = (int)$form->id;
@@ -164,7 +166,11 @@ $testAnswer->is_test = 1;
 $testAnswer->forceAnonymous = true;
 $testAnswer->save(false);
 $testAnswer->populateRelation('form', $form);
-$check($svc->assignIfDue($testAnswer, [], null, true) === null, 'a test response was assigned an arm');
+// V3-56: a test response gets a preview arm, so arm routes can be tried, and it never counts.
+$before = array_sum(array_column($svc->allocationSummary($form), 'assigned'));
+$previewArm = $svc->assignIfDue($testAnswer, [], null, true);
+$check($previewArm !== null && (string)$previewArm['method'] === 'preview', 'a test response got no preview arm');
+$check(array_sum(array_column($svc->allocationSummary($form), 'assigned')) === $before, 'a preview arm counted in the allocation');
 
 $anon = ReviewLib::form(review_space(), 'EV F1 anonymous stratum', [
     'allow_anonymous' => 1,
@@ -245,7 +251,6 @@ $kept = ReviewLib::submit($form, [(int)$screen->id => 'yes']);
 $check($kept instanceof FormAnswer && $kept->countsAsComplete(), 'a normal complete was not counted');
 
 $module->settings->set(Module::SETTING_RANDOMISATION, '0');
-$module->settings->set(Module::SETTING_OPTION_ORDER, '0');
 
 if ($failures) {
     echo 'FAILED ' . count($failures) . "\n";

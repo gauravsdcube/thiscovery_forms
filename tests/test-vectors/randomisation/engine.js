@@ -64,6 +64,7 @@ function block(arms, blockSize, seed) {
   const unit = weightedUnit(arms);
   if (!unit.length) return [];
   blockSize = Math.max(unit.length, blockSize);
+  blockSize = Math.ceil(blockSize / unit.length) * unit.length;
   const slots = [];
   while (slots.length < blockSize) {
     for (const code of unit) {

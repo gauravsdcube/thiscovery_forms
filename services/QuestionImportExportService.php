@@ -30,6 +30,8 @@ class QuestionImportExportService
         'page_key',
         'page_title',
         'branches',
+        'page_otherwise',
+        'validation',
         'rating_min',
         'rating_max',
         'rating_step',
@@ -73,6 +75,25 @@ class QuestionImportExportService
         'logic_rules',
         'number_min',
         'number_max',
+        // Loops, group and block randomisation, consent options (V3-46).
+        'block_key',
+        'randomise_enabled',
+        'randomise_method',
+        'randomise_show',
+        'randomise_pin_first',
+        'randomise_pin_last',
+        'loop_enabled',
+        'loop_source',
+        'loop_field_key',
+        'loop_label_field',
+        'loop_max',
+        'loop_min',
+        'loop_items',
+        'loop_randomise',
+        'loop_show',
+        'consent_must_read',
+        'consent_signature',
+        'consent_witness',
     ];
 
     public function exportJson(CustomForm $form): array
@@ -88,6 +109,8 @@ class QuestionImportExportService
                 $row['logic']['rules'] = $this->remapRuleFieldKeys($row['logic']['rules'] ?? [], $aliases);
             }
             $row['branches'] = $this->remapRuleFieldKeys($row['branches'] ?? [], $aliases);
+            $row['loop_field_key'] = $this->remapAlias((string)($row['loop_field_key'] ?? ''), $aliases);
+            $row['loop_label_field'] = $this->remapAlias((string)($row['loop_label_field'] ?? ''), $aliases);
             $fields[] = $row;
         }
 
@@ -214,6 +237,8 @@ class QuestionImportExportService
                 'page_key' => (string)($map['page_key'] ?? ''),
                 'page_title' => (string)($map['page_title'] ?? ''),
                 'branches' => $this->decodeJsonCell($map['branches'] ?? ''),
+                'page_otherwise' => (string)($map['page_otherwise'] ?? ''),
+                'validation' => $this->decodeJsonCell($map['validation'] ?? ''),
                 'rating_min' => $map['rating_min'] ?? 1,
                 'rating_max' => $map['rating_max'] ?? 5,
                 'rating_step' => $map['rating_step'] ?? 1,
@@ -265,6 +290,11 @@ class QuestionImportExportService
             }
             if (array_key_exists('pii', $map)) {
                 $payload['pii'] = $this->cellBool($map['pii']);
+            }
+            foreach (FormField::STRUCTURE_KEYS as $structureKey) {
+                if (array_key_exists($structureKey, $map) && trim((string)$map[$structureKey]) !== '') {
+                    $payload[$structureKey] = (string)$map[$structureKey];
+                }
             }
             $payloads[] = $payload;
         }
@@ -333,15 +363,12 @@ class QuestionImportExportService
         }
 
         if (!$form->saveFieldsFromPost($existing)) {
-            $detail = Yii::$app->session->getFlash('error', null, true);
-            if (is_array($detail)) {
-                $detail = implode(' ', array_map('strval', $detail));
-            }
-            $detail = trim((string)$detail);
-            return $detail !== ''
-                ? $detail
-                : Yii::t('ThiscoveryFormsModule.base', 'Could not import questions.');
+            // Nothing was imported (V3-37); say why.
+            return $form->designRefusalMessage();
         }
+        // An import is a save: record the revision, or "publish latest revision" would
+        // publish the definition from before it (DAT-19).
+        (new FormVersionService())->recordSave($form);
 
         return null;
     }
@@ -413,25 +440,45 @@ class QuestionImportExportService
         if ($from === '' || $from === $to) {
             return $row;
         }
-        if (isset($row['logic_formula']) && is_string($row['logic_formula'])) {
-            $row['logic_formula'] = preg_replace(
-                '/\[' . preg_quote($from, '/') . '\]/',
-                '[' . $to . ']',
-                $row['logic_formula']
-            ) ?? $row['logic_formula'];
+        // Every reference form ([x], [x.row], [x[*]], {{answer:x[..]}}) in every formula and
+        // piped text, not just the rule formula (V3-52).
+        $map = [$from => $to];
+        $rename = static fn($text) => is_string($text) ? \humhub\modules\thiscoveryForms\services\formula\FormulaRefs::renameText($text, $map) : $text;
+        foreach (['logic_formula', 'formula', 'rich_content', 'html_content', 'label', 'help_text'] as $column) {
+            if (isset($row[$column])) {
+                $row[$column] = $rename($row[$column]);
+            }
+        }
+        if (isset($row['branches']) && is_array($row['branches'])) {
+            foreach ($row['branches'] as $i => $branch) {
+                if (is_array($branch)) {
+                    foreach (['formula', 'text'] as $key) {
+                        if (isset($branch[$key])) {
+                            $row['branches'][$i][$key] = $rename($branch[$key]);
+                        }
+                    }
+                }
+            }
+        }
+        if (isset($row['validation']['check']) && is_string($row['validation']['check'])) {
+            $row['validation']['check'] = $rename($row['validation']['check']);
+        }
+        if (isset($row['actions']) && is_array($row['actions'])) {
+            foreach ($row['actions'] as $i => $action) {
+                foreach (['value', 'condition'] as $key) {
+                    if (is_array($action) && isset($action[$key])) {
+                        $row['actions'][$i][$key] = $rename($action[$key]);
+                    }
+                }
+            }
         }
         if (isset($row['carry_from']) && (string)$row['carry_from'] === $from) {
             $row['carry_from'] = $to;
         }
-        foreach (['rich_content', 'html_content'] as $column) {
-            if (!isset($row[$column]) || !is_string($row[$column])) {
-                continue;
+        foreach (['loop_field_key', 'loop_label_field'] as $column) {
+            if (isset($row[$column]) && strcasecmp((string)$row[$column], $from) === 0) {
+                $row[$column] = $to;
             }
-            $row[$column] = str_replace(
-                ['{{answer:' . $from . '}}', '{{field:' . $from . '}}'],
-                ['{{answer:' . $to . '}}', '{{field:' . $to . '}}'],
-                $row[$column]
-            );
         }
         return $row;
     }
@@ -503,6 +550,8 @@ class QuestionImportExportService
         $row['carry_from'] = $this->remapAlias((string)($row['carry_from'] ?? ''), $aliases);
         $row['logic_rules'] = $this->remapRuleFieldKeys($row['logic_rules'] ?? [], $aliases);
         $row['branches'] = $this->remapRuleFieldKeys($row['branches'] ?? [], $aliases);
+        $row['loop_field_key'] = $this->remapAlias((string)($row['loop_field_key'] ?? ''), $aliases);
+        $row['loop_label_field'] = $this->remapAlias((string)($row['loop_label_field'] ?? ''), $aliases);
         $values = [];
         foreach (self::CSV_COLUMNS as $column) {
             $values[] = $this->csvCellValue($column, $row, $field);
@@ -605,6 +654,7 @@ class QuestionImportExportService
             case 'grid_mobile_layout':
                 return (string)($row['grid_mobile_layout'] ?? 'scroll');
             case 'branches':
+            case 'validation':
             case 'logic_rules':
             case 'image_regions':
                 $value = $row[$column] ?? [];

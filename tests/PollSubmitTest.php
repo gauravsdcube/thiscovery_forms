@@ -31,9 +31,20 @@ $check($poll->isPoll(), 'poll was not a poll');
 $same = IntegrityService::rateLimitKey(41, '203.0.113.9');
 $neighbour = IntegrityService::rateLimitKey(41, '203.0.113.10');
 $other = IntegrityService::rateLimitKey(41, '198.51.100.9');
-$check($same === $neighbour, 'addresses in one network did not share a key');
+// Keyed by exact address, not /24, so neighbours behind one network are not pooled (V3-51).
+$check($same !== $neighbour, 'two addresses in one /24 shared a rate-limit key');
+$check($same === IntegrityService::rateLimitKey(41, '203.0.113.9'), 'one address did not keep its key');
 $check($same !== $other, 'a different network shared the key');
 $check(strpos($same, '203.0.113') === false, 'rate-limit key contains the raw address');
+// IPv6 is pooled by /64, so rotating addresses inside one client's prefix does not reset it.
+$check(
+    IntegrityService::rateLimitKey(41, '2001:db8:1:2::a') === IntegrityService::rateLimitKey(41, '2001:db8:1:2:ffff::b'),
+    'two addresses in one IPv6 /64 had different keys'
+);
+$check(
+    IntegrityService::rateLimitKey(41, '2001:db8:1:2::a') !== IntegrityService::rateLimitKey(41, '2001:db8:1:3::a'),
+    'two IPv6 /64 prefixes shared a key'
+);
 
 if ($failures) {
     echo 'FAILED ' . count($failures) . "\n";

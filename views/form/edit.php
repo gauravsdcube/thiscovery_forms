@@ -183,7 +183,7 @@ $formSettingSections = [
     'actions', 'consensus',
 ];
 $settingsNavSections = array_merge($formSettingSections, [
-    'integrity', 'css', 'share', 'export', 'translations', 'versions', 'panel', 'rounds', 'approval',
+    'integrity', 'css', 'share', 'export', 'translations', 'versions', 'panel', 'rounds', 'approval', 'route',
 ]);
 if ($openTab !== 'builder' && $openTab !== 'settings') {
     if (in_array($openTab, $settingsNavSections, true)) {
@@ -197,7 +197,7 @@ if ($openTab === 'settings' && !in_array($openSection, $settingsNavSections, tru
 if ($openTab === '') {
     $openTab = 'builder';
 }
-$isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', 'rounds', 'approval', 'translations', 'versions'], true);
+$isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', 'rounds', 'approval', 'translations', 'versions', 'route'], true);
 ?>
 
 <div class="cf-studio panel panel-default<?= $isSettingsExtra ? ' is-settings-extra' : '' ?>" id="cf-builder" data-cf-kind="<?= Html::encode($formModel->kind) ?>">
@@ -243,7 +243,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     'data-pjax-prevent' => true,
                 ]) ?>
                 <?= Button::danger(Yii::t('ThiscoveryFormsModule.base', 'Delete form'))
-                    ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Delete this form and all submissions?'))
+                    ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Move this form to the trash? Its answers are kept and it can be restored.'))
                     ->submit()
                     ->icon('trash')
                     ->cssClass('cf-studio__delete-btn')
@@ -288,7 +288,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
         'class' => 'cf-studio__form',
         'id' => 'cf-studio-form',
         'enctype' => 'multipart/form-data',
-        'data-cf-formula-preview' => \yii\helpers\Url::to(['/thiscovery-forms/formula/preview']),
+        'data-cf-formula-preview' => \yii\helpers\Url::to($isNew ? ['/thiscovery-forms/formula/preview'] : ['/thiscovery-forms/formula/preview', 'id' => (int)$formModel->id]),
     ]) ?>
     <?= Html::hiddenInput('studio_tab', $openTab, ['data-cf-studio-tab' => true]) ?>
     <?= Html::hiddenInput('studio_section', $openSection, ['data-cf-studio-section-input' => true]) ?>
@@ -732,7 +732,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
             <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))->submit()->icon('floppy-o') ?>
             <?php if (!$isNew && $formModel->canManage()): ?>
                 <button type="submit" form="cf-delete-form" class="btn btn-danger cf-studio__delete-btn"
-                    onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Delete this form and all submissions?')) ?>);">
+                    onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Move this form to the trash? Its answers are kept and it can be restored.')) ?>);">
                     <i class="fa fa-trash" aria-hidden="true"></i>
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Delete form') ?>
                 </button>
@@ -758,6 +758,12 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
     <?php if ($formModel->isProject()): ?>
         <div class="cf-studio__panel<?= $openSection === 'approval' ? ' is-active' : '' ?>" data-cf-panel="approval">
             <?= $this->render('_studio_approval', ['formModel' => $formModel, 'isNew' => $isNew]) ?>
+        </div>
+    <?php endif; ?>
+
+    <?php if (!$isNew): ?>
+        <div class="cf-studio__panel<?= $openSection === 'route' ? ' is-active' : '' ?>" data-cf-panel="route">
+            <?= $this->render('_studio_route', ['formModel' => $formModel]) ?>
         </div>
     <?php endif; ?>
 

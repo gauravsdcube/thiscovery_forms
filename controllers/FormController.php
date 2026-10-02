@@ -36,7 +36,7 @@ class FormController extends ContentContainerController
     protected function getAccessRules()
     {
         return [
-            ['guestAccess' => ['view', 'save-progress', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file', 'form-file']],
+            ['guestAccess' => ['view', 'save-progress', 'quota-closed', 'resume', 'email-resume', 'submit-json', 'public-dashboard', 'run-actions', 'upload', 'delete-file', 'form-file']],
         ];
     }
 
@@ -82,6 +82,7 @@ class FormController extends ContentContainerController
     protected function handleEdit(CustomForm $form, bool $isNew, array $seedFields = [])
     {
         $request = Yii::$app->request;
+        $unsavedFields = null;
 
         if ($request->isPost) {
             if (!$form->load($request->post())) {
@@ -100,7 +101,13 @@ class FormController extends ContentContainerController
                 if ($fieldRows === null) {
                     Yii::$app->session->setFlash('error', $fieldError);
                 } elseif (!$form->saveFieldsFromPost($fieldRows)) {
-                    Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Form saved, but some fields could not be stored.'));
+                    // Nothing was written (V3-37). Show the reasons, and keep the author's edits on screen.
+                    Yii::$app->session->setFlash('error', $form->designRefusalMessage());
+                    try {
+                        $unsavedFields = (new \humhub\modules\thiscoveryForms\services\FormSnapshotService())->fieldsFromRows($form, $fieldRows);
+                    } catch (\Throwable $e) {
+                        $unsavedFields = null;
+                    }
                 } else {
                     $integrityPost = Yii::$app->request->post('integrity');
                     if (is_array($integrityPost)) {
@@ -141,7 +148,7 @@ class FormController extends ContentContainerController
             'formModel' => $form,
             'isNew' => $isNew,
             'contentContainer' => $this->contentContainer,
-            'fields' => $isNew ? $seedFields : $form->fields,
+            'fields' => $unsavedFields ?? ($isNew ? $seedFields : $form->fields),
         ]);
     }
 
@@ -287,6 +294,7 @@ class FormController extends ContentContainerController
         $answer = $submit->save($existing, $anonymous, false, $isPreview);
 
         if (!$answer) {
+            (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->refundAccessToken($form, $ctx);
             Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
             return $this->renderFillView($form, $submit, $existing, [
                 'editingAnswer' => $existing && $existing->isComplete(),
@@ -347,13 +355,16 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException();
         }
 
-        $stats = (new DashboardService())->getFormDashboard($form);
+        // Respondents allowed to see answers get the public-safe dashboard: no other people's
+        // free text, roster names or integrity panels. The full one needs export rights (SEC-11).
+        $restricted = !$form->canExportAnswers();
+        $stats = (new DashboardService())->getFormDashboard($form, $restricted);
 
         return $this->render('dashboard', [
             'formModel' => $form,
             'stats' => $stats,
             'contentContainer' => $this->contentContainer,
-            'isPublic' => false,
+            'isPublic' => $restricted,
         ]);
     }
 
@@ -406,15 +417,13 @@ class FormController extends ContentContainerController
     {
         $form = $this->findForm($id);
         \humhub\modules\thiscoveryForms\services\ExportAudit::authorize($form);
-        $csv = (new ExportService())->toCsv($form, Yii::$app->request->post());
-        \humhub\modules\thiscoveryForms\services\ExportAudit::record($form, $csv);
-        $filename = ExportSettings::downloadFilename($form);
-
-        Yii::$app->response->format = Response::FORMAT_RAW;
-        Yii::$app->response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
-        Yii::$app->response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
-
-        return "\xEF\xBB\xBF" . $csv;
+        // Streamed from a temporary file, not built in memory (DAT-15).
+        [$fh, $rows] = (new ExportService())->toCsvHandle($form, Yii::$app->request->post(), true);
+        \humhub\modules\thiscoveryForms\services\ExportAudit::recordRows($form, $rows);
+        rewind($fh);
+        return Yii::$app->response->sendStreamAsFile($fh, ExportSettings::downloadFilename($form), [
+            'mimeType' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function actionDelete($id)
@@ -428,6 +437,7 @@ class FormController extends ContentContainerController
         if (!$form) {
             throw new NotFoundHttpException();
         }
+        CustomForm::assertNotTrashed($form);
         return $form;
     }
 }

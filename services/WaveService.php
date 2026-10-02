@@ -162,21 +162,34 @@ class WaveService
      *
      * @return array{sent:int,failed:int,skipped:?string}|null
      */
-    public function inviteIfDue(FormWave $wave, bool $force = false): ?array
+    public function inviteIfDue(FormWave $wave, bool $force = false, bool $retry = false): ?array
     {
         if ((int)$wave->wave_number < 2) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'first'];
         }
+        // A form in the trash sends nothing (GOV-7).
+        $form = \humhub\modules\thiscoveryForms\models\CustomForm::findOne((int)$wave->form_id);
+        if (!$form || $form->isTrashed()) {
+            return ['sent' => 0, 'failed' => 0, 'skipped' => 'trashed'];
+        }
         if ($wave->status !== FormWave::STATUS_OPEN || !$wave->isOpenNow()) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'scheduled'];
         }
-        if ($wave->invited_at) {
+        if ($wave->invited_at && !$retry) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'already'];
         }
 
         $forms = $this->formsForWave($wave);
         if (!$forms) {
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'form'];
+        }
+        // Claim the wave before sending, so two overlapping cron runs cannot both send (SCO-13).
+        // A retry re-runs a claimed wave; members already sent to are skipped.
+        if (!$retry) {
+            $claimed = FormWave::updateAll(['invited_at' => date('Y-m-d H:i:s')], ['id' => (int)$wave->id, 'invited_at' => null]);
+            if ($claimed !== 1) {
+                return ['sent' => 0, 'failed' => 0, 'skipped' => 'already'];
+            }
         }
 
         $sent = 0;
@@ -207,8 +220,9 @@ class WaveService
             return ['sent' => 0, 'failed' => 0, 'skipped' => 'off'];
         }
 
-        $wave->invited_at = date('Y-m-d H:i:s');
-        $wave->save(false, ['invited_at', 'updated_at']);
+        if (!$retry) {
+            $wave->refresh();
+        }
         return ['sent' => $sent, 'failed' => $failed, 'skipped' => null];
     }
 
@@ -240,6 +254,24 @@ class WaveService
                 $this->inviteIfDue($wave);
             } catch (\Throwable $e) {
                 Yii::error('Thiscovery Forms wave invite cron failed: ' . $e->getMessage(), 'thiscovery-forms');
+            }
+        }
+        // Retry failed sends for 72 hours after a wave opened, every six hours (SCO-13).
+        $recent = FormWave::find()
+            ->where(['status' => FormWave::STATUS_OPEN])
+            ->andWhere(['>=', 'wave_number', 2])
+            ->andWhere(['>=', 'invited_at', date('Y-m-d H:i:s', time() - 72 * 3600)])
+            ->all();
+        foreach ($recent as $wave) {
+            $key = 'cf-wave-retry-' . (int)$wave->id . '-' . intdiv(time(), 6 * 3600);
+            if (Yii::$app->cache->get($key)) {
+                continue;
+            }
+            Yii::$app->cache->set($key, 1, 6 * 3600);
+            try {
+                $this->inviteIfDue($wave, false, true);
+            } catch (\Throwable $e) {
+                Yii::error('Thiscovery Forms wave invite retry failed: ' . $e->getMessage(), 'thiscovery-forms');
             }
         }
     }

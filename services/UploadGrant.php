@@ -56,22 +56,14 @@ class UploadGrant
         return $file->object_model === FormAnswer::class && (int)$file->object_id === (int)$answer->id;
     }
 
+    /**
+     * Grants only files already attached to this response (V3-50). It no longer grants the
+     * user's last 50 unattached HumHub files from any module, nor an unattached GUID that a
+     * draft happens to name: a fresh upload is granted when it is uploaded, in this session.
+     */
     public static function grantLegacy(int $formId, ?FormAnswer $answer): void
     {
-        $userId = (int)Yii::$app->user->id;
-        if ($userId > 0) {
-            $guids = File::find()
-                ->select('guid')
-                ->where(['created_by' => $userId])
-                ->andWhere(['or', ['object_model' => null], ['object_model' => '']])
-                ->orderBy(['id' => SORT_DESC])
-                ->limit(50)
-                ->column();
-            foreach ($guids as $guid) {
-                self::remember($formId, (string)$guid);
-            }
-        }
-        if (!$answer) {
+        if (!$answer || !$answer->id) {
             return;
         }
         foreach ($answer->answerFields as $field) {
@@ -80,7 +72,7 @@ class UploadGrant
                 continue;
             }
             $file = File::findOne(['guid' => $value]);
-            if ($file && (self::attachedTo($file, $answer) || $file->object_model === null || $file->object_model === '')) {
+            if ($file && self::attachedTo($file, $answer)) {
                 self::remember($formId, $value);
             }
         }

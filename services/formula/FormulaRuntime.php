@@ -12,6 +12,13 @@ final class FormulaRuntime
 {
     public static function today(?CustomForm $form = null): string
     {
+        $now = new \DateTimeImmutable('now', new \DateTimeZone(self::timeZone($form)));
+        return $now->format('Y-m-d');
+    }
+
+    /** The form's time zone (Settings), Europe/London by default. */
+    public static function timeZone(?CustomForm $form = null): string
+    {
         $zone = 'Europe/London';
         if ($form) {
             $settings = json_decode((string)$form->settings_json, true);
@@ -20,8 +27,50 @@ final class FormulaRuntime
                 $zone = $chosen;
             }
         }
-        $now = new \DateTimeImmutable('now', new \DateTimeZone($zone));
-        return $now->format('Y-m-d');
+        return $zone;
+    }
+
+    /**
+     * The date today() uses for a response: frozen when the response started (V3-9).
+     */
+    public static function frozenToday(?CustomForm $form, ?\humhub\modules\thiscoveryForms\models\FormAnswer $answer = null): string
+    {
+        if ($answer && !$answer->isNewRecord) {
+            $stored = (string)($answer->formula_today ?? '');
+            if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $stored)) {
+                return $stored;
+            }
+        }
+        return self::today($form);
+    }
+
+    /**
+     * Named formulas (Settings -> Custom functions) parsed into trees, for fn:name (V3-13).
+     *
+     * @return array<string, array<string,mixed>>
+     */
+    public static function named(?CustomForm $form): array
+    {
+        if (!$form) {
+            return [];
+        }
+        $out = [];
+        $parser = new Parser();
+        $list = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeFunctions(
+            $form->custom_functions ?? $form->getSetting('custom_functions', [])
+        );
+        foreach ($list as $fn) {
+            $text = trim((string)$fn['value']);
+            if ($text === '') {
+                continue;
+            }
+            try {
+                $out[(string)$fn['name']] = $parser->parse($text);
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -30,8 +79,14 @@ final class FormulaRuntime
      */
     public static function fill(array &$values, array $fields, string $today = ''): void
     {
+        if (isset($values['__today']) && is_string($values['__today']) && $values['__today'] !== '') {
+            $today = $values['__today'];
+        }
         if ($today === '') {
             $today = self::today();
+        }
+        if (!isset($values['__loops'])) {
+            $values['__loops'] = \humhub\modules\thiscoveryForms\services\LoopService::formulaLoopIds($fields);
         }
         $calculated = [];
         foreach ($fields as $field) {
@@ -62,7 +117,7 @@ final class FormulaRuntime
             }
             try {
                 $trees[$key] = $parser->parse($config['formula']);
-                $deps[$key] = FormulaDeps::names($trees[$key]);
+                $deps[$key] = FormulaDeps::names($trees[$key], is_array($values['__named'] ?? null) ? $values['__named'] : []);
             } catch (\Throwable $e) {
                 $trees[$key] = null;
             }
@@ -77,21 +132,30 @@ final class FormulaRuntime
             \Yii::warning('Thiscovery Forms calculated fields form a cycle: ' . implode(', ', $cyclic), 'thiscovery-forms');
         }
 
+        // Calculations read only answers the respondent could see: a hidden question's stale
+        // answer does not feed a score (V3-38). Worked out once per fill, not per calculation.
+        $visible = (new \humhub\modules\thiscoveryForms\services\LogicEngine())->effectiveValues($fields, $values);
         foreach ($order as $key) {
             $field = $byKey[$key];
             $tree = $trees[$key];
             $stored = null;
             if ($tree !== null) {
                 try {
-                    $context = Context::fromValues($values, $fields, $today);
+                    $context = Context::fromValues($visible, $fields, $today);
                     $context->steps = 0;
                     $stored = self::present((new Evaluator($context))->evaluate($tree), $field->getFormulaConfig());
+                    if ($context->steps > Limits::STEPS) {
+                        // Out of budget is an authoring problem, not a blank answer to pass silently.
+                        \Yii::warning('Thiscovery Forms calculated field ' . $key . ' ran out of steps (' . Limits::STEPS . ') and was left empty.', 'thiscovery-forms');
+                        $stored = null;
+                    }
                 } catch (\Throwable $e) {
                     \Yii::warning('Thiscovery Forms calculated field ' . $key . ' failed: ' . $e->getMessage(), 'thiscovery-forms');
                     $stored = null;
                 }
             }
             self::store($values, $field, $stored);
+            self::store($visible, $field, $stored);
         }
         // Fields in a cycle stay empty.
     }
@@ -111,6 +175,39 @@ final class FormulaRuntime
         if ($name !== '') {
             $values[$name] = $value;
         }
+    }
+
+    /**
+     * Ids of calculated questions caught in a dependency cycle (named formulas followed). The
+     * server leaves them empty, and the browser is told to as well (V3-38).
+     *
+     * @return list<int>
+     */
+    public static function cyclicIds(CustomForm $form): array
+    {
+        $parser = new Parser();
+        $named = self::named($form);
+        $byKey = [];
+        $deps = [];
+        foreach ($form->fields as $field) {
+            if (!$field instanceof FormField || $field->type !== FormField::TYPE_CALCULATED) {
+                continue;
+            }
+            $key = self::key($field);
+            $byKey[$key] = $field;
+            $deps[$key] = [];
+            $formula = trim((string)$field->getFormulaConfig()['formula']);
+            if ($formula === '') {
+                continue;
+            }
+            try {
+                $deps[$key] = FormulaDeps::names($parser->parse($formula), $named);
+            } catch (\Throwable $e) {
+                continue;
+            }
+        }
+        [, $cyclic] = self::order($byKey, $deps);
+        return array_values(array_map(static fn(string $key) => (int)$byKey[$key]->id, $cyclic));
     }
 
     /**

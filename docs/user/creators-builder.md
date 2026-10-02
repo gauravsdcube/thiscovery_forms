@@ -129,6 +129,16 @@ If they typed `Maya` → `You told us your child is called Maya.`
 
 Keep logic simple. Deep trees of skips are hard to test. Prefer a few clear branches over many overlapping rules.
 
+## Answer rules
+
+Each question can carry rules that are checked on the page and again by the server when the form is submitted:
+
+- **Text and long text:** shortest and longest answer in characters, and an optional **answer pattern** (a regular expression for the whole answer, for example `[A-Z]{2}[0-9]{4}` for a study code) with your own message. Even without a limit, a text answer is capped at 2,000 characters and a long-text answer at 16,000.
+- **Date:** the answer must be a real date. **Earliest date** and **latest date** take `YYYY-MM-DD` or `today` (in the form's time zone).
+- **Answer check (any question):** a formula that must be true once the question is answered, with your own message. Use it to compare answers, for example `[end_date] >= [start_date]`, or `sum([home], [work], [other]) = 100` on the last of a set of percentages.
+
+A rule that cannot work (a broken pattern, a shortest length above the longest, an impossible date, a check that is not a valid formula) is refused when you save.
+
 ## Actions (field, page, and submit)
 
 Actions run **standard functions** in order. They are not buttons the respondent taps on the page (except that reaching the end of a page or submitting can trigger them).
@@ -142,6 +152,10 @@ Actions run **standard functions** in order. They are not buttons the respondent
 | Custom function | Runs a named formula from **Settings → Actions and functions** |
 
 You can add several actions on one field, page, or on submit. They run in the order listed.
+
+Each action can have an **Only if** condition, written as a formula (for example `[q5] = "yes"`). The action runs only when the condition is true; leave it empty to always run. A go-to action with a condition only changes the route when the condition holds. A condition that is not a valid formula is refused when you save.
+
+**Send email** on a question runs when the respondent leaves the page (clicks Next), not while they are still answering, so changing an answer before moving on never sends a second, wrong email. For someone who is not signed in, those emails wait until the response is submitted, and are sent then if their conditions still hold. On submit, emails run once the response is saved.
 
 **Set variable** and **custom function** values can use `{{answer:…}}` and later emails can use `{{var:name}}`. Define reusable formulas on Settings (see [Form settings](creators-settings.md)).
 

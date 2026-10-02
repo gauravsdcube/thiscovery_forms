@@ -10,6 +10,11 @@ class CsvCell
     public static function neutralise($value): string
     {
         $value = (string)$value;
+        // A plain number (-3, -0.5, +2) is data, not a formula: prefixing it made numeric
+        // columns text in R, Stata and SPSS (V3-41).
+        if (preg_match('/^[-+]?(?:\d+(?:\.\d+)?|\.\d+)$/', $value)) {
+            return $value;
+        }
         if ($value !== '' && self::isFormula($value[0])) {
             return "'" . $value;
         }

@@ -4,6 +4,7 @@ namespace humhub\modules\thiscoveryForms\services;
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use Yii;
 use yii\data\ActiveDataProvider;
 
 class AnswerListService
@@ -69,6 +70,9 @@ class AnswerListService
         $query = $form->getExportableAnswers()
             ->joinWith(['user', 'integrityMeta'])
             ->with(['user', 'wave', 'round', 'panelMember', 'currentStage', 'integrityMeta']);
+        if (self::ownOnly($form)) {
+            $query->andWhere(['custom_form_answer.created_by' => (int)Yii::$app->user->id]);
+        }
 
         if ($filters['status'] === 'complete') {
             $query->andWhere(['custom_form_answer.status' => FormAnswer::STATUS_COMPLETE]);
@@ -163,15 +167,31 @@ class AnswerListService
         ];
     }
 
+    /**
+     * Someone who sees answers only because they responded sees their own responses, not
+     * everyone's (V3-50, SEC-11). Managers and View Answers reviewers see them all.
+     */
+    public static function ownOnly(CustomForm $form): bool
+    {
+        if (!Yii::$app->has('user', true) || Yii::$app->user->isGuest) {
+            return false;
+        }
+        return !$form->canExportAnswers();
+    }
+
     public static function findAnswer(CustomForm $form, int $answerId): ?FormAnswer
     {
+        $where = [
+            'id' => $answerId,
+            'form_id' => $form->id,
+            'is_test' => 0,
+        ];
+        if (self::ownOnly($form)) {
+            $where['created_by'] = (int)Yii::$app->user->id;
+        }
         /** @var FormAnswer|null $answer */
         $answer = FormAnswer::find()
-            ->where([
-                'id' => $answerId,
-                'form_id' => $form->id,
-                'is_test' => 0,
-            ])
+            ->where($where)
             ->with(['user', 'answerFields.field', 'wave', 'round', 'panelMember', 'currentStage', 'integrityMeta'])
             ->one();
 

@@ -45,7 +45,7 @@ class QuotaService
         $arm = $posted['assign_arm'] ?? '0';
         $form->setSetting('quota_assign_arm', in_array((string)$arm, ['1', 'true', 'on'], true) ? '1' : '0');
         $notify = trim((string)($posted['full_email'] ?? ''));
-        if ($notify !== '' && !str_ends_with(strtolower($notify), '@example.test')) {
+        if ($notify !== '' && !filter_var($notify, FILTER_VALIDATE_EMAIL)) {
             $notify = '';
         }
         $form->setSetting('quota_full_email', $notify);
@@ -77,21 +77,33 @@ class QuotaService
             'reserve_minutes' => max(1, (int)($payload['reserve_minutes'] ?? 60)),
             'action' => $this->action((string)($payload['action'] ?? 'end')),
             'action_message' => trim((string)($payload['action_message'] ?? '')),
-            'action_url' => trim((string)($payload['action_url'] ?? '')),
+            'action_url' => $this->acceptedRedirect($form, trim((string)($payload['action_url'] ?? ''))),
             'action_page_key' => trim((string)($payload['action_page_key'] ?? '')),
             'check_page_key' => trim((string)($payload['check_page_key'] ?? '')),
             'status' => (string)($payload['status'] ?? 'open') === 'closed' ? 'closed' : 'open',
             'edition_id' => $form->current_edition_id ? (int)$form->current_edition_id : null,
             'sort_order' => (int)($payload['sort_order'] ?? 0),
         ];
+        // A parent quota and a wave must belong to this form (V3-56).
+        if ($row['parent_id'] !== null && (!$this->quota((int)$row['parent_id'], (int)$form->id) || (int)$row['parent_id'] === (int)$id)) {
+            return null;
+        }
+        if ($row['wave_id'] !== null && !(new Query())->from('{{%form_wave}}')->where(['id' => (int)$row['wave_id'], 'form_id' => (int)$form->id])->exists()) {
+            return null;
+        }
         $db = Yii::$app->db;
         if ($id) {
             $existing = $this->quota($id, (int)$form->id);
             if (!$existing) {
                 return null;
             }
+            // A save that does not mention the status keeps it: it never reopens a closed quota (V3-47).
+            if (!array_key_exists('status', $payload)) {
+                $row['status'] = (string)$existing['status'];
+            }
+            $reason = trim((string)($payload['reason'] ?? ''));
+            $actor = isset($payload['actor_id']) ? (int)$payload['actor_id'] : null;
             if ((int)$existing['target'] !== (int)$row['target']) {
-                $reason = trim((string)($payload['reason'] ?? ''));
                 if ($reason === '') {
                     return null;
                 }
@@ -99,7 +111,30 @@ class QuotaService
                     'old_target' => (int)$existing['target'],
                     'new_target' => (int)$row['target'],
                     'reason' => $reason,
-                ], isset($payload['actor_id']) ? (int)$payload['actor_id'] : null);
+                ], $actor);
+            }
+            // Who a quota counts, or what it does, changing mid-fieldwork is audited, and needs a
+            // reason once anyone has been counted (V3-47).
+            $changed = [];
+            foreach (['rules_json', 'parent_id', 'wave_id', 'count_policy', 'action', 'action_url', 'action_page_key', 'check_page_key', 'status'] as $column) {
+                $before = $existing[$column] ?? '';
+                $after = $row[$column] ?? '';
+                if ($column === 'rules_json') {
+                    // Compared by content, not by how the JSON happens to be written.
+                    $same = json_decode((string)$before, true) == json_decode((string)$after, true);
+                } else {
+                    $same = (string)$before === (string)$after;
+                }
+                if (!$same) {
+                    $changed[$column] = ['old' => $existing[$column] ?? null, 'new' => $row[$column] ?? null];
+                }
+            }
+            if ($changed !== []) {
+                $accepted = (int)(new Query())->select('accepted')->from('{{%custom_form_quota_counter}}')->where(['quota_id' => $id])->scalar();
+                if ($accepted > 0 && $reason === '' && array_diff(array_keys($changed), ['status']) !== []) {
+                    return null;
+                }
+                $this->audit($id, ['changed' => $changed, 'accepted_at_change' => $accepted, 'reason' => $reason], $actor);
             }
             $db->createCommand()->update('{{%custom_form_quota}}', $row, ['id' => $id, 'form_id' => (int)$form->id])->execute();
             return $this->quota($id, (int)$form->id);
@@ -126,6 +161,17 @@ class QuotaService
             'status' => $status === 'closed' ? 'closed' : 'open',
         ], ['id' => $id])->execute();
         return true;
+    }
+
+    /**
+     * A redirect is stored only when it is https and on the allowlist (V3-31).
+     */
+    private function acceptedRedirect(CustomForm $form, string $url): string
+    {
+        if ($url === '') {
+            return '';
+        }
+        return $this->redirectError($url, $this->hosts((int)$form->id)) === null ? $url : '';
     }
 
     public function addHost(CustomForm $form, string $host): void
@@ -345,6 +391,19 @@ class QuotaService
         if ($candidates === []) {
             return null;
         }
+        // Lock every candidate counter (ascending id, like apply) so two parallel starts cannot
+        // both see the same place free (V3-25).
+        $lockedCounters = [];
+        $candidateIds = [];
+        foreach ($candidates as $list) {
+            foreach ($list as $quota) {
+                $candidateIds[(int)$quota['id']] = true;
+            }
+        }
+        ksort($candidateIds);
+        foreach (array_keys($candidateIds) as $quotaId) {
+            $lockedCounters[$quotaId] = $this->lockCounter($quotaId);
+        }
         $open = [];
         $counts = [];
         $fullest = null;
@@ -357,7 +416,7 @@ class QuotaService
             $blocked = false;
             $accepted = 0;
             foreach ($candidates[$code] as $quota) {
-                $counter = $this->readCounter((int)$quota['id']);
+                $counter = $lockedCounters[(int)$quota['id']] ?? $this->readCounter((int)$quota['id']);
                 $accepted = max($accepted, (int)$counter['accepted']);
                 $target = max(1, (int)$quota['target']);
                 $ratio = ((int)$counter['accepted'] + (int)$counter['reserved']) / $target;
@@ -405,14 +464,21 @@ class QuotaService
             self::$armBlock = null;
             return;
         }
-        $values = $this->withPanel($submit->values, $form, $answer);
+        // Cells are matched on what the respondent could see: a hidden question counts as empty.
+        $values = (new LogicEngine())->effectiveValues(array_values($form->fields), $submit->values);
+        $values = $this->withPanel($values, $form, $answer);
         $mode = $asDraft ? 'leave' : 'submit';
         $qualifying = [];
         foreach ($this->quotas((int)$form->id) as $quota) {
             if (!$this->waveMatches($quota, $answer)) {
                 continue;
             }
-            if ($mode === 'leave' && !$this->leaving($form, $quota, $postedPage)) {
+            // Already diverted (goto) or marked (continue) by this quota: do not check it again,
+            // or a full goto quota would send the respondent back for ever (V3-23).
+            if ((int)$answer->quota_marker === (int)$quota['id']) {
+                continue;
+            }
+            if ($mode === 'leave' && !$this->leaving($form, $quota, $postedPage, $answer, $submit->values)) {
                 continue;
             }
             $rules = $this->rulesOf($quota);
@@ -515,8 +581,10 @@ class QuotaService
         if ($closing) {
             $this->halt($submit, $form, $answer, $closing);
         } elseif ($goto) {
-            $built = (new FormPager())->buildPages($form->fields);
+            $built = FormPager::fillPages($form, $answer, $submit->values);
             $index = $built['pageKeyIndex'][(string)$goto['action_page_key']] ?? null;
+            // Record the diversion: the respondent can finish, and is not counted in this quota.
+            $this->markContinue($answer, (int)$goto['id']);
             $submit->quotaHalt = 'goto';
             $submit->quotaPage = $index === null ? 0 : (int)$index;
             $submit->quotaMessage = $this->message($form, $goto);
@@ -558,7 +626,72 @@ class QuotaService
         return $knownOpen === 0 && $knownFull > 0;
     }
 
+    /**
+     * A response excluded on integrity grounds and later reinstated takes its quota place back
+     * (V3-47). It counts even if the cell has filled since: it was accepted first. The audit
+     * says when that leaves the cell over target.
+     */
+    public function restoreReinstated(CustomForm $form, FormAnswer $answer): void
+    {
+        if (!self::tablesReady() || $answer->isTest()) {
+            return;
+        }
+        $rows = (new Query())->from('{{%custom_form_quota_accept}}')->where([
+            'answer_id' => (int)$answer->id,
+            'released' => 1,
+        ])->all();
+        if (!$rows) {
+            return;
+        }
+        $db = Yii::$app->db;
+        $own = $db->getTransaction() === null;
+        $tx = $own ? $db->beginTransaction() : null;
+        try {
+            foreach ($rows as $row) {
+                $quota = $this->quota((int)$row['quota_id'], (int)$form->id);
+                if (!$quota || (string)$quota['count_policy'] !== 'complete_excluding_integrity') {
+                    continue;
+                }
+                $counter = $this->lockCounter((int)$row['quota_id']);
+                $claimed = $db->createCommand()->update('{{%custom_form_quota_accept}}', [
+                    'released' => 0,
+                ], ['quota_id' => (int)$row['quota_id'], 'answer_id' => (int)$answer->id, 'released' => 1])->execute();
+                if ($claimed !== 1) {
+                    continue;
+                }
+                $counter['accepted'] = (int)$counter['accepted'] + 1;
+                $db->createCommand()->update('{{%custom_form_quota_counter}}', [
+                    'accepted' => $counter['accepted'],
+                ], ['quota_id' => (int)$row['quota_id']])->execute();
+                $this->audit((int)$row['quota_id'], [
+                    'reinstated_answer' => (int)$answer->id,
+                    'accepted' => $counter['accepted'],
+                    'over_target' => (int)$quota['target'] > 0 && $counter['accepted'] > (int)$quota['target'],
+                ], null);
+            }
+            if ($own && $tx) {
+                $tx->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own && $tx) {
+                $tx->rollBack();
+            }
+            throw $e;
+        }
+    }
+
     public function releaseExcluded(CustomForm $form, FormAnswer $answer): void
+    {
+        $this->releaseAccepted($form, $answer, false);
+    }
+
+    /** A deleted response gives back its place in every quota it counted towards (GOV-4). */
+    public function releaseDeleted(CustomForm $form, FormAnswer $answer): void
+    {
+        $this->releaseAccepted($form, $answer, true);
+    }
+
+    private function releaseAccepted(CustomForm $form, FormAnswer $answer, bool $anyPolicy): void
     {
         if (!self::tablesReady() || $answer->isTest()) {
             return;
@@ -576,7 +709,7 @@ class QuotaService
         try {
             foreach ($rows as $row) {
                 $quota = $this->quota((int)$row['quota_id'], (int)$form->id);
-                if (!$quota || (string)$quota['count_policy'] !== 'complete_excluding_integrity') {
+                if (!$quota || (!$anyPolicy && (string)$quota['count_policy'] !== 'complete_excluding_integrity')) {
                     continue;
                 }
                 $counter = $this->lockCounter((int)$row['quota_id']);
@@ -630,15 +763,21 @@ class QuotaService
             $db = Yii::$app->db;
             $tx = $db->beginTransaction();
             try {
-                $this->lockCounter((int)$quota['id']);
-                $db->createCommand()->update('{{%custom_form_quota_counter}}', [
-                    'accepted' => $recount,
-                    'reconciled_at' => gmdate('Y-m-d H:i:s'),
-                ], ['quota_id' => (int)$quota['id']])->execute();
-                $this->audit((int)$quota['id'], [
-                    'reconcile_from' => $stored,
-                    'reconcile_to' => $recount,
-                ], null);
+                // Recount while the counter is locked, so an accept committed by a submit during
+                // the dry pass above is not overwritten (V3-24).
+                $locked = $this->lockCounter((int)$quota['id']);
+                $stored = (int)$locked['accepted'];
+                $recount = $this->recount($form, $quota);
+                if ($stored !== $recount) {
+                    $db->createCommand()->update('{{%custom_form_quota_counter}}', [
+                        'accepted' => $recount,
+                        'reconciled_at' => gmdate('Y-m-d H:i:s'),
+                    ], ['quota_id' => (int)$quota['id']])->execute();
+                    $this->audit((int)$quota['id'], [
+                        'reconcile_from' => $stored,
+                        'reconcile_to' => $recount,
+                    ], null);
+                }
                 $tx->commit();
             } catch (\Throwable $e) {
                 $tx->rollBack();
@@ -667,8 +806,15 @@ class QuotaService
             ksort($byQuota);
             foreach ($byQuota as $quotaId => $ids) {
                 $counter = $this->lockCounter($quotaId);
-                $db->createCommand()->delete('{{%custom_form_quota_reservation}}', ['id' => $ids])->execute();
-                $counter['reserved'] = max(0, (int)$counter['reserved'] - count($ids));
+                // Only rows still present and still expired once the counter is locked are released,
+                // and the counter moves by the rows actually deleted, so a reservation a concurrent
+                // submit already converted is never released twice (V3-24).
+                $deleted = $db->createCommand()->delete('{{%custom_form_quota_reservation}}', [
+                    'and',
+                    ['id' => $ids],
+                    ['<=', 'expires_at', gmdate('Y-m-d H:i:s')],
+                ])->execute();
+                $counter['reserved'] = max(0, (int)$counter['reserved'] - (int)$deleted);
                 $db->createCommand()->update('{{%custom_form_quota_counter}}', [
                     'reserved' => $counter['reserved'],
                 ], ['quota_id' => $quotaId])->execute();
@@ -977,7 +1123,7 @@ class QuotaService
             return;
         }
         $to = strtolower(trim((string)$form->getSetting('quota_full_email', '')));
-        if ($to === '' || !str_ends_with($to, '@example.test')) {
+        if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
             return;
         }
         try {
@@ -1127,8 +1273,9 @@ class QuotaService
     {
         $action = (string)$quota['action'];
         if ($action === 'goto') {
-            $built = (new FormPager())->buildPages($form->fields);
+            $built = FormPager::fillPages($form, $answer, $submit->values);
             $index = $built['pageKeyIndex'][(string)$quota['action_page_key']] ?? 0;
+            $this->markContinue($answer, (int)$quota['id']);
             $submit->quotaHalt = 'goto';
             $submit->quotaPage = (int)$index;
             $submit->quotaMessage = $this->message($form, $quota);
@@ -1143,11 +1290,10 @@ class QuotaService
         if ($submit->quotaHalt === 'redirect') {
             $submit->quotaUrl = $this->redirectUrl($form, $answer, $quota);
         }
+        // The arm assignment is kept: it is part of the allocation record, and the over-quota
+        // outcome already says the response did not complete (V3-25).
         $answer->outcome = FormAnswer::OUTCOME_OVER_QUOTA;
         $answer->save(false, ['outcome', 'updated_at']);
-        if ($this->singleArmCode($this->rulesOf($quota)) && Yii::$app->db->schema->getTableSchema('{{%custom_form_arm_assignment}}', true)) {
-            Yii::$app->db->createCommand()->delete('{{%custom_form_arm_assignment}}', ['answer_id' => (int)$answer->id])->execute();
-        }
     }
 
     /**
@@ -1175,6 +1321,10 @@ class QuotaService
     private function redirectUrl(CustomForm $form, FormAnswer $answer, array $quota): string
     {
         $url = (string)$quota['action_url'];
+        // Checked again at runtime, so a stored javascript:, http: or unlisted URL is never used (V3-31).
+        if ($url === '' || $this->redirectError($url, $this->hosts((int)$form->id)) !== null) {
+            return '';
+        }
         $anonymous = $form->hidesIdentityFromManagers() && Module::identityEnforced();
         $answerToken = $anonymous ? '' : (string)$answer->id;
         return strtr($url, [
@@ -1215,13 +1365,17 @@ class QuotaService
         return $waveId === 0 || $waveId === (int)$answer->wave_id;
     }
 
-    private function leaving(CustomForm $form, array $quota, ?int $postedPage): bool
+    /**
+     * @param array<int|string,mixed> $values
+     */
+    private function leaving(CustomForm $form, array $quota, ?int $postedPage, FormAnswer $answer, array $values): bool
     {
         $key = trim((string)($quota['check_page_key'] ?? ''));
         if ($key === '') {
             return false;
         }
-        $built = (new FormPager())->buildPages($form->fields);
+        // The browser's page index is into the expanded, ordered pages (V3-45).
+        $built = FormPager::fillPages($form, $answer, $values);
         $need = $built['pageKeyIndex'][$key] ?? null;
         if ($need === null) {
             return false;

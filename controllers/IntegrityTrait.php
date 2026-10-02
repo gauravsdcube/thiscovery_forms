@@ -20,7 +20,9 @@ trait IntegrityTrait
     public function actionIntegrity($id)
     {
         $form = $this->findForm($id);
-        if (!$form->canViewAnswers()) {
+        // The integrity dashboard is for reviewers: a respondent who can see their own answers
+        // cannot see everyone's integrity scores (V3-50, SEC-11).
+        if (!$form->canExportAnswers() && !$form->canDecideAnalysis()) {
             throw new ForbiddenHttpException();
         }
         $stats = (new IntegrityService())->dashboard($form);
@@ -31,6 +33,34 @@ trait IntegrityTrait
             'contentContainer' => $container,
             'canManage' => $form->canManage(),
         ]);
+    }
+
+    /**
+     * A manager moves a response to another arm, with a reason; the override is logged with the
+     * actor and the allocation log marks it (V3-48).
+     */
+    public function actionArmOverride($id, $answerId)
+    {
+        $form = $this->findForm($id);
+        if (!$form->canManage() || !Yii::$app->request->isPost) {
+            throw new ForbiddenHttpException();
+        }
+        $answer = \humhub\modules\thiscoveryForms\models\FormAnswer::findOne(['id' => (int)$answerId, 'form_id' => (int)$form->id]);
+        if (!$answer) {
+            throw new NotFoundHttpException();
+        }
+        $answer->populateRelation('form', $form);
+        $reason = trim((string)Yii::$app->request->post('reason', ''));
+        $done = $reason !== '' && (new \humhub\modules\thiscoveryForms\services\RandomisationService())->override(
+            $answer,
+            (string)Yii::$app->request->post('arm_code', ''),
+            $reason,
+            (int)Yii::$app->user->id ?: null
+        );
+        Yii::$app->session->setFlash($done ? 'success' : 'error', $done
+            ? Yii::t('ThiscoveryFormsModule.base', 'The arm was changed and the change was logged.')
+            : Yii::t('ThiscoveryFormsModule.base', 'The arm was not changed. Choose a different arm and give a reason.'));
+        return $this->redirect(Url::toAnswers($form, ['answer' => $answerId]));
     }
 
     public function actionIntegrityStatus($id, $answerId)

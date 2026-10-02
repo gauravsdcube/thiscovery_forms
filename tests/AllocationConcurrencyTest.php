@@ -45,26 +45,31 @@ for ($i = 0; $i < $workers; $i++) {
     $procs[] = [proc_open($command, [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['THISCOVERY_FORMS_TEST_DB' => '1']), $pipes];
 }
 $errors = 0;
+$firstError = '';
 foreach ($procs as [$proc, $pipes]) {
-    $err = trim(str_replace(
-        'Cannot load Zend OPcache - it was already loaded',
-        '',
-        (string)stream_get_contents($pipes[2])
-    ));
+    $err = stream_get_contents($pipes[2]);
+    // This server's CLI warns that OPcache is already loaded. That is not a worker failure.
+    $err = trim((string)preg_replace('/^Cannot load Zend OPcache - it was already loaded\s*$/m', '', (string)$err));
     if (proc_close($proc) !== 0 || $err !== '') {
         $errors++;
+        if ($firstError === '' && $err !== '') {
+            $firstError = substr($err, 0, 500);
+        }
     }
 }
-$check($errors === 0, "{$errors} worker(s) failed or rolled back");
+$check($errors === 0, "{$errors} worker(s) failed or rolled back" . ($firstError !== '' ? ': ' . $firstError : ''));
 
-$counts = (new Query())
-    ->select(['n' => 'COUNT(*)'])
+$countRows = (new Query())
+    ->select(['g.arm_code', 'n' => 'COUNT(*)'])
     ->from(['g' => 'custom_form_arm_assignment'])
     ->innerJoin(['a' => 'custom_form_answer'], 'a.id = g.answer_id')
     ->where(['a.form_id' => (int)$form->id])
     ->groupBy('g.arm_code')
-    ->indexBy('arm_code')
-    ->column();
+    ->all();
+$counts = [];
+foreach ($countRows as $row) {
+    $counts[(string)$row['arm_code']] = (int)$row['n'];
+}
 $total = array_sum(array_map('intval', $counts));
 $check($total === $workers * $perWorker, "expected " . ($workers * $perWorker) . " assignments, got {$total}");
 $check((int)($counts['usual'] ?? 0) === (int)($counts['new'] ?? 0), 'arms are not balanced: ' . json_encode($counts));

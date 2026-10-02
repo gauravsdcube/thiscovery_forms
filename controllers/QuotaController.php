@@ -42,7 +42,6 @@ class QuotaController extends ContentContainerController
                     'action_url' => $svc->quota($quotaId, (int)$form->id)['action_url'] ?? '',
                     'action_page_key' => $svc->quota($quotaId, (int)$form->id)['action_page_key'] ?? '',
                     'check_page_key' => $svc->quota($quotaId, (int)$form->id)['check_page_key'] ?? '',
-                    'status' => $svc->quota($quotaId, (int)$form->id)['status'] ?? 'open',
                     'parent_id' => $svc->quota($quotaId, (int)$form->id)['parent_id'] ?? null,
                     'wave_id' => $svc->quota($quotaId, (int)$form->id)['wave_id'] ?? null,
                 ]);
@@ -71,7 +70,8 @@ class QuotaController extends ContentContainerController
             }
         }
         if (Yii::$app->request->isPost) {
-            $host = trim((string)Yii::$app->request->post('host', ''));
+            // Only a network administrator may allowlist a redirect host (V3-31).
+            $host = Yii::$app->user->isAdmin() ? trim((string)Yii::$app->request->post('host', '')) : '';
             if ($host !== '' && Yii::$app->request->post('rules_json', null) === null) {
                 $svc->addHost($form, $host);
                 return $this->redirect($form->actionUrl(['/thiscovery-forms/quota/edit', 'id' => $form->id, 'quotaId' => $quotaId]));
@@ -95,11 +95,11 @@ class QuotaController extends ContentContainerController
                 'action_url' => Yii::$app->request->post('action_url', ''),
                 'action_page_key' => Yii::$app->request->post('action_page_key', ''),
                 'check_page_key' => Yii::$app->request->post('check_page_key', ''),
-                'status' => Yii::$app->request->post('status', 'open'),
+                // Open/close is done from the list, so a stale edit page never reopens a quota (V3-47).
                 'sort_order' => Yii::$app->request->post('sort_order', 0),
             ]);
             if (!$saved) {
-                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'The quota could not be saved. A target change needs a reason.'));
+                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'The quota could not be saved. Changing the target, or its rules or action once responses are counted, needs a reason.'));
                 return $this->redirect($form->actionUrl(['/thiscovery-forms/quota/edit', 'id' => $form->id, 'quotaId' => $quotaId]));
             }
             $errors = $svc->authoringErrors($form);
@@ -126,6 +126,7 @@ class QuotaController extends ContentContainerController
         if (!$form) {
             throw new NotFoundHttpException();
         }
+        CustomForm::assertNotTrashed($form);
         return $form;
     }
 

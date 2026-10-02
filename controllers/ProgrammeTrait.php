@@ -92,7 +92,8 @@ trait ProgrammeTrait
 
         $raw = trim((string)Yii::$app->request->post('member', ''));
         $postedWeight = Yii::$app->request->post('weight', null);
-        $weight = ($postedWeight === null || $postedWeight === '') ? 1.0 : (float)$postedWeight;
+        // Left empty, an existing member keeps their weight; 0 is a weight like any other (SCO-6).
+        $weight = ($postedWeight === null || trim((string)$postedWeight) === '' || !is_numeric($postedWeight)) ? null : max(0.0, (float)$postedWeight);
         if ($raw === '') {
             Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Enter a username or email address.'));
             return $this->redirectStudio($form, 'panel');
@@ -125,6 +126,26 @@ trait ProgrammeTrait
         $panel = (new PanelService())->getPanel($form);
         if (!$member || !$panel || (int)$member->panel_id !== (int)$panel->id) {
             throw new NotFoundHttpException();
+        }
+        // "Remove" keeps the person's record inactive; "erase" removes their contact details and
+        // either keeps their answers without identity or deletes them (GOV-4).
+        $erase = (string)Yii::$app->request->post('erase', '');
+        if (in_array($erase, ['keep', 'delete'], true)) {
+            $reason = trim((string)Yii::$app->request->post('reason', ''));
+            if ($reason === '') {
+                Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Give a reason for erasing this person.'));
+            } else {
+                $n = (new \humhub\modules\thiscoveryForms\services\ErasureService())->eraseMember(
+                    $member,
+                    $erase === 'keep',
+                    Yii::$app->user->isGuest ? null : (int)Yii::$app->user->id,
+                    $reason
+                );
+                Yii::$app->session->setFlash('success', $erase === 'keep'
+                    ? Yii::t('ThiscoveryFormsModule.base', 'The person was erased; {n} responses were kept without their identity.', ['n' => $n])
+                    : Yii::t('ThiscoveryFormsModule.base', 'The person and {n} responses were erased.', ['n' => $n]));
+            }
+            return $this->redirectStudio($form, 'panel');
         }
         $member->status = FormPanelMember::STATUS_INACTIVE;
         $member->save(false, ['status', 'updated_at']);
@@ -409,6 +430,8 @@ trait ProgrammeTrait
             $this->view->error($error);
             Yii::$app->session->setFlash('cf_i18n_import_notice', ['type' => 'error', 'message' => $error]);
         } else {
+            // Translations are part of the definition an edition publishes (DAT-19).
+            (new \humhub\modules\thiscoveryForms\services\FormVersionService())->recordSave($form);
             $msg = Yii::t('ThiscoveryFormsModule.base', 'Translations imported.');
             $this->view->success($msg);
             Yii::$app->session->setFlash('cf_i18n_import_notice', ['type' => 'success', 'message' => $msg]);

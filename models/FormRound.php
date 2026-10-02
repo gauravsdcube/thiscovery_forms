@@ -119,6 +119,11 @@ class FormRound extends ActiveRecord
 
     public function setFrozenFieldIds(array $ids): void
     {
+        // An empty list is stored as [] so "worked out, nothing frozen" differs from "not yet".
+        if ($ids === []) {
+            $this->frozen_field_ids_json = '[]';
+            return;
+        }
         $ids = array_values(array_unique(array_map('intval', $ids)));
         $this->frozen_field_ids_json = $ids ? json_encode($ids) : null;
     }

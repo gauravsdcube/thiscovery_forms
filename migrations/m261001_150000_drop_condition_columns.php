@@ -5,6 +5,10 @@ use humhub\components\Migration;
 /**
  * Show and hide rules live in logic_json. The old condition columns are unused.
  * safeDown puts the columns back empty. It does not invent rules.
+ *
+ * Not reversible in data (V3-53): any value still in condition_field_id, condition_operator or
+ * condition_value is lost. That is acceptable before production, where no form uses them; on a
+ * system with old forms, convert their conditions to formula rules (logic_json) first.
  */
 class m261001_150000_drop_condition_columns extends Migration
 {

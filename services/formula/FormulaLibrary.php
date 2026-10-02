@@ -39,7 +39,8 @@ final class FormulaLibrary
 
     public static function eq5dProfile(): string
     {
-        return 'concat([d1], [d2], [d3], [d4], [d5])';
+        // All five dimensions or nothing: a missing one gave a 4-digit profile (V3-42).
+        return 'if(and(is_answered([d1]), is_answered([d2]), is_answered([d3]), is_answered([d4]), is_answered([d5])), concat([d1], [d2], [d3], [d4], [d5]), empty)';
     }
 
     public static function eq5dLevelSum(): string

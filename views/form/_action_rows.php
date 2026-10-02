@@ -53,6 +53,15 @@ $fnLabels = FormActionService::functionLabels();
                     'placeholder' => '{{answer:Question label}}',
                 ]) ?>
             </div>
+            <div class="col-md-11">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Only if (optional)') ?></label>
+                <?= Html::textInput($rowName . '[condition]', $action['condition'] ?? '', [
+                    'class' => 'form-control',
+                    'placeholder' => '[q5] = "yes"',
+                    'data-cf-formula-text' => true,
+                    'aria-label' => Yii::t('ThiscoveryFormsModule.base', 'Run this action only if'),
+                ]) ?>
+            </div>
             <div class="col-md-1 d-flex align-items-end">
                 <button type="button" class="btn btn-sm btn-light" data-cf-remove-action title="<?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?>">
                     <i class="fa fa-times"></i>

@@ -10,8 +10,6 @@ use humhub\modules\thiscoveryForms\services\FormPager;
 use humhub\modules\thiscoveryForms\services\LogicEngine;
 
 $failures = [];
-$module = Yii::$app->getModule('thiscovery-forms');
-$previous = (string)$module->settings->get(Module::SETTING_ROUTING_ALIGNMENT, '1');
 
 $field = static function (int $id, string $type, array $extra = []): FormField {
     $f = new FormField();
@@ -57,8 +55,8 @@ $dangling = [
     $field(3, FormField::TYPE_TEXT),
 ];
 
-try {
-    $module->settings->set(Module::SETTING_ROUTING_ALIGNMENT, '1');
+// The routing-alignment flag is gone (V3-57): the aligned page walk is the only one.
+{
     $on = $route($skipped, [1 => 'yes']);
     if (!in_array(7, $on, true) || in_array(5, $on, true)) {
         $failures[] = 'flag on skipped-page goto ' . json_encode($on);
@@ -72,16 +70,6 @@ try {
         $failures[] = 'flag on unknown key did not end the form ' . json_encode($onDangle);
     }
 
-    $module->settings->set(Module::SETTING_ROUTING_ALIGNMENT, '0');
-    if (!Module::routingAligned()) {
-        $failures[] = 'the old page walk can still be turned on';
-    }
-    $off = $route($skipped, [1 => 'yes']);
-    if ($off !== $on) {
-        $failures[] = 'turning the old flag off changed the route ' . json_encode($off);
-    }
-} finally {
-    $module->settings->set(Module::SETTING_ROUTING_ALIGNMENT, $previous === '' ? '1' : $previous);
 }
 
 if ($failures) {

@@ -210,6 +210,23 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Expected answer, e.g. Agree'),
                     ]) ?>
                 </div>
+                <div class="cf-switch mt-2<?= $isAnswerable ? '' : ' d-none' ?>" data-cf-straightline-wrap>
+                    <label>
+                        <?= Html::checkbox($namePrefix . '[reverse_keyed]', $field->isReverseKeyed(), ['value' => '1', 'uncheck' => null]) ?>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Reverse-keyed item') ?>
+                    </label>
+                    <label class="ms-3">
+                        <?= Html::checkbox($namePrefix . '[straightline_exempt]', $field->isStraightlineExempt(), ['value' => '1', 'uncheck' => null]) ?>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Leave out of the straight-lining check') ?>
+                    </label>
+                    <?php if (in_array($type, [FormField::TYPE_GRID_SINGLE, FormField::TYPE_GRID_MULTI], true)): ?>
+                        <?= Html::textInput($namePrefix . '[reverse_rows]', implode(',', $field->getReverseRows()), [
+                            'class' => 'form-control mt-1',
+                            'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Reverse-keyed row codes, comma-separated'),
+                        ]) ?>
+                    <?php endif; ?>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Identical answers are only flagged as straight-lining when the set includes reverse-keyed items, where the same answer is inconsistent. "Not at all" to every symptom is often the true answer.')]) ?>
+                </div>
             </div>
         </div>
 
@@ -326,6 +343,10 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
             <div class="col-md-4">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Block key') ?></label>
                 <?= Html::textInput($namePrefix . '[block_key]', $randCfg['blockKey'], ['class' => 'form-control', 'placeholder' => 'leaflet']) ?>
+            </div>
+            <div class="col-md-2">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Pages to show') ?></label>
+                <?= Html::textInput($namePrefix . '[randomise_show]', $randCfg['show'] === null ? '' : (string)$randCfg['show'], ['class' => 'form-control', 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'all')]) ?>
             </div>
             <?php else: ?>
             <div class="col-md-4">
@@ -452,6 +473,105 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
             </div>
         </div>
 
+        <?php
+        // Answer rules (LOG-12): the server enforces them on submit, and the page checks them first.
+        $rules = $field->getValidation();
+        $isTextType = in_array($type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA], true);
+        $ruleId = 'cf-rule-' . Html::encode((string)($field->id ?: md5($namePrefix)));
+        $noCheck = in_array($type, [FormField::TYPE_PAGE_BREAK, FormField::TYPE_RICH_TEXT, FormField::TYPE_QUESTION_GROUP, FormField::TYPE_GROUP_END, FormField::TYPE_CALCULATED, FormField::TYPE_RESPONDENT_META], true);
+        ?>
+        <?php $fileRules = $field->getFileRules(); ?>
+        <div class="row g-3 mt-1<?= $type === FormField::TYPE_FILE ? '' : ' d-none' ?>" data-cf-file-rules-panel>
+            <div class="col-md-8">
+                <label class="cf-label" for="<?= $ruleId ?>-ftypes"><?= Yii::t('ThiscoveryFormsModule.base', 'Allowed file types') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span></label>
+                <?= Html::textInput($namePrefix . '[file_types]', implode(', ', $fileRules['types']), [
+                    'class' => 'form-control',
+                    'id' => $ruleId . '-ftypes',
+                    'placeholder' => 'pdf, jpg, png',
+                ]) ?>
+                <div class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Leave empty for all supported types: {types}.', [
+                    'types' => implode(', ', array_keys(\humhub\modules\thiscoveryForms\services\UploadQuota::TYPES)),
+                ]) ?></div>
+            </div>
+            <div class="col-md-4">
+                <label class="cf-label" for="<?= $ruleId ?>-fmax"><?= Yii::t('ThiscoveryFormsModule.base', 'Largest file (MB)') ?></label>
+                <?= Html::input('number', $namePrefix . '[file_max_mb]', $fileRules['maxMb'] ?? '', [
+                    'class' => 'form-control',
+                    'id' => $ruleId . '-fmax',
+                    'min' => 1,
+                    'max' => (int)floor(\humhub\modules\thiscoveryForms\services\UploadQuota::MAX_FILE_BYTES / 1048576),
+                ]) ?>
+            </div>
+        </div>
+        <div class="row g-3 mt-1<?= $isTextType ? '' : ' d-none' ?>" data-cf-text-rules-panel>
+            <div class="col-md-3">
+                <label class="cf-label" for="<?= $ruleId ?>-min"><?= Yii::t('ThiscoveryFormsModule.base', 'Shortest answer (characters)') ?></label>
+                <?= Html::input('number', $namePrefix . '[validation][min_length]', $rules['min_length'], ['class' => 'form-control', 'min' => 0, 'id' => $ruleId . '-min']) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label" for="<?= $ruleId ?>-max"><?= Yii::t('ThiscoveryFormsModule.base', 'Longest answer (characters)') ?></label>
+                <?= Html::input('number', $namePrefix . '[validation][max_length]', $rules['max_length'], ['class' => 'form-control', 'min' => 1, 'id' => $ruleId . '-max',
+                    'placeholder' => (string)($type === FormField::TYPE_TEXTAREA ? FormField::TEXTAREA_HARD_MAX : FormField::TEXT_HARD_MAX)]) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label" for="<?= $ruleId ?>-pattern"><?= Yii::t('ThiscoveryFormsModule.base', 'Answer pattern') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span></label>
+                <?= Html::textInput($namePrefix . '[validation][pattern]', $rules['pattern'], ['class' => 'form-control', 'id' => $ruleId . '-pattern', 'placeholder' => '[A-Z]{2}[0-9]{4}', 'maxlength' => FormField::PATTERN_MAX]) ?>
+            </div>
+            <div class="col-md-3">
+                <label class="cf-label" for="<?= $ruleId ?>-pmsg"><?= Yii::t('ThiscoveryFormsModule.base', 'Message when it does not match') ?></label>
+                <?= Html::textInput($namePrefix . '[validation][pattern_message]', $rules['pattern_message'], ['class' => 'form-control', 'id' => $ruleId . '-pmsg']) ?>
+            </div>
+        </div>
+        <div class="row g-3 mt-1<?= $type === FormField::TYPE_DATE ? '' : ' d-none' ?>" data-cf-date-rules-panel>
+            <div class="col-md-4">
+                <label class="cf-label" for="<?= $ruleId ?>-dmin"><?= Yii::t('ThiscoveryFormsModule.base', 'Earliest date') ?></label>
+                <?= Html::textInput($namePrefix . '[validation][date_min]', $rules['date_min'], ['class' => 'form-control', 'id' => $ruleId . '-dmin', 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'YYYY-MM-DD or today')]) ?>
+            </div>
+            <div class="col-md-4">
+                <label class="cf-label" for="<?= $ruleId ?>-dmax"><?= Yii::t('ThiscoveryFormsModule.base', 'Latest date') ?></label>
+                <?= Html::textInput($namePrefix . '[validation][date_max]', $rules['date_max'], ['class' => 'form-control', 'id' => $ruleId . '-dmax', 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'YYYY-MM-DD or today')]) ?>
+            </div>
+        </div>
+        <?php
+        $consensusType = in_array($type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING], true);
+        $consensusForm = $field->form_id && $field->form && $field->form->isConsensus();
+        ?>
+        <?php if ($consensusForm): ?>
+        <details class="mt-2<?= $consensusType ? '' : ' d-none' ?>" data-cf-consensus-panel>
+            <summary class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Consensus for this question') ?></summary>
+            <div class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Leave empty to use the form’s consensus settings. Codes or scale points; a range is “from” to “to”.') ?></div>
+            <div class="row g-2 mt-1">
+                <?php foreach ([
+                    'consensus_agree_from' => Yii::t('ThiscoveryFormsModule.base', 'Agree from'),
+                    'consensus_agree_to' => Yii::t('ThiscoveryFormsModule.base', 'Agree to'),
+                    'consensus_disagree_from' => Yii::t('ThiscoveryFormsModule.base', 'Disagree from'),
+                    'consensus_disagree_to' => Yii::t('ThiscoveryFormsModule.base', 'Disagree to'),
+                    'consensus_exclude' => Yii::t('ThiscoveryFormsModule.base', 'Leave out (e.g. “Unable to score”), comma separated'),
+                    'consensus_iqr_max' => Yii::t('ThiscoveryFormsModule.base', 'Largest IQR for consensus in'),
+                ] as $ckey => $clabel): ?>
+                    <div class="col-md-4">
+                        <label class="cf-label" for="<?= $ruleId . '-' . $ckey ?>"><?= Html::encode($clabel) ?></label>
+                        <?= Html::textInput($namePrefix . '[validation][' . $ckey . ']', $rules[$ckey], ['class' => 'form-control', 'id' => $ruleId . '-' . $ckey]) ?>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        </details>
+        <?php endif; ?>
+        <div class="row g-3 mt-1<?= $noCheck ? ' d-none' : '' ?>" data-cf-check-panel>
+            <div class="col-md-7">
+                <label class="cf-label" for="<?= $ruleId ?>-check"><?= Yii::t('ThiscoveryFormsModule.base', 'Answer check') ?>
+                    <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span></label>
+                <?= Html::textInput($namePrefix . '[validation][check]', $rules['check'], ['class' => 'form-control', 'id' => $ruleId . '-check', 'placeholder' => '[end_date] >= [start_date]', 'data-cf-formula-text' => true]) ?>
+                <div class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'A formula that must be true once this question is answered, for example sum([a], [b], [c]) = 100.') ?></div>
+            </div>
+            <div class="col-md-5">
+                <label class="cf-label" for="<?= $ruleId ?>-cmsg"><?= Yii::t('ThiscoveryFormsModule.base', 'Message when the check fails') ?></label>
+                <?= Html::textInput($namePrefix . '[validation][check_message]', $rules['check_message'], ['class' => 'form-control', 'id' => $ruleId . '-cmsg']) ?>
+            </div>
+        </div>
+
         <div class="row g-3 mt-1<?= $type === FormField::TYPE_RESPONDENT_META ? '' : ' d-none' ?>" data-cf-meta-key-wrap>
             <div class="col-md-6">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Records') ?></label>
@@ -521,7 +641,7 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
 
         <div class="cf-options-panel<?= $needsOptions ? '' : ' d-none' ?>" data-cf-options-panel>
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Choices') ?>
-                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? ' d-none' : '' ?>" data-cf-options-hint-choice><?= Yii::t('ThiscoveryFormsModule.base', 'Participant label required. Internal code optional — if you set one code, every choice needs a code.') ?></span>
+                <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? ' d-none' : '' ?>" data-cf-options-hint-choice><?= Yii::t('ThiscoveryFormsModule.base', 'Participant label required. Leave the code blank and a number is given when you save; it then stays fixed if you change the label.') ?></span>
                 <span class="cf-hint<?= $type === FormField::TYPE_RANKING ? '' : ' d-none' ?>" data-cf-options-hint-ranking><?= Yii::t('ThiscoveryFormsModule.base', 'Items respondents will rank') ?></span>
             </label>
             <?php
@@ -788,7 +908,7 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
             </div>
             <div class="cf-branches mt-3" data-cf-branches>
                 <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Branch rules (optional)') ?></div>
-                <div class="cf-field-help mb-2"><?= Yii::t('ThiscoveryFormsModule.base', 'Evaluated when the respondent clicks Next on the page before this break. First matching rule wins; otherwise the next page is used.') ?></div>
+                <div class="cf-field-help mb-2"><?= Yii::t('ThiscoveryFormsModule.base', 'Evaluated when the respondent clicks Next on the page before this break. First matching rule wins. If none matches, the respondent goes to the “Otherwise” page, or to the next page when that is empty.') ?></div>
                 <div data-cf-branch-list>
                     <?php
                     $branches = $pageBreak['branches'] ?: [['text' => '', 'gotoPageKey' => '']];
@@ -820,6 +940,16 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                 <button type="button" class="btn btn-sm btn-light" data-cf-add-branch>
                     <i class="fa fa-plus"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Add branch rule') ?>
                 </button>
+                <div class="mt-2">
+                    <?php $otherwiseId = 'cf-otherwise-' . Html::encode((string)($field->id ?: $namePrefix)); ?>
+                    <label class="cf-label" for="<?= $otherwiseId ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Otherwise go to') ?></label>
+                    <?= Html::textInput($namePrefix . '[page_otherwise]', $pageBreak['otherwise'] ?? '', [
+                        'id' => $otherwiseId,
+                        'class' => 'form-control',
+                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Page key; leave empty for the next page'),
+                        'list' => 'cf-page-keys',
+                    ]) ?>
+                </div>
             </div>
         </div>
 
@@ -995,6 +1125,15 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                         'class' => 'form-control',
                         'min' => 1,
                     ]) ?>
+                </div>
+                <div class="col-md-6">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Design versions') ?></label>
+                    <?= Html::input('number', $namePrefix . '[maxdiff_versions]', (int)($field->type === FormField::TYPE_MAXDIFF && $field->options_json ? $itemsCfg['versions'] : FormField::MAXDIFF_VERSIONS), [
+                        'class' => 'form-control',
+                        'min' => 1,
+                        'max' => FormField::MAXDIFF_VERSIONS_MAX,
+                    ]) ?>
+                    <div class="cf-field-help"><?= Yii::t('ThiscoveryFormsModule.base', 'Each respondent sees one version, so items are paired differently across people. The version shown is stored with the answer.') ?></div>
                 </div>
             </div>
             <div class="cf-field-note mt-2<?= $isMaxDiff ? '' : ' d-none' ?>" data-cf-maxdiff-note>

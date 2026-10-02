@@ -3,11 +3,13 @@
  * NEW-5. A token-link guest on a fully anonymous wave gets a completion row
  * and a completion email, without the answer storing the member. A second
  * submission for that wave is blocked. Test answers are skipped.
+ * GOV-2 / V3-2: the email log never names the answer and keeps only the date.
  */
 require __DIR__ . '/support/bootstrap.php';
 
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use humhub\modules\thiscoveryForms\models\FormEmailSend;
 use humhub\modules\thiscoveryForms\models\FormEmailTemplate;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormPanelActivity;
@@ -63,6 +65,7 @@ $answer->save(false);
 $answer->updateAttributes(['created_by' => null, 'panel_member_id' => null]);
 
 FormPanelActivity::deleteAll(['form_id' => (int)$form->id, 'answer_id' => null]);
+FormEmailSend::deleteAll(['form_id' => (int)$form->id, 'kind' => FormEmailSend::KIND_COMPLETION]);
 $before = (int)(json_decode((string)@file_get_contents('http://127.0.0.1:8025/api/v1/search?query=' . rawurlencode('r5-guest@example.test')), true)['messages_count'] ?? 0);
 ReviewLib::asUser(null);
 (new PanelService())->handleCompletion(ReviewLib::reload($form), $answer, $member);
@@ -84,6 +87,18 @@ if ($answer->panel_member_id !== null) {
 $after = (int)(json_decode((string)@file_get_contents('http://127.0.0.1:8025/api/v1/search?query=' . rawurlencode('r5-guest@example.test')), true)['messages_count'] ?? 0);
 if ($after <= $before) {
     $failures[] = 'completion email was not sent';
+}
+$sends = FormEmailSend::find()->where(['form_id' => (int)$form->id, 'kind' => FormEmailSend::KIND_COMPLETION])->all();
+if (!$sends) {
+    $failures[] = 'the completion email was not logged';
+}
+foreach ($sends as $send) {
+    if ($send->answer_id !== null) {
+        $failures[] = 'the email log links the member to answer ' . $send->answer_id;
+    }
+    if (substr((string)$send->created_at, 11) !== '00:00:00') {
+        $failures[] = 'the email log kept the send time ' . $send->created_at;
+    }
 }
 
 $ctx = new FillContext(ReviewLib::reload($form));

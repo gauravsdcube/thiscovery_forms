@@ -56,7 +56,7 @@ class DashboardService
 
             $uniqueQ = FormAnswer::find()->alias('a')
                 ->where(['a.form_id' => $formIds] + self::prefixKeys($complete, 'a.'))
-                ->select('a.created_by')
+                ->select(new Expression("COALESCE(CONCAT('u', a.created_by), CONCAT('m', a.panel_member_id), CONCAT('r', a.id))"))
                 ->distinct();
             FormIntegrityMeta::scopeIncludedInAnalysis($uniqueQ);
             $uniqueRespondents = (int)$uniqueQ->count();
@@ -117,7 +117,9 @@ class DashboardService
         $uniqueQ = FormAnswer::find()->alias('a')
             ->where(['a.form_id' => $formId, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
             ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]])
-            ->select('a.created_by')
+            // A person is an account or a panel member; a guest response counts once each, rather
+            // than every guest counting as a single respondent (SCO-18).
+            ->select(new Expression("COALESCE(CONCAT('u', a.created_by), CONCAT('m', a.panel_member_id), CONCAT('r', a.id))"))
             ->distinct();
         FormIntegrityMeta::scopeIncludedInAnalysis($uniqueQ);
         $uniqueRespondents = (int)$uniqueQ->count();
@@ -185,6 +187,7 @@ class DashboardService
             'arms' => (new RandomisationService())->allocationSummary($form),
             'quotas' => (new QuotaService())->summary($form),
             'loops' => $public ? [] : $this->loopBreakdown($form),
+            'numeric' => $public ? [] : $this->numericSummaries($form),
         ];
     }
 
@@ -195,24 +198,33 @@ class DashboardService
             ? (int)FormPanelMember::find()->where(['panel_id' => $panelId, 'status' => FormPanelMember::STATUS_ACTIVE])->count()
             : 0;
         $out = [];
-        $prevCompleted = null;
+        $prevMembers = null;
         foreach ((new WaveService())->listWaves($form) as $wave) {
             $completedQ = FormAnswer::find()->alias('a')
                 ->where(['a.form_id' => $form->id, 'a.wave_id' => $wave->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0]);
             FormIntegrityMeta::scopeIncludedInAnalysis($completedQ);
-            $completed = (int)$completedQ->count();
-            $dropOff = ($prevCompleted !== null && $prevCompleted > 0)
-                ? round((1 - ($completed / $prevCompleted)) * 100)
-                : null;
+            $completed = (int)(clone $completedQ)->count();
+            $members = array_values(array_filter(array_map('intval', (clone $completedQ)->select('a.panel_member_id')->column())));
+            // SCO-17: the rate's base is the members invited to that wave (from the send log),
+            // not today's active members; drop-off follows the same people from wave to wave.
+            $invited = (int)(new \yii\db\Query())->from('{{%form_email_send}}')
+                ->where(['form_id' => (int)$form->id, 'wave_id' => (int)$wave->id, 'kind' => ['invite', 'wave']])
+                ->select('member_id')->distinct()->count();
+            $base = $invited > 0 ? $invited : $memberCount;
+            $dropOff = null;
+            if ($prevMembers !== null && $prevMembers !== []) {
+                $stayed = count(array_intersect($prevMembers, $members));
+                $dropOff = (int)round((1 - $stayed / count($prevMembers)) * 100);
+            }
             $out[] = [
                 'title' => $wave->getDisplayTitle(),
                 'status' => $wave->status,
                 'completed' => $completed,
-                'memberCount' => $memberCount,
-                'rate' => $memberCount > 0 ? (int)round(($completed / $memberCount) * 100) : 0,
+                'memberCount' => $base,
+                'rate' => $base > 0 ? (int)round(($completed / $base) * 100) : 0,
                 'dropOff' => $dropOff,
             ];
-            $prevCompleted = $completed;
+            $prevMembers = $members;
         }
         return $out;
     }
@@ -288,24 +300,35 @@ class DashboardService
 
             if ($field->type === FormField::TYPE_RATING) {
                 $scale = $field->getRatingScale();
-                $min = (int)$scale['min'];
-                $max = (int)$scale['max'];
-                $step = max(1, (int)$scale['step']);
+                $min = (float)$scale['min'];
+                $max = (float)$scale['max'];
+                // A step of 0.5 stays 0.5, and an answer like 7.5 is counted, not dropped (SCO-19).
+                $step = (float)$scale['step'] > 0 ? (float)$scale['step'] : 1.0;
+                $fmt = static fn(float $v): string => rtrim(rtrim(number_format($v, 4, '.', ''), '0'), '.');
                 $labels = [];
                 $counts = [];
-                for ($value = $min; $value <= $max; $value += $step) {
-                    $labels[] = (string)$value;
-                    $counts[(string)$value] = 0;
+                for ($i = 0, $value = $min; $value <= $max + 1e-9 && $i < 1000; $i++, $value = $min + $i * $step) {
+                    $labels[] = $fmt($value);
+                    $counts[$fmt($value)] = 0;
                 }
+                $offScale = 0;
 
                 $values = $this->fieldRawValues($form, $field);
 
                 foreach ($values as $raw) {
-                    $item = (string)$raw;
-                    if ($item === '' || !array_key_exists($item, $counts)) {
+                    if (!is_numeric($raw)) {
                         continue;
                     }
-                    $counts[$item]++;
+                    $item = $fmt((float)$raw);
+                    if (array_key_exists($item, $counts)) {
+                        $counts[$item]++;
+                    } else {
+                        $offScale++;
+                    }
+                }
+                if ($offScale > 0) {
+                    $labels[] = Yii::t('ThiscoveryFormsModule.base', 'Other values');
+                    $counts['__other'] = $offScale;
                 }
 
                 $data = array_values($counts);
@@ -421,12 +444,16 @@ class DashboardService
             $other = 0;
 
             $values = $this->fieldRawValues($form, $field);
+            $respondents = 0;
 
             foreach ($values as $raw) {
                 $decoded = json_decode((string)$raw, true);
                 $items = (json_last_error() === JSON_ERROR_NONE && is_array($decoded))
                     ? $decoded
                     : [(string)$raw];
+                if (array_filter(array_map('strval', $items), 'strlen') !== []) {
+                    $respondents++;
+                }
 
                 foreach ($items as $item) {
                     $item = (string)$item;
@@ -458,11 +485,12 @@ class DashboardService
                 $data[] = $other;
             }
 
-            $total = array_sum($data);
-            if ($total === 0) {
+            if (array_sum($data) === 0) {
                 continue;
             }
 
+            // The base is people who answered, not ticks: 10 people ticking 3 options each is
+            // "10 responses" and about 33% per option, not 30 and 10% (SCO-10).
             $charts[] = [
                 'fieldId' => $field->id,
                 'label' => $field->label,
@@ -470,7 +498,9 @@ class DashboardService
                 'chartType' => $field->type === FormField::TYPE_CHECKBOX ? 'bar' : 'pie',
                 'labels' => $labels,
                 'data' => $data,
-                'total' => $total,
+                'total' => $respondents,
+                'selections' => array_sum($data),
+                'multi' => $field->type === FormField::TYPE_CHECKBOX,
             ];
         }
 
@@ -844,6 +874,55 @@ class DashboardService
     }
 
     /**
+     * n, mean, median, quartiles, minimum and maximum for each number question (SCO-20).
+     *
+     * @return array<int, array<string,mixed>>
+     */
+    private function numericSummaries(CustomForm $form): array
+    {
+        $out = [];
+        foreach ($form->fields as $field) {
+            if ($field->type !== FormField::TYPE_NUMBER || $field->isContainsPii()) {
+                continue;
+            }
+            $nums = [];
+            foreach ($this->fieldRawValues($form, $field) as $raw) {
+                if (is_numeric($raw)) {
+                    $nums[] = (float)$raw;
+                }
+            }
+            if ($nums === []) {
+                continue;
+            }
+            sort($nums);
+            $out[] = ['label' => (string)$field->label, 'n' => count($nums)] + self::numericStats($nums);
+        }
+        return $out;
+    }
+
+    /**
+     * @param float[] $sorted ascending
+     * @return array{mean:float,median:float,p25:float,p75:float,min:float,max:float}
+     */
+    public static function numericStats(array $sorted): array
+    {
+        $q = static function (float $p) use ($sorted): float {
+            $pos = $p * (count($sorted) - 1);
+            $lo = (int)floor($pos);
+            $hi = (int)ceil($pos);
+            return $sorted[$lo] + ($sorted[$hi] - $sorted[$lo]) * ($pos - $lo);
+        };
+        return [
+            'mean' => round(array_sum($sorted) / count($sorted), 2),
+            'median' => round($q(0.5), 2),
+            'p25' => round($q(0.25), 2),
+            'p75' => round($q(0.75), 2),
+            'min' => $sorted[0],
+            'max' => $sorted[count($sorted) - 1],
+        ];
+    }
+
+    /**
      * All repeats added together, plus the same counts for each instance label.
      *
      * @return array{instances:array<int,array{code:string,label:string}>,questions:array<int,array{label:string,counts:array<string,int>,values:array<string,array<string,int>>}>}
@@ -878,41 +957,51 @@ class DashboardService
         if ($questions === []) {
             return [];
         }
-        $rows = (new Query())
-            ->from(['af' => FormAnswerField::tableName()])
-            ->innerJoin(['a' => FormAnswer::tableName()], 'a.id = af.answer_id')
-            ->select(['af.field_id', 'af.instance_key', 'af.value'])
-            ->where([
-                'a.form_id' => (int)$form->id,
-                'a.status' => FormAnswer::STATUS_COMPLETE,
-                'a.is_test' => 0,
-                'af.field_id' => array_keys($questions),
-            ])
+        // Only repeats still shown to that respondent count: a deselected option's answers stay
+        // in the table but are not part of the response (V3-45).
+        $answers = FormAnswer::find()->alias('a')
+            ->where(['a.form_id' => (int)$form->id, 'a.status' => FormAnswer::STATUS_COMPLETE, 'a.is_test' => 0])
             ->andWhere(['a.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]])
-            ->andWhere(['<>', 'af.instance_key', '']);
-        FormIntegrityMeta::scopeIncludedInAnalysis($rows);
-        foreach ($rows->all() as $row) {
-            $value = trim((string)$row['value']);
-            if ($value === '' || $value === '[]') {
-                continue;
-            }
-            $code = (string)$row['instance_key'];
-            $id = (int)$row['field_id'];
-            $questions[$id]['counts']['*'] = ($questions[$id]['counts']['*'] ?? 0) + 1;
-            $questions[$id]['counts'][$code] = ($questions[$id]['counts'][$code] ?? 0) + 1;
-            $decoded = json_decode($value, true);
-            $display = (json_last_error() === JSON_ERROR_NONE && is_array($decoded))
-                ? implode(', ', array_map('strval', $decoded))
-                : $value;
-            if (strlen($display) > 80) {
-                $display = substr($display, 0, 77) . '...';
-            }
-            if (!isset($labels[$code])) {
-                $labels[$code] = $code;
-            }
-            $questions[$id]['values']['*'][$display] = ($questions[$id]['values']['*'][$display] ?? 0) + 1;
-            $questions[$id]['values'][$code][$display] = ($questions[$id]['values'][$code][$display] ?? 0) + 1;
+            ->with('answerFields');
+        FormIntegrityMeta::scopeIncludedInAnalysis($answers);
+        $fieldsById = [];
+        foreach ($fields as $field) {
+            $fieldsById[(int)$field->id] = $field;
         }
+        $previous = RandomisationService::$current;
+        foreach ($answers->each(100) as $answer) {
+            $answer->populateRelation('form', $form);
+            RandomisationService::$current = $answer;
+            $map = $answer->getValuesMap();
+            foreach (array_keys($questions) as $id) {
+                $cells = is_array($map[$id] ?? null) ? $map[$id] : [];
+                if ($cells === []) {
+                    continue;
+                }
+                foreach ($loops->shownPaths($fields, $fieldsById[$id], $map) as $path) {
+                    $code = (string)$path['code'];
+                    $raw = $cells[$code] ?? null;
+                    if ($raw === null || $raw === '' || $raw === []) {
+                        continue;
+                    }
+                    $display = is_array($raw) ? implode(', ', array_map('strval', array_filter($raw, 'is_scalar'))) : trim((string)$raw);
+                    if ($display === '') {
+                        continue;
+                    }
+                    if (strlen($display) > 80) {
+                        $display = substr($display, 0, 77) . '...';
+                    }
+                    if (!isset($labels[$code])) {
+                        $labels[$code] = (string)($path['label'] ?? $code);
+                    }
+                    $questions[$id]['counts']['*'] = ($questions[$id]['counts']['*'] ?? 0) + 1;
+                    $questions[$id]['counts'][$code] = ($questions[$id]['counts'][$code] ?? 0) + 1;
+                    $questions[$id]['values']['*'][$display] = ($questions[$id]['values']['*'][$display] ?? 0) + 1;
+                    $questions[$id]['values'][$code][$display] = ($questions[$id]['values'][$code][$display] ?? 0) + 1;
+                }
+            }
+        }
+        RandomisationService::$current = $previous;
         $instances = [];
         foreach ($labels as $code => $label) {
             $instances[] = ['code' => $code, 'label' => $label];

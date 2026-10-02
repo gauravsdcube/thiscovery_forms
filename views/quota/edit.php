@@ -45,7 +45,7 @@ foreach ($quotas as $item) {
         </div>
         <?php if (!empty($quota['id'])): ?>
             <div class="form-group">
-                <label><?= Yii::t('ThiscoveryFormsModule.base', 'Reason for a target change') ?></label>
+                <label><?= Yii::t('ThiscoveryFormsModule.base', 'Reason for this change (needed for a new target, and for new rules or action once responses are counted)') ?></label>
                 <?= Html::textInput('reason', '', ['class' => 'form-control']) ?>
             </div>
         <?php endif; ?>
@@ -104,7 +104,6 @@ foreach ($quotas as $item) {
             <label><?= Yii::t('ThiscoveryFormsModule.base', 'Minutes') ?></label>
             <?= Html::textInput('reserve_minutes', (int)($quota['reserve_minutes'] ?? 60), ['class' => 'form-control', 'type' => 'number', 'min' => 1]) ?>
         </div>
-        <?= Html::hiddenInput('status', (string)($quota['status'] ?? 'open')) ?>
         <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Save'), ['class' => 'btn btn-primary']) ?>
         <?= Html::endForm() ?>
         <hr>

@@ -63,7 +63,7 @@ class ConsentService
             return null;
         }
         $body = (new HtmlSanitizer())->sanitize((string)($payload['body_html'] ?? ''));
-        $now = date('Y-m-d H:i:s');
+        $now = gmdate('Y-m-d H:i:s');
         if ($documentId) {
             $row = $this->document($documentId, (int)$form->id);
             if (!$row || (string)$row['status'] !== 'draft') {
@@ -115,11 +115,11 @@ class ConsentService
                 return [Yii::t('ThiscoveryFormsModule.base', 'A required consent statement needs a label.')];
             }
         }
-        $hash = $this->contentHash((string)$row['body_html'], $items);
+        $hash = $this->contentHash((string)$row['body_html'], $items, (string)$row['title']);
         Yii::$app->db->createCommand()->update('{{%custom_form_consent_document}}', [
             'status' => 'published',
             'content_hash' => $hash,
-            'published_at' => date('Y-m-d H:i:s'),
+            'published_at' => gmdate('Y-m-d H:i:s'),
         ], ['id' => $documentId, 'status' => 'draft'])->execute();
         if ((string)$form->getSetting('reconsent', 'off') === 'email') {
             $this->queueReconsent($form, $documentId);
@@ -140,13 +140,29 @@ class ConsentService
             'effective_on' => $row['effective_on'],
             'items' => $this->items($documentId),
         ]);
-        return $draft ? (int)$draft['id'] : null;
+        if (!$draft) {
+            return null;
+        }
+        // Published translations are locked, so the next version starts from them.
+        foreach ((new Query())->from('{{%custom_form_consent_i18n}}')->where(['document_id' => $documentId])->all() as $row) {
+            Yii::$app->db->createCommand()->delete('{{%custom_form_consent_i18n}}', [
+                'document_id' => (int)$draft['id'],
+                'language' => $row['language'],
+            ])->execute();
+            Yii::$app->db->createCommand()->insert('{{%custom_form_consent_i18n}}', [
+                'document_id' => (int)$draft['id'],
+                'language' => $row['language'],
+                'body_html' => $row['body_html'],
+                'items_json' => $row['items_json'],
+            ])->execute();
+        }
+        return (int)$draft['id'];
     }
 
     /**
      * @param array<int,array<string,mixed>> $items
      */
-    public function contentHash(string $body, array $items): string
+    public function contentHash(string $body, array $items, string $title = ''): string
     {
         $lines = [];
         foreach ($items as $item) {
@@ -155,7 +171,55 @@ class ConsentService
                 . "\t" . (!empty($item['required']) ? '1' : '0')
                 . "\t" . ((($item['input'] ?? '') === 'checkbox') ? 'checkbox' : 'yes_no');
         }
-        return hash('sha256', trim($body) . "\n" . implode("\n", $lines));
+        $head = trim($title) !== '' ? trim($title) . "\n" : '';
+        return hash('sha256', $head . trim($body) . "\n" . implode("\n", $lines));
+    }
+
+    /**
+     * Exactly what the participant is shown for a document: the page renders this and the
+     * record hashes it, so the stored hash is always a hash of the displayed text (V3-27).
+     *
+     * @param array<string,mixed> $doc
+     * @return array{language:string,title:string,body:string,items:array<int,array<string,mixed>>,hash:string}
+     */
+    public function presentation(CustomForm $form, array $doc, ?string $language = null): array
+    {
+        $language = $language ?? (new TranslationService())->resolve($form);
+        if ($language === $form->getSourceLanguage()) {
+            $language = '';
+        }
+        $items = $this->presentedItems($doc, $language);
+        $body = $this->presentedBody($doc, $language);
+        if ($language !== '' && $body === (string)$doc['body_html'] && $items === $this->items((int)$doc['id'])) {
+            // No translation exists, so the base text is what was shown.
+            $language = '';
+        }
+        $title = (string)$doc['title'];
+        return [
+            'language' => $language,
+            'title' => $title,
+            'body' => $body,
+            'items' => $items,
+            'hash' => $this->contentHash($body, $items, $title),
+        ];
+    }
+
+    /**
+     * The signature method that applies: fully anonymous forms only take checkbox attestation,
+     * so no name or drawing is ever stored next to an unlinkable record (V3-26).
+     */
+    public function effectiveSignature(CustomForm $form, string $configured): string
+    {
+        if ($this->unlink($form)) {
+            return 'checkbox';
+        }
+        return in_array($configured, ['typed', 'checkbox', 'drawn'], true) ? $configured : 'typed';
+    }
+
+    /** Witness details are identifying, so they are not taken on fully anonymous forms. */
+    public function effectiveWitness(CustomForm $form, bool $configured): bool
+    {
+        return $configured && !$this->unlink($form);
     }
 
     /**
@@ -238,8 +302,12 @@ class ConsentService
                 continue;
             }
             $bag = is_array($posted[$field->id] ?? null) ? $posted[$field->id] : (is_array($posted[(string)$field->id] ?? null) ? $posted[(string)$field->id] : []);
+            $shown = $this->presentation($form, $doc);
+            if (!$this->assertShown($submit, $shown, $bag)) {
+                continue;
+            }
             $decisions = $this->decisions($doc, $bag);
-            foreach ($this->presentedItems($doc, '') as $item) {
+            foreach ($shown['items'] as $item) {
                 if (empty($item['required'])) {
                     continue;
                 }
@@ -251,14 +319,14 @@ class ConsentService
                 }
             }
             if ($refusedAt === null) {
-                $this->assertSignature($submit, $field, $bag);
+                $this->assertSignature($submit, $form, $field, $bag);
             }
         }
         if ($refusedAt === null) {
             $standalone = $this->standaloneDocument($form);
             if ($standalone) {
                 $bag = is_array($posted['form'] ?? null) ? $posted['form'] : [];
-                if ($this->validateDocumentBag($submit, $standalone, $bag, 'typed')) {
+                if ($this->validateDocumentBag($submit, $standalone, $bag)) {
                     $refusedAt = -1;
                 }
             }
@@ -298,10 +366,11 @@ class ConsentService
                 continue;
             }
             $bag = is_array($posted[$field->id] ?? null) ? $posted[$field->id] : (is_array($posted[(string)$field->id] ?? null) ? $posted[(string)$field->id] : []);
-            $language = (string)($answer->getVars()['response_language'] ?? '');
-            $presented = $this->presentedItems($doc, $language);
-            $body = $this->presentedBody($doc, $language);
+            $shown = $this->presentation($form, $doc);
+            $presented = $shown['items'];
             $decisions = $this->decisions($doc, $bag);
+            $cfg = $field->getConsentConfig();
+            $method = $this->effectiveSignature($form, (string)$cfg['signature']);
             foreach ($decisions as $code => $value) {
                 $submit->values['consent.' . $code] = $value;
             }
@@ -323,7 +392,7 @@ class ConsentService
             } else {
                 $answer->consent_version = null;
             }
-            $this->insertRecord($form, $answer, $doc, $presented, $body, $decisions, $bag, $language, $unlink, $refused);
+            $this->insertRecord($form, $answer, $doc, $shown, $decisions, $bag, $method, $unlink, $refused);
             $answer->save(false, ['consent_version', 'outcome', 'updated_at']);
         }
         if ($sawField || $asDraft) {
@@ -340,9 +409,8 @@ class ConsentService
             $answer->setVars($vars);
             $answer->save(false, ['vars_json', 'updated_at']);
         }
-        $language = (string)($answer->getVars()['response_language'] ?? '');
-        $presented = $this->presentedItems($doc, $language);
-        $body = $this->presentedBody($doc, $language);
+        $shown = $this->presentation($form, $doc);
+        $presented = $shown['items'];
         $decisions = $this->decisions($doc, $bag);
         $refused = false;
         foreach ($presented as $item) {
@@ -358,7 +426,7 @@ class ConsentService
             }
         }
         $answer->consent_version = (!$unlink && !$refused) ? (int)$doc['version'] : null;
-        $this->insertRecord($form, $answer, $doc, $presented, $body, $decisions, $bag, $language, $unlink, $refused);
+        $this->insertRecord($form, $answer, $doc, $shown, $decisions, $bag, $this->effectiveSignature($form, 'typed'), $unlink, $refused);
         $answer->save(false, ['consent_version', 'outcome', 'updated_at']);
     }
 
@@ -384,11 +452,16 @@ class ConsentService
      * @param array<string,mixed> $doc
      * @param array<string,mixed> $bag
      */
-    private function validateDocumentBag(SubmitForm $submit, array $doc, array $bag, string $signature): bool
+    private function validateDocumentBag(SubmitForm $submit, array $doc, array $bag): bool
     {
+        $form = $submit->form;
+        $shown = $this->presentation($form, $doc);
+        if (!$this->assertShown($submit, $shown, $bag)) {
+            return false;
+        }
         $decisions = $this->decisions($doc, $bag);
         $refused = false;
-        foreach ($this->presentedItems($doc, '') as $item) {
+        foreach ($shown['items'] as $item) {
             if (empty($item['required'])) {
                 continue;
             }
@@ -400,12 +473,12 @@ class ConsentService
             }
         }
         if (!$refused) {
-            $this->assertSignatureMethod($submit, $signature, $bag);
+            $this->assertSignatureMethod($submit, $this->effectiveSignature($form, 'typed'), false, false, $bag);
         }
         return $refused;
     }
 
-    public function withdrawByToken(string $token, string $scope, string $reason): bool
+    public function withdrawByToken(string $token, string $scope, string $reason, ?int $formId = null): bool
     {
         $token = trim($token);
         if ($token === '' || !$this->tablesReady()) {
@@ -415,14 +488,31 @@ class ConsentService
             $scope = 'stop_contact';
         }
         $hash = hash('sha256', $token);
-        $record = (new Query())->from('{{%custom_form_consent_record}}')->where(['withdrawal_token_hash' => $hash])->one();
+        $where = ['withdrawal_token_hash' => $hash];
+        if ($formId !== null) {
+            $where['form_id'] = $formId;
+        }
+        $record = (new Query())->from('{{%custom_form_consent_record}}')->where($where)->one();
         if (!$record) {
             return false;
         }
-        $this->writeWithdrawal($record, $scope, $reason, null);
-        Yii::$app->db->createCommand()->update('{{%custom_form_consent_record}}', [
-            'withdrawal_token_hash' => null,
-        ], ['id' => (int)$record['id']])->execute();
+        // Claim the token first: only the request that clears it writes the withdrawal, so
+        // two clicks cannot both withdraw (V3-43).
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            $claimed = Yii::$app->db->createCommand()->update('{{%custom_form_consent_record}}', [
+                'withdrawal_token_hash' => null,
+            ], ['id' => (int)$record['id'], 'withdrawal_token_hash' => $hash])->execute();
+            if ($claimed !== 1) {
+                $tx->rollBack();
+                return false;
+            }
+            $this->writeWithdrawal($record, $scope, $reason, null);
+            $tx->commit();
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            throw $e;
+        }
         return true;
     }
 
@@ -442,8 +532,15 @@ class ConsentService
         if ($memberId < 1 || !$this->tablesReady()) {
             return false;
         }
+        // A withdrawal by the person's account also stops contact through any panel (V3-43).
+        $userId = (int)(new Query())->select('user_id')->from('{{%form_panel_member}}')->where(['id' => $memberId])->scalar();
+        $who = ['or', ['panel_member_id' => $memberId]];
+        if ($userId > 0) {
+            $who[] = ['user_id' => $userId];
+        }
         return (new Query())->from('{{%custom_form_consent_withdrawal}}')
-            ->where(['panel_member_id' => $memberId, 'scope' => ['stop_contact', 'delete_requested']])
+            ->where(['scope' => ['stop_contact', 'delete_requested']])
+            ->andWhere($who)
             ->exists();
     }
 
@@ -540,24 +637,49 @@ class ConsentService
      */
     public function certificateHtml(CustomForm $form, array $record): string
     {
+        // Labels as the participant saw them, the signer and the form, not bare codes (V3-43).
+        $e = static fn($v): string => htmlspecialchars((string)$v, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $t = static fn(string $s, array $p = []): string => Yii::t('ThiscoveryFormsModule.base', $s, $p);
         $doc = $this->document((int)$record['document_id'], (int)$form->id);
-        $items = json_decode((string)($record['items_json'] ?? ''), true);
-        $items = is_array($items) ? $items : [];
-        $lines = '';
-        foreach ($items as $code => $value) {
-            $lines .= '<li>' . htmlspecialchars((string)$code, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
-                . ': ' . htmlspecialchars((string)$value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</li>';
+        $decisions = json_decode((string)($record['items_json'] ?? ''), true);
+        $decisions = is_array($decisions) ? $decisions : [];
+        $labels = [];
+        if ($doc) {
+            foreach ($this->presentedItems($doc, (string)($record['language'] ?? '')) as $item) {
+                $labels[(string)$item['code']] = (string)$item['label'];
+            }
         }
-        $version = $doc ? (int)$doc['version'] : 0;
-        $title = $doc ? (string)$doc['title'] : '';
+        $answer = static fn(string $v): string => $v === 'yes' ? $t('Yes') : ($v === 'no' ? $t('No') : $t('No answer'));
+        $lines = '';
+        foreach ($decisions as $code => $value) {
+            $lines .= '<tr><td>' . $e($labels[(string)$code] ?? $code) . '</td><td>' . $e($answer((string)$value)) . '</td></tr>';
+        }
+        $methods = ['typed' => $t('Typed name'), 'drawn' => $t('Drawn signature'), 'checkbox' => $t('Tick-box attestation'), 'legacy' => $t('Recorded before eConsent')];
+        $rows = [
+            $t('Form') => (string)$form->title,
+            $t('Information sheet') => $doc ? (string)$doc['title'] : '',
+            $t('Version') => $doc ? (string)(int)$doc['version'] : '',
+            $t('Ethics approval') => $doc ? (string)($doc['approval_reference'] ?? '') : '',
+            $t('Signed by') => (string)($record['signature_name'] ?? ''),
+            $t('Witness') => trim((string)($record['witness_name'] ?? '') . (($record['witness_role'] ?? '') ? ' (' . $record['witness_role'] . ')' : '')),
+            $t('Signed on') => (string)($record['signed_at'] ?? ''),
+            $t('Signature') => $methods[(string)($record['signature_method'] ?? '')] ?? (string)($record['signature_method'] ?? ''),
+            $t('Language') => (string)($record['language'] ?? '') !== '' ? (string)$record['language'] : $form->getSourceLanguage(),
+            $t('Read to the end') => !empty($record['scrolled_to_end']) ? $t('Yes') : $t('No'),
+            $t('Text fingerprint (SHA-256)') => (string)($record['content_hash'] ?? ''),
+        ];
+        $meta = '';
+        foreach ($rows as $label => $value) {
+            if (trim($value) !== '') {
+                $meta .= '<tr><th scope="row">' . $e($label) . '</th><td>' . $e($value) . '</td></tr>';
+            }
+        }
         return '<article class="cf-consent-certificate">'
-            . '<h1>' . htmlspecialchars($title, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</h1>'
-            . '<p>version ' . $version . '</p>'
-            . '<p>hash ' . htmlspecialchars((string)($record['content_hash'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>'
-            . '<p>signed ' . htmlspecialchars((string)($record['signed_at'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>'
-            . '<p>language ' . htmlspecialchars((string)($record['language'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>'
-            . '<p>signature ' . htmlspecialchars((string)($record['signature_method'] ?? ''), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>'
-            . '<ul>' . $lines . '</ul>'
+            . '<h1>' . $e($t('Consent record')) . '</h1>'
+            . '<table class="table cf-consent-certificate__meta"><tbody>' . $meta . '</tbody></table>'
+            . '<h2>' . $e($t('Decisions')) . '</h2>'
+            . '<table class="table cf-consent-certificate__items"><thead><tr><th scope="col">' . $e($t('Statement'))
+            . '</th><th scope="col">' . $e($t('Answer')) . '</th></tr></thead><tbody>' . $lines . '</tbody></table>'
             . '</article>';
     }
 
@@ -603,6 +725,10 @@ class ConsentService
             'version' => $version,
         ])->one();
         if (!$doc || (int)$doc['version'] < 1) {
+            return false;
+        }
+        if ((string)$doc['status'] === 'published') {
+            // A published sheet is frozen in every language (V3-27): start the next version.
             return false;
         }
         $row = (new Query())->from('{{%custom_form_consent_i18n}}')->where([
@@ -681,7 +807,7 @@ class ConsentService
                 'content_hash' => $doc['content_hash'],
                 'status' => $doc['status'],
                 'published_at' => $doc['published_at'],
-                'created_at' => date('Y-m-d H:i:s'),
+                'created_at' => gmdate('Y-m-d H:i:s'),
             ])->execute();
             $newId = (int)Yii::$app->db->getLastInsertID();
             $map[(int)$doc['id']] = $newId;
@@ -848,31 +974,66 @@ class ConsentService
     /**
      * @param array<string,mixed> $bag
      */
-    private function assertSignature(SubmitForm $submit, FormField $field, array $bag): void
+    private function assertSignature(SubmitForm $submit, CustomForm $form, FormField $field, array $bag): void
     {
-        $this->assertSignatureMethod($submit, (string)$field->getConsentConfig()['signature'], $bag);
+        $cfg = $field->getConsentConfig();
+        $this->assertSignatureMethod(
+            $submit,
+            $this->effectiveSignature($form, (string)$cfg['signature']),
+            $this->effectiveWitness($form, (bool)$cfg['witness']),
+            (bool)$cfg['must_read'],
+            $bag
+        );
+    }
+
+    /**
+     * The page posts the hash of the text it rendered. If the document or its translation
+     * changed since then, the participant is asked to read it again (V3-27).
+     *
+     * @param array{hash:string} $shown
+     * @param array<string,mixed> $bag
+     */
+    private function assertShown(SubmitForm $submit, array $shown, array $bag): bool
+    {
+        $posted = (string)($bag['shown_hash'] ?? '');
+        if ($posted !== '' && !hash_equals($shown['hash'], $posted)) {
+            $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'The consent information changed while this page was open. Please read it again and confirm.'));
+            return false;
+        }
+        return true;
     }
 
     /**
      * @param array<string,mixed> $bag
      */
-    private function assertSignatureMethod(SubmitForm $submit, string $method, array $bag): void
+    /**
+     * The configured method is enforced; the posted signature_method is ignored (V3-28).
+     *
+     * @param array<string,mixed> $bag
+     */
+    private function assertSignatureMethod(SubmitForm $submit, string $method, bool $witness, bool $mustRead, array $bag): void
     {
-        $posted = (string)($bag['signature_method'] ?? $method);
-        if (!in_array($posted, ['typed', 'checkbox', 'drawn'], true)) {
-            $posted = $method;
-        }
-        if ($posted === 'checkbox' && empty($bag['attestation'])) {
+        $name = trim((string)($bag['signature_name'] ?? ''));
+        if ($method === 'checkbox' && empty($bag['attestation'])) {
             $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Tick the consent attestation.'));
         }
-        if (in_array($posted, ['typed', 'drawn'], true) && trim((string)($bag['signature_name'] ?? '')) === '') {
+        if ($method === 'typed' && $name === '') {
             $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Type your name to sign.'));
+        }
+        if ($method === 'drawn' && $name === '' && $this->signaturePng((string)($bag['signature_image'] ?? '')) === null) {
+            $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Draw your signature, or type your name to sign.'));
+        }
+        if ($witness && (trim((string)($bag['witness_name'] ?? '')) === '' || trim((string)($bag['witness_role'] ?? '')) === '')) {
+            $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Enter the witness name and role.'));
+        }
+        if ($mustRead && (string)($bag['scrolled_to_end'] ?? '') !== '1') {
+            $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Read the information sheet to the end before you confirm.'));
         }
     }
 
     /**
      * @param array<string,mixed> $doc
-     * @param array<int,array<string,mixed>> $presented
+     * @param array{language:string,title:string,body:string,items:array,hash:string} $shown
      * @param array<string,string> $decisions
      * @param array<string,mixed> $bag
      */
@@ -880,11 +1041,10 @@ class ConsentService
         CustomForm $form,
         FormAnswer $answer,
         array $doc,
-        array $presented,
-        string $body,
+        array $shown,
         array $decisions,
         array $bag,
-        string $language,
+        string $method,
         bool $unlink,
         bool $refused
     ): void {
@@ -897,23 +1057,18 @@ class ConsentService
                 return;
             }
         }
-        $method = (string)($bag['signature_method'] ?? '');
-        $fieldMethod = 'typed';
-        foreach ($form->fields as $field) {
-            if ($field->type === FormField::TYPE_CONSENT) {
-                $fieldMethod = (string)$field->getConsentConfig()['signature'];
-                break;
-            }
-        }
-        if (!in_array($method, ['typed', 'checkbox', 'drawn'], true)) {
-            $method = $fieldMethod;
-        }
-        $name = trim((string)($bag['signature_name'] ?? ''));
-        $fileId = $this->storeSignatureImage($form, (string)($bag['signature_image'] ?? ''));
+        // Fully anonymous: nothing that identifies the person or times the submit (V3-26).
+        // With no name, drawing, witness, client hash or time, the record adds nothing an
+        // answer does not already hold, so its sequential id is not a link to a person.
+        $strip = $this->unlink($form);
+        $name = $strip || $method === 'checkbox' ? '' : trim((string)($bag['signature_name'] ?? ''));
+        $fileId = !$strip && $method === 'drawn' ? $this->storeSignatureImage($form, (string)($bag['signature_image'] ?? '')) : null;
+        $witnessName = $strip ? '' : trim((string)($bag['witness_name'] ?? ''));
+        $witnessRole = $strip ? '' : trim((string)($bag['witness_role'] ?? ''));
         $token = bin2hex(random_bytes(16));
         $ipHash = null;
         $uaHash = null;
-        if (in_array((string)$form->getSetting('consent_store_client_hashes', '0'), ['1', 'true', 'on'], true)) {
+        if (!$strip && in_array((string)$form->getSetting('consent_store_client_hashes', '0'), ['1', 'true', 'on'], true)) {
             $salt = (string)$form->getSetting('consent_client_salt', '');
             if ($salt === '') {
                 $salt = bin2hex(random_bytes(16));
@@ -933,30 +1088,34 @@ class ConsentService
             'user_id' => $userId,
             'panel_member_id' => $memberId,
             'document_id' => (int)$doc['id'],
-            'content_hash' => $this->contentHash($body, $presented),
+            'content_hash' => $shown['hash'],
             'items_json' => json_encode($decisions, JSON_UNESCAPED_UNICODE),
             'signature_method' => $method,
             'signature_name' => $name !== '' ? $name : null,
             'signature_file_id' => $fileId,
-            'witness_name' => trim((string)($bag['witness_name'] ?? '')) ?: null,
-            'witness_role' => trim((string)($bag['witness_role'] ?? '')) ?: null,
-            'signed_at' => gmdate('Y-m-d H:i:s'),
-            'language' => $language,
-            'channel' => trim((string)($bag['witness_name'] ?? '')) !== '' ? 'assisted' : 'self',
+            'witness_name' => $witnessName !== '' ? $witnessName : null,
+            'witness_role' => $witnessRole !== '' ? $witnessRole : null,
+            'signed_at' => $strip ? gmdate('Y-m-d') . ' 00:00:00' : gmdate('Y-m-d H:i:s'),
+            'language' => $shown['language'],
+            'channel' => $witnessName !== '' ? 'assisted' : 'self',
             'ip_hash' => $ipHash,
             'ua_hash' => $uaHash,
             'withdrawal_token_hash' => hash('sha256', $token),
-            'scrolled_to_end' => !empty($bag['scrolled_to_end']) ? 1 : 0,
+            'scrolled_to_end' => (string)($bag['scrolled_to_end'] ?? '') === '1' ? 1 : 0,
         ])->execute();
         $recordId = (int)Yii::$app->db->getLastInsertID();
         Yii::$app->session->set('cf-consent-withdraw', $token);
-        $this->audit($recordId, $refused ? 'given' : 'given', [
+        $this->audit($recordId, $refused ? 'refused' : 'given', [
             'document_id' => (int)$doc['id'],
             'refused' => $refused,
             'items' => $decisions,
-        ], $userId);
+        ], $userId, $strip);
         if (!$unlink && !$refused && ($memberId || $userId)) {
             $this->satisfyRequirement($form, $doc, $recordId, $memberId, $userId);
+            $member = $memberId ? FormPanelMember::findOne($memberId) : null;
+            if ($member) {
+                $member->markConsent($recordId);
+            }
         }
     }
 
@@ -1000,12 +1159,26 @@ class ConsentService
             'scope' => $scope,
             'reason' => $reason,
             'actor_id' => $actorId,
-            'created_at' => date('Y-m-d H:i:s'),
+            'created_at' => gmdate('Y-m-d H:i:s'),
         ])->execute();
         $this->audit((int)$record['id'], 'withdrawn', ['scope' => $scope], $actorId);
-        if ($memberId && in_array($scope, ['stop_contact', 'delete_requested'], true)) {
-            $member = FormPanelMember::findOne($memberId);
-            if ($member) {
+        // A withdrawn record no longer satisfies a consent requirement.
+        Yii::$app->db->createCommand()->update('{{%custom_form_consent_requirement}}', [
+            'satisfied_record_id' => null,
+        ], ['satisfied_record_id' => (int)$record['id']])->execute();
+        if (in_array($scope, ['stop_contact', 'delete_requested'], true)) {
+            // Reach the person however they are known: the record's panel member, and every
+            // panel membership of the record's account (V3-43).
+            $members = [];
+            if ($memberId) {
+                $members[] = $memberId;
+            }
+            if (!empty($record['user_id'])) {
+                foreach (FormPanelMember::find()->select('id')->where(['user_id' => (int)$record['user_id']])->column() as $id) {
+                    $members[] = (int)$id;
+                }
+            }
+            foreach (FormPanelMember::find()->where(['id' => array_values(array_unique($members))])->all() as $member) {
                 $member->status = FormPanelMember::STATUS_INACTIVE;
                 $member->save(false, ['status', 'updated_at']);
             }
@@ -1016,7 +1189,7 @@ class ConsentService
                 'form_id' => (int)$record['form_id'],
                 'member_id' => $memberId,
                 'status' => 'open',
-                'created_at' => date('Y-m-d H:i:s'),
+                'created_at' => gmdate('Y-m-d H:i:s'),
             ])->execute();
         }
     }
@@ -1024,7 +1197,7 @@ class ConsentService
     /**
      * @param array<string,mixed> $payload
      */
-    private function audit(int $recordId, string $event, array $payload, ?int $actorId): void
+    private function audit(int $recordId, string $event, array $payload, ?int $actorId, bool $dateOnly = false): void
     {
         unset($payload['signature_image']);
         Yii::$app->db->createCommand()->insert('{{%custom_form_consent_audit}}', [
@@ -1032,17 +1205,32 @@ class ConsentService
             'event' => $event,
             'payload_json' => json_encode($payload, JSON_UNESCAPED_UNICODE),
             'actor_id' => $actorId,
-            'created_at' => date('Y-m-d H:i:s'),
+            'created_at' => $dateOnly ? gmdate('Y-m-d') . ' 00:00:00' : gmdate('Y-m-d H:i:s'),
         ])->execute();
+    }
+
+    /** A drawn signature: a real PNG, at most 200 KB, with the canvas's dimensions. */
+    private function signaturePng(string $dataUrl): ?string
+    {
+        $prefix = 'data:image/png;base64,';
+        if (!str_starts_with($dataUrl, $prefix) || strlen($dataUrl) > 280000) {
+            return null;
+        }
+        $binary = base64_decode(substr($dataUrl, strlen($prefix)), true);
+        if ($binary === false || strlen($binary) < 33 || strlen($binary) > 200000 || !str_starts_with($binary, "\x89PNG\r\n\x1a\n")) {
+            return null;
+        }
+        $size = @getimagesizefromstring($binary);
+        if (!is_array($size) || $size[0] < 1 || $size[1] < 1 || $size[0] > 2000 || $size[1] > 1000) {
+            return null;
+        }
+        return $binary;
     }
 
     private function storeSignatureImage(CustomForm $form, string $dataUrl): ?int
     {
-        if (!str_starts_with($dataUrl, 'data:image/png;base64,')) {
-            return null;
-        }
-        $binary = base64_decode(substr($dataUrl, strlen('data:image/png;base64,')), true);
-        if ($binary === false || $binary === '') {
+        $binary = $this->signaturePng($dataUrl);
+        if ($binary === null) {
             return null;
         }
         try {
@@ -1101,7 +1289,7 @@ class ConsentService
                 continue;
             }
             $to = strtolower(trim((string)$member->email));
-            if (!filter_var($to, FILTER_VALIDATE_EMAIL) || !str_ends_with($to, '@example.test')) {
+            if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
                 continue;
             }
             $mailer->sendTemplate($template, $to, $mailer->varsFor($form, $member), [
@@ -1128,8 +1316,8 @@ class ConsentService
             'body_html' => '',
             'approval_reference' => '',
             'status' => 'published',
-            'published_at' => date('Y-m-d H:i:s'),
-            'created_at' => date('Y-m-d H:i:s'),
+            'published_at' => gmdate('Y-m-d H:i:s'),
+            'created_at' => gmdate('Y-m-d H:i:s'),
         ])->execute();
         return (int)Yii::$app->db->getLastInsertID();
     }

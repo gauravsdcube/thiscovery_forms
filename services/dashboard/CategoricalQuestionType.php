@@ -39,7 +39,9 @@ class CategoricalQuestionType extends BaseQuestionType
     {
         $decoded = $this->decode($value);
         if (is_array($decoded)) {
-            $decoded = (string)($decoded['code'] ?? $decoded['value'] ?? reset($decoded) ?: '');
+            // Code "0" is an answer: never let ?: turn it into nothing (SCO-21).
+            $first = reset($decoded);
+            $decoded = (string)($decoded['code'] ?? $decoded['value'] ?? ($first === false ? '' : $first));
         }
         $code = trim((string)$decoded);
         if ($code === '') {

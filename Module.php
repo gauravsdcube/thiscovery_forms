@@ -49,8 +49,6 @@ class Module extends ContentContainerModule
      * When 1 (the default), skipped pages follow their go-to rules and the page walk
      * is not capped at 80 steps. Set to 0 to restore the 1.28.2 walk.
      */
-    public const SETTING_ROUTING_ALIGNMENT = 'routing_alignment';
-    public const SETTING_OPTION_ORDER = 'option_order_per_response';
     public const SETTING_RANDOMISATION = 'randomisation_enabled';
     public const SETTING_ECONSENT = 'econsent_enabled';
     public const SETTING_QUOTAS = 'quotas_enabled';
@@ -276,19 +274,6 @@ class Module extends ContentContainerModule
     }
 
     /**
-     * Off unless an administrator turns it on. It changes the order respondents see.
-     */
-    public static function optionOrderPerResponse(): bool
-    {
-        $module = Yii::$app->getModule('thiscovery-forms');
-        if (!$module instanceof self) {
-            return false;
-        }
-        $value = (string)$module->settings->get(self::SETTING_OPTION_ORDER, '0');
-        return in_array($value, ['1', 'true', 'on'], true);
-    }
-
-    /**
      * Off unless an administrator turns it on. A form also has to turn randomisation on.
      */
     public static function randomisationEnabled(): bool
@@ -338,11 +323,6 @@ class Module extends ContentContainerModule
         }
         $value = (string)$module->settings->get(self::SETTING_LOOPS, '0');
         return in_array($value, ['1', 'true', 'on'], true);
-    }
-
-    public static function routingAligned(): bool
-    {
-        return true;
     }
 
     public static function fromBriefMaxUploadBytes(): int

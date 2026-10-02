@@ -14,7 +14,42 @@ class FormCloneService
     /**
      * Copy settings and fields from $source onto a new unsaved/saved $target.
      */
+    /**
+     * Copy a form, its questions, consent, quotas, translations and stages: all or nothing (V3-37).
+     */
     public function copyInto(CustomForm $source, CustomForm $target, array $overrides = []): bool
+    {
+        $wasNew = $target->isNewRecord;
+        $tx = \Yii::$app->db->beginTransaction();
+        try {
+            $ok = $this->copyIntoUnsafe($source, $target, $overrides);
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            $this->forget($target, $wasNew);
+            throw $e;
+        }
+        if ($ok) {
+            $tx->commit();
+            // The copy starts with a revision of what was copied (DAT-19).
+            (new FormVersionService())->recordSave($target);
+            return true;
+        }
+        $tx->rollBack();
+        $this->forget($target, $wasNew);
+        return false;
+    }
+
+    /** After a rollback, a target created by the copy no longer exists. */
+    private function forget(CustomForm $target, bool $wasNew): void
+    {
+        if ($wasNew) {
+            $target->setIsNewRecord(true);
+            $target->id = null;
+        }
+        unset($target->fields);
+    }
+
+    private function copyIntoUnsafe(CustomForm $source, CustomForm $target, array $overrides): bool
     {
         $target->title = $overrides['title'] ?? $source->title;
         $target->description = $source->description;
@@ -68,6 +103,19 @@ class FormCloneService
         if (!$target->saveFieldsFromPost($rows)) {
             return false;
         }
+        // Consistency rules name questions by id: point them at the copies (INT-9, DAT-6).
+        $idMap = [];
+        $targetByVariable = [];
+        foreach (\humhub\modules\thiscoveryForms\models\FormField::find()->where(['form_id' => (int)$target->id])->all() as $copy) {
+            $targetByVariable[strtolower((string)$copy->variable)] = (int)$copy->id;
+        }
+        foreach ($source->fields as $original) {
+            $key = strtolower((string)$original->variable);
+            if ($key !== '' && isset($targetByVariable[$key])) {
+                $idMap[(int)$original->id] = $targetByVariable[$key];
+            }
+        }
+        \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::remapFieldIds($target, $idMap);
         (new ConsentService())->copyOnto($source, $target);
         (new QuotaService())->copyOnto($source, $target);
 

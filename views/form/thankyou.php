@@ -62,6 +62,8 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <?php endif; ?>
             <?php $overQuota = Yii::$app->session->getFlash('cf-over-quota'); ?>
             <?php $quotaRedirect = (string)Yii::$app->session->get('cf-quota-redirect', ''); ?>
+            <?php // Only an absolute https URL is ever rendered as a link (V3-31). ?>
+            <?php if ($quotaRedirect !== '' && (!preg_match('#^https://#i', $quotaRedirect) || !filter_var($quotaRedirect, FILTER_VALIDATE_URL))) { $quotaRedirect = ''; } ?>
             <?php if ($quotaRedirect !== ''): ?>
                 <?php Yii::$app->session->remove('cf-quota-redirect'); ?>
             <?php endif; ?>

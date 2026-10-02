@@ -120,6 +120,10 @@ trait StudioTrait
      * Permanently remove a form (hard delete). ContentActiveRecord::delete() is only a
      * soft delete and would leave the form on the list.
      */
+    /**
+     * "Delete" moves the form to the trash (GOV-7). Nothing is lost until a manager deletes it
+     * permanently from the trash.
+     */
     protected function deleteManagedForm(CustomForm $form)
     {
         if (!$form->canManage()) {
@@ -128,21 +132,83 @@ trait StudioTrait
         if (!Yii::$app->request->isPost) {
             throw new HttpException(405);
         }
-
         $ok = false;
         try {
-            $ok = $form->hardDelete();
+            $ok = $form->moveToTrash((string)Yii::$app->request->post('reason', ''));
         } catch (\Throwable $e) {
-            Yii::error('Thiscovery Forms could not delete form #' . $form->id . ': ' . $e->getMessage(), 'thiscovery-forms');
+            Yii::error('Thiscovery Forms could not move form #' . $form->id . ' to the trash: ' . $e->getMessage(), 'thiscovery-forms');
         }
-
-        if ($ok) {
-            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form deleted.'));
-        } else {
-            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Could not delete the form.'));
-        }
-
+        Yii::$app->session->setFlash($ok ? 'success' : 'error', $ok
+            ? Yii::t('ThiscoveryFormsModule.base', 'The form was moved to the trash. Its answers are kept, and it can be restored from the trash.')
+            : Yii::t('ThiscoveryFormsModule.base', 'Could not delete the form.'));
         return $this->redirect(Url::toManageIndex($this->studioContainer()));
+    }
+
+    /** A form in this studio's trash. */
+    protected function findTrashedForm($id): CustomForm
+    {
+        $query = CustomForm::find()->joinWith('content')
+            ->andWhere(['custom_form.id' => (int)$id, 'content.state' => \humhub\modules\content\models\Content::STATE_DELETED]);
+        $containerId = $this->studioContainerId();
+        $query->andWhere(['content.contentcontainer_id' => $containerId]);
+        $form = $query->one();
+        if (!$form || !$form->canManage()) {
+            throw new NotFoundHttpException();
+        }
+        return $form;
+    }
+
+    public function actionTrash()
+    {
+        $probe = $this->prepareNewForm();
+        if (!$probe->canCreate() && !$probe->canManage()) {
+            throw new ForbiddenHttpException();
+        }
+        $forms = CustomForm::find()->joinWith('content')
+            ->andWhere(['content.state' => \humhub\modules\content\models\Content::STATE_DELETED])
+            ->andWhere(['content.contentcontainer_id' => $this->studioContainerId()])
+            ->andWhere(['custom_form.is_template' => 0])
+            ->orderBy(['custom_form.id' => SORT_DESC])
+            ->all();
+        $forms = array_values(array_filter($forms, static fn(CustomForm $f) => $f->canManage()));
+        return $this->render('@thiscovery-forms/views/form/trash', [
+            'forms' => $forms,
+            'contentContainer' => $this->studioContainer(),
+        ]);
+    }
+
+    public function actionRestoreForm($id)
+    {
+        $this->forcePostRequest();
+        $form = $this->findTrashedForm($id);
+        $form->restoreFromTrash();
+        Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'The form was restored. It is closed: reopen it when you are ready.'));
+        return $this->redirect(Url::toManageIndex($this->studioContainer()));
+    }
+
+    /**
+     * Permanent delete, from the trash only, after typing the form's title (GOV-7).
+     */
+    public function actionPurgeForm($id)
+    {
+        $this->forcePostRequest();
+        $form = $this->findTrashedForm($id);
+        if (trim((string)Yii::$app->request->post('confirm_title', '')) !== trim((string)$form->title)) {
+            Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Type the form title exactly to delete it permanently.'));
+            return $this->redirect(Url::toTrash($this->studioContainer()));
+        }
+        $ok = false;
+        try {
+            $ok = $form->purge((string)Yii::$app->request->post('reason', ''));
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms could not purge form #' . $form->id . ': ' . $e->getMessage(), 'thiscovery-forms');
+        }
+        if ($ok) {
+            Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'The form and its answers were deleted permanently.'));
+        } else {
+            Yii::$app->session->setFlash('error', $form->hasErrors('id') ? implode(' ', $form->getErrors('id')) : Yii::t('ThiscoveryFormsModule.base', 'Could not delete the form.'));
+        }
+        return $this->redirect(Url::toTrash($this->studioContainer()));
     }
 
     protected function studioContainer()
@@ -501,6 +567,11 @@ trait StudioTrait
     public function actionLibraryInsert($itemId)
     {
         Yii::$app->response->format = Response::FORMAT_JSON;
+        // Inserting library questions is building a form: the same permission as listing them (V3-50).
+        $probe = $this->prepareNewForm();
+        if (!$probe->canCreate() && !$probe->canManage()) {
+            throw new ForbiddenHttpException();
+        }
         $item = FormLibraryItem::findOne((int)$itemId);
         if (!$item || !$item->isAvailableIn($this->studioContainerId())) {
             throw new NotFoundHttpException();
@@ -602,7 +673,7 @@ trait StudioTrait
         $submit->loadValuesFromRequest(Yii::$app->request->post());
         $ctx = $this->fillContext($form);
         $this->applyFillContext($form, $submit, $ctx);
-        $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx);
+        $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx, true);
         if ($gate) {
             return ['success' => false, 'errors' => [$gate]];
         }
@@ -611,6 +682,7 @@ trait StudioTrait
         $answer = $submit->save($existing, $anonymous);
 
         if (!$answer) {
+            (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->refundAccessToken($form, $ctx);
             return ['success' => false, 'errors' => array_values($submit->getErrorSummary(true))];
         }
 

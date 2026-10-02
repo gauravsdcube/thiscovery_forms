@@ -54,7 +54,34 @@ namespace humhub\modules\thiscoveryForms\models {
     }
 }
 
+namespace humhub\modules\thiscoveryForms\services {
+    // Loop membership needs the database; standalone tests pass `__loops` explicitly.
+    if (!class_exists(LogicEngine::class, false)) {
+        // Visibility needs HumHub; standalone fields have no logic, so every answer is visible.
+        class LogicEngine
+        {
+            public function effectiveValues(array $fields, array $values): array
+            {
+                return $values;
+            }
+        }
+    }
+    if (!class_exists(LoopService::class, false)) {
+        class LoopService
+        {
+            public static function formulaLoopIds(array $fields): array
+            {
+                return [];
+            }
+        }
+    }
+}
+
 namespace {
+    // Any PHP warning or notice fails the test: in HumHub these become 500 errors.
+    set_error_handler(static function (int $severity, string $message, string $file, int $line): bool {
+        throw new \ErrorException($message, 0, $severity, $file, $line);
+    });
     $base = dirname(__DIR__, 2) . '/services/';
     foreach (['FormulaException', 'Decimal', 'Value', 'Limits', 'Parser', 'Evaluator', 'Context', 'FormulaDeps', 'FormulaRuntime'] as $class) {
         require_once $base . 'formula/' . $class . '.php';

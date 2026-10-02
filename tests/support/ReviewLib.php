@@ -86,7 +86,20 @@ final class ReviewLib
         if (isset($opts['help_text'])) {
             $field->help_text = $opts['help_text'];
         }
-        $field->ensureVariable();
+        if (isset($opts['variable'])) {
+            $field->ensureVariable();
+        } else {
+            // Like the studio: a generated name steps past live names already on the form (DAT-10).
+            $used = [];
+            $live = FormField::find()->select('variable')->where(['form_id' => $form->id]);
+            if (FormField::supportsSoftDelete()) {
+                $live->andWhere(['deleted_at' => null]);
+            }
+            foreach ($live->column() as $name) {
+                $used[strtolower((string)$name)] = true;
+            }
+            $field->ensureVariable($used);
+        }
         if (!$field->save()) {
             throw new RuntimeException('field save ' . $label . ': ' . json_encode($field->errors));
         }
@@ -119,6 +132,9 @@ final class ReviewLib
         $submit = new SubmitForm();
         $submit->form = $form;
         $submit->values = $values;
+        if ($existing && !$existing->isNewRecord && $existing->isComplete()) {
+            $submit->changeReason = 'Review edit';
+        }
         $anonymous = (bool)$form->allowsAnonymous() || Yii::$app->user->isGuest;
         return $submit->save($existing, $anonymous, $asDraft, false);
     }

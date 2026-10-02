@@ -37,7 +37,7 @@ class RepairIdentityController extends Controller
         if ($actionID === 'index') {
             $options[] = 'since';
         }
-        if ($actionID === 'reverse') {
+        if ($actionID === 'reverse' || $actionID === 'finalise') {
             $options[] = 'run';
         }
         return array_merge(parent::options($actionID), $options);
@@ -133,5 +133,26 @@ class RepairIdentityController extends Controller
             Yii::error($e, 'thiscovery-forms');
             return ExitCode::UNSPECIFIED_ERROR;
         }
+    }
+
+    /**
+     * Confirm a run: its logged identities are deleted and it can no longer be reversed.
+     * Runs are finalised automatically after IdentityRepair::REVERSAL_DAYS days.
+     */
+    public function actionFinalise(): int
+    {
+        $runId = trim((string)$this->run);
+        if ($runId === '') {
+            $this->stderr("pass --run=<id>\n");
+            return ExitCode::UNSPECIFIED_ERROR;
+        }
+        if (!(int)$this->apply) {
+            $count = (int)(new \yii\db\Query())->from('custom_form_identity_repair_log')->where(['run_id' => $runId])->count();
+            $this->stdout('rows=' . $count . "\n");
+            $this->stdout("dry-run\n");
+            return ExitCode::OK;
+        }
+        $this->stdout('deleted=' . (new IdentityRepair())->finalise($runId) . "\n");
+        return ExitCode::OK;
     }
 }

@@ -45,6 +45,7 @@ class IntegritySettings
             'similarity_detection' => 1,
             'integrity_scoring' => 1,
             'question_timing' => 0,
+            'duplicate_network_signal' => 0,
             'hash_ip' => 1,
             'auto_exclude' => 0,
             'allow_multiple' => null,
@@ -58,7 +59,7 @@ class IntegritySettings
             'open_rate_count' => 30,
             'open_rate_window' => 10,
             'speed_percent' => 40,
-            'speed_min_seconds' => 15,
+            'speed_min_seconds' => 2,
             'straightline_min_items' => 5,
             'freetext_min_chars' => 8,
             'similarity_threshold' => 90,
@@ -82,7 +83,7 @@ class IntegritySettings
             'enabled', 'bot_protection', 'rate_limiting', 'captcha', 'open_captcha', 'duplicate_detection',
             'speed_detection', 'straightline_detection', 'attention_checks', 'consistency_checks',
             'freetext_checks', 'similarity_detection', 'integrity_scoring', 'question_timing',
-            'hash_ip', 'auto_exclude',
+            'hash_ip', 'auto_exclude', 'duplicate_network_signal',
         ];
     }
 
@@ -230,6 +231,29 @@ class IntegritySettings
         $clean = self::sanitize($post, false);
         $module->settings->set(self::SETTING_KEY, json_encode($clean, JSON_UNESCAPED_UNICODE));
         return true;
+    }
+
+    /**
+     * Point consistency rules at other question ids (clone): old id => new id (INT-9).
+     *
+     * @param array<int,int> $idMap
+     */
+    public static function remapFieldIds(CustomForm $form, array $idMap): void
+    {
+        $overlay = $form->getSetting(self::SETTING_KEY, []);
+        if (!is_array($overlay) || empty($overlay['consistency_rules']) || $idMap === []) {
+            return;
+        }
+        foreach ($overlay['consistency_rules'] as $r => $rule) {
+            foreach (is_array($rule['conditions'] ?? null) ? $rule['conditions'] : [] as $c => $cond) {
+                $old = (int)($cond['field_id'] ?? 0);
+                if (isset($idMap[$old])) {
+                    $overlay['consistency_rules'][$r]['conditions'][$c]['field_id'] = $idMap[$old];
+                }
+            }
+        }
+        $form->setSetting(self::SETTING_KEY, $overlay);
+        $form->save(false, ['settings_json']);
     }
 
     public static function saveForm(CustomForm $form, array $post): void

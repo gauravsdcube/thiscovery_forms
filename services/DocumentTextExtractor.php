@@ -15,6 +15,9 @@ use yii\base\Exception;
  */
 class DocumentTextExtractor
 {
+    /** Most bytes a brief document may decompress to (SEC-17). */
+    public const MAX_DECOMPRESSED = 20971520;
+
     /**
      * @return array{text: string, source: string}
      * @throws Exception
@@ -70,7 +73,13 @@ class DocumentTextExtractor
         if ($zip->open($path) !== true) {
             throw new Exception(Yii::t('ThiscoveryFormsModule.base', 'Could not open the Word file.'));
         }
-        $xml = $zip->getFromName('word/document.xml');
+        // A zip bomb cannot exhaust memory: the document part is checked before it is read (SEC-17).
+        $stat = $zip->statName('word/document.xml');
+        if (is_array($stat) && (int)($stat['size'] ?? 0) > self::MAX_DECOMPRESSED) {
+            $zip->close();
+            throw new Exception(Yii::t('ThiscoveryFormsModule.base', 'The Word file is too large to read.'));
+        }
+        $xml = $zip->getFromName('word/document.xml', self::MAX_DECOMPRESSED);
         $zip->close();
         if ($xml === false || $xml === '') {
             throw new Exception(Yii::t('ThiscoveryFormsModule.base', 'The Word file has no document content.'));
@@ -90,12 +99,18 @@ class DocumentTextExtractor
         }
 
         $chunks = [];
+        $budget = self::MAX_DECOMPRESSED;
         if (preg_match_all('/stream\s*\r?\n(.*?)\r?\nendstream/s', $raw, $matches)) {
             foreach ($matches[1] as $stream) {
-                $decoded = @gzuncompress($stream);
-                if ($decoded === false) {
-                    $decoded = @gzinflate($stream);
+                if ($budget <= 0) {
+                    break;
                 }
+                // Each stream may inflate to what is left of the budget, never more (SEC-17).
+                $decoded = @gzuncompress($stream, $budget);
+                if ($decoded === false) {
+                    $decoded = @gzinflate($stream, $budget);
+                }
+                $budget -= is_string($decoded) ? strlen($decoded) : strlen($stream);
                 if ($decoded === false) {
                     $decoded = $stream;
                 }

@@ -11,6 +11,7 @@ class LogicEngine
 {
     public const ACTION_SHOW = 'show';
     public const ACTION_HIDE = 'hide';
+    /** Read as ACTION_HIDE; no longer offered (LOG-10). */
     public const ACTION_SKIP = 'skip';
     public const ACTION_SKIP_PAGE = 'skip_page';
     public const ACTION_GOTO_PAGE = 'goto_page';
@@ -22,7 +23,6 @@ class LogicEngine
         return [
             self::ACTION_SHOW => \Yii::t('ThiscoveryFormsModule.base', 'Show this question if'),
             self::ACTION_HIDE => \Yii::t('ThiscoveryFormsModule.base', 'Hide this question if'),
-            self::ACTION_SKIP => \Yii::t('ThiscoveryFormsModule.base', 'Skip this question if'),
             self::ACTION_SKIP_PAGE => \Yii::t('ThiscoveryFormsModule.base', 'Skip this page if'),
             self::ACTION_GOTO_PAGE => \Yii::t('ThiscoveryFormsModule.base', 'Go to page if'),
             self::ACTION_GOTO_END => \Yii::t('ThiscoveryFormsModule.base', 'Go to end if'),
@@ -60,6 +60,11 @@ class LogicEngine
             return $base;
         }
         $action = (string)($logic['action'] ?? $base['action']);
+        // "Skip this question" always behaved exactly like "Hide", so it is offered no more
+        // and a stored skip is read as hide (LOG-10).
+        if ($action === self::ACTION_SKIP) {
+            $action = self::ACTION_HIDE;
+        }
         if (!isset(self::actionLabels()[$action])) {
             $action = self::ACTION_SHOW;
         }
@@ -118,6 +123,7 @@ class LogicEngine
     {
         $text = trim($text);
         $logic = self::defaultLogic();
+        $action = $action === self::ACTION_SKIP ? self::ACTION_HIDE : $action;
         $logic['action'] = isset(self::actionLabels()[$action]) ? $action : self::ACTION_SHOW;
         $logic['gotoPageKey'] = $goto;
         $logic['text'] = $text;
@@ -250,8 +256,59 @@ class LogicEngine
             return false;
         }
         $today = '';
-        $context = \humhub\modules\thiscoveryForms\services\formula\Context::fromValues($values, $fields, $today);
-        return (new \humhub\modules\thiscoveryForms\services\formula\Evaluator($context))->truth($tree);
+        if (!isset($values['__loops']) && $fields) {
+            $values['__loops'] = LoopService::formulaLoopIds(array_values($fields));
+        }
+        try {
+            $context = $this->contextFor($values, $fields, $today);
+            $context->steps = 0;
+            return (new \humhub\modules\thiscoveryForms\services\formula\Evaluator($context))->truth($tree);
+        } catch (\Throwable $e) {
+            // A rule that cannot be evaluated is not met; it never fails the submit (V3-38).
+            \Yii::warning('Thiscovery Forms rule could not be evaluated: ' . $e->getMessage(), 'thiscovery-forms');
+            return false;
+        }
+    }
+
+    /** @var array<string, \humhub\modules\thiscoveryForms\services\formula\Context> */
+    private static array $contexts = [];
+
+    /** @var array<string, array> */
+    private static array $effective = [];
+
+    /**
+     * The formula context for these answers, reused while they are unchanged: every rule on
+     * the form was rebuilding it, and decoding every question's options, for each check (V3-39).
+     */
+    private function contextFor(array $values, array $fields, string $today): \humhub\modules\thiscoveryForms\services\formula\Context
+    {
+        $key = self::structureKey($fields) . ':' . md5((string)json_encode($values)) . ':' . $today;
+        if (!isset(self::$contexts[$key])) {
+            if (count(self::$contexts) >= 16) {
+                array_shift(self::$contexts);
+            }
+            self::$contexts[$key] = \humhub\modules\thiscoveryForms\services\formula\Context::fromValues($values, $fields, $today);
+        }
+        return self::$contexts[$key];
+    }
+
+    /** @param array<int|string,mixed> $fields */
+    private static function structureKey(array $fields): string
+    {
+        $parts = [];
+        foreach ($fields as $field) {
+            if ($field instanceof FormField) {
+                $parts[] = (int)$field->id . ':' . md5((string)$field->logic_json . '|' . (string)$field->options_json);
+            }
+        }
+        return md5(implode(',', $parts));
+    }
+
+    /** For tests that change questions between checks in one request. */
+    public static function resetCaches(): void
+    {
+        self::$contexts = [];
+        self::$effective = [];
     }
 
     public function rulesMet(array $logic, array $values, array $fields = []): bool
@@ -333,12 +390,41 @@ class LogicEngine
      *
      * @param FormField[] $fields
      */
+    /**
+     * Answers with every logic-hidden question treated as empty, evaluated in form order.
+     *
+     * @param FormField[] $fields
+     * @param array<int|string,mixed> $values
+     * @return array<int|string,mixed>
+     */
+    public function effectiveValues(array $fields, array $values): array
+    {
+        return $this->valuesIgnoringHidden($fields, $values);
+    }
+
     private function valuesIgnoringHidden(array $fields, array $values): array
     {
         $fields = array_values(array_filter($fields, static fn ($field) => $field instanceof FormField));
         if (!$fields) {
             return $values;
         }
+        // Each question's visibility check re-ran this fixed point over every question; the
+        // result depends only on the structure and the answers, so it is worked out once (V3-39).
+        $key = self::structureKey($fields) . ':' . md5((string)json_encode($values)) . ':' . (RandomisationService::$current ? spl_object_id(RandomisationService::$current) : 0);
+        if (isset(self::$effective[$key])) {
+            return self::$effective[$key];
+        }
+        if (count(self::$effective) >= 16) {
+            array_shift(self::$effective);
+        }
+        return self::$effective[$key] = $this->computeValuesIgnoringHidden($fields, $values);
+    }
+
+    /**
+     * @param FormField[] $fields
+     */
+    private function computeValuesIgnoringHidden(array $fields, array $values): array
+    {
         $limit = count($fields) + 1;
         for ($pass = 0; $pass < $limit; $pass++) {
             $changed = false;
@@ -400,6 +486,11 @@ class LogicEngine
             if (empty($logic['when']) || !$this->rulesMet($logic, $values, $lookup)) {
                 continue;
             }
+            // A rule on a question the respondent can't see (a hidden group, a randomised-out
+            // item) doesn't route them anywhere (LOG-8).
+            if (!$this->isFieldVisible($field, $lookup, $values)) {
+                continue;
+            }
             return [
                 'action' => $action,
                 'gotoPageKey' => (string)($logic['gotoPageKey'] ?? ''),
@@ -424,7 +515,8 @@ class LogicEngine
             if (($logic['action'] ?? '') !== self::ACTION_SKIP_PAGE) {
                 continue;
             }
-            if (!empty($logic['when']) && $this->rulesMet($logic, $values, $lookup)) {
+            if (!empty($logic['when']) && $this->rulesMet($logic, $values, $lookup)
+                && $this->isFieldVisible($field, $lookup, $values)) {
                 return true;
             }
         }

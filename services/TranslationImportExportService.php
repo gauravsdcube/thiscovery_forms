@@ -380,9 +380,9 @@ class TranslationImportExportService
 
             $loop = (new LoopService())->config($field);
             if ($loop && $loop['source'] === 'fixed') {
-                $variable = trim((string)$field->variable) ?: ('group' . $id);
                 foreach ($loop['items'] as $item) {
-                    $this->pushUnit($units, 'loop.' . $variable . '.' . $item['code'], $type, 'loop_item', (string)$item['label'], $id, false);
+                    // Keyed by field like options, so import can find and store it (V3-46).
+                    $this->pushUnit($units, "field.$id.loop_item.c:" . $item['code'], $type, 'loop_item', (string)$item['label'], $id, false);
                 }
             }
             if ($field->type === FormField::TYPE_PAGE_BREAK) {
@@ -547,7 +547,7 @@ class TranslationImportExportService
             $part = $m[2] === 'help' ? 'help_text' : $m[2];
             return ['kind' => 'field', 'field_id' => (int)$m[1], 'part' => $part];
         }
-        if (preg_match('/^field\.(\d+)\.(option|grid_row|grid_column|item)\.(.+)$/', $key, $m)) {
+        if (preg_match('/^field\.(\d+)\.(option|grid_row|grid_column|item|loop_item)\.(.+)$/', $key, $m)) {
             $token = $m[3];
             $parsed = [
                 'kind' => 'field',
@@ -661,6 +661,13 @@ class TranslationImportExportService
             $merged[$index] = $value;
             ksort($merged);
             $data['options'] = implode("\n", $merged);
+            return;
+        }
+
+        if ($part === 'loop_item') {
+            if (!empty($parsed['code'])) {
+                $data['loop_items'][(string)$parsed['code']] = $value;
+            }
             return;
         }
 

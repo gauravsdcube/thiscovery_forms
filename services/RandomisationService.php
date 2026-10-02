@@ -222,6 +222,17 @@ class RandomisationService
                 $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Stratification question “{key}” is not on this form.', ['key' => $factor['key']]);
             }
         }
+        if (in_array($cfg['method'], ['block', 'stratified'], true) && $cfg['arms']) {
+            // A block must hold every arm in its ratio a whole number of times (V3-48):
+            // with 3 arms and size 4 the blocks were A,A,B,C; with weights 2:1 and size 4, 3:1.
+            $unit = array_sum(array_map(static fn($arm) => max(1, (int)$arm['weight']), $cfg['arms']));
+            if ($unit > 0 && (int)$cfg['block_size'] % $unit !== 0) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Block size {size} must be a multiple of {unit}, the total of the arm weights, so every block keeps the allocation ratio.', [
+                    'size' => (int)$cfg['block_size'],
+                    'unit' => $unit,
+                ]);
+            }
+        }
         if ($cfg['assign'] === 'after_page' && $cfg['assign_page'] === '') {
             $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Choose the page that assigns the arm.');
         }
@@ -266,6 +277,7 @@ class RandomisationService
                 $open = [
                     'key' => $cfg['blockKey'] !== '' ? $cfg['blockKey'] : ('block' . (count($blocks) + 1)),
                     'method' => $cfg['method'],
+                    'show' => $cfg['show'],
                     'pages' => [$pageKey],
                     'fields' => [$field],
                     'open' => true,
@@ -305,6 +317,11 @@ class RandomisationService
         if (!$form || !self::active($form)) {
             return;
         }
+        if ($answer->isNewRecord || !$answer->id) {
+            // Not saved yet (a new respondent's first page): keep the seed in the session.
+            self::pending((int)$form->id);
+            return;
+        }
         $row = (new Query())->from('{{%custom_form_presentation}}')->where(['answer_id' => (int)$answer->id])->one();
         if ($previewReroll && $answer->isTest() && $row) {
             Yii::$app->db->createCommand()->update('{{%custom_form_presentation}}', [
@@ -316,12 +333,46 @@ class RandomisationService
         if ($row) {
             return;
         }
+        // A response saved for the first time takes the seed and orders its first page was
+        // rendered with, so the order stored is the order shown (V3-22).
+        $pending = self::takePending((int)$form->id);
         Yii::$app->db->createCommand()->insert('{{%custom_form_presentation}}', [
             'answer_id' => (int)$answer->id,
-            'seed' => bin2hex(random_bytes(16)),
-            'orders_json' => null,
+            'seed' => $pending['seed'] ?? bin2hex(random_bytes(16)),
+            'orders_json' => !empty($pending['orders']) ? json_encode($pending['orders'], JSON_UNESCAPED_UNICODE) : null,
             'created_at' => date('Y-m-d H:i:s'),
         ])->execute();
+    }
+
+    private static function pendingKey(int $formId): string
+    {
+        return 'cf-rand-pending-' . $formId;
+    }
+
+    /** @return array{seed:string,orders:array} */
+    private static function pending(int $formId): array
+    {
+        $session = Yii::$app->session;
+        $row = $session->get(self::pendingKey($formId));
+        if (!is_array($row) || !is_string($row['seed'] ?? null) || $row['seed'] === '') {
+            $row = ['seed' => bin2hex(random_bytes(16)), 'orders' => []];
+            $session->set(self::pendingKey($formId), $row);
+        }
+        return $row;
+    }
+
+    private static function savePending(int $formId, array $row): void
+    {
+        Yii::$app->session->set(self::pendingKey($formId), $row);
+    }
+
+    /** @return array{seed:string,orders:array}|null */
+    private static function takePending(int $formId): ?array
+    {
+        $session = Yii::$app->session;
+        $row = $session->get(self::pendingKey($formId));
+        $session->remove(self::pendingKey($formId));
+        return is_array($row) && is_string($row['seed'] ?? null) && $row['seed'] !== '' ? $row : null;
     }
 
     /**
@@ -332,8 +383,12 @@ class RandomisationService
         if (Yii::$app->db->schema->getTableSchema('{{%custom_form_presentation}}', true) === null) {
             return ['options' => [], 'questions' => [], 'pages' => [], 'shown' => []];
         }
-        $row = (new Query())->from('{{%custom_form_presentation}}')->where(['answer_id' => (int)$answer->id])->one();
-        $decoded = $row ? json_decode((string)($row['orders_json'] ?? ''), true) : null;
+        if ($answer->isNewRecord || !$answer->id) {
+            $decoded = self::pending((int)$answer->form_id)['orders'];
+        } else {
+            $row = (new Query())->from('{{%custom_form_presentation}}')->where(['answer_id' => (int)$answer->id])->one();
+            $decoded = $row ? json_decode((string)($row['orders_json'] ?? ''), true) : null;
+        }
         $decoded = is_array($decoded) ? $decoded : [];
         return [
             'options' => is_array($decoded['options'] ?? null) ? $decoded['options'] : [],
@@ -376,7 +431,7 @@ class RandomisationService
             }
         }
         $seed = $this->seedFor($answer, 'options:' . $key);
-        $offset = $cfg['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'options:' . $key, count($codes)) : 0;
+        $offset = $cfg['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'options:' . $key, count($codes), $answer, $seed) : 0;
         $presented = $this->engine->present($codes, $cfg, $seed, $offset);
         $this->storeScope($answer, 'options', $key, $presented['order']);
         return $presented['order'];
@@ -402,8 +457,8 @@ class RandomisationService
             $key = $block['key'];
             if (!isset($orders['pages'][$key])) {
                 $seed = $this->seedFor($answer, 'pages:' . $key);
-                $offset = $block['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'pages:' . $key, count($block['pages'])) : 0;
-                $presented = $this->engine->present($block['pages'], ['method' => $block['method']], $seed, $offset);
+                $offset = $block['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'pages:' . $key, count($block['pages']), $answer, $seed) : 0;
+                $presented = $this->engine->present($block['pages'], ['method' => $block['method'], 'show' => $block['show'] ?? null], $seed, $offset);
                 $this->storeScope($answer, 'pages', $key, $presented['order']);
                 $orders['pages'][$key] = $presented['order'];
                 $changed = true;
@@ -467,7 +522,7 @@ class RandomisationService
             $orders = $this->orders($answer);
             if (!isset($orders['questions'][$scope])) {
                 $seed = $this->seedFor($answer, 'questions:' . $scope);
-                $offset = $cfg['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'questions:' . $scope, count($ids)) : 0;
+                $offset = $cfg['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'questions:' . $scope, count($ids), $answer, $seed) : 0;
                 $presented = $this->engine->present($ids, $cfg, $seed, $offset);
                 $this->storeScope($answer, 'questions', $scope, $presented['order']);
                 $this->storeScope($answer, 'shown', $scope, $presented['shown']);
@@ -553,8 +608,13 @@ class RandomisationService
     public function assignIfDue(FormAnswer $answer, array $values, ?int $postedPage, bool $completing): ?array
     {
         $form = $answer->form;
-        if (!$form || !self::active($form) || $answer->isTest()) {
+        if (!$form || !self::active($form)) {
             return $this->assignment($answer);
+        }
+        if ($answer->isTest()) {
+            // A preview or test fill gets an arm, so arm routes can be tried (V3-56). It is a
+            // weighted draw that never touches the live allocation, and is marked 'preview'.
+            return $this->assignment($answer) ?? $this->assignPreview($answer, $form);
         }
         $existing = $this->assignment($answer);
         if ($existing) {
@@ -589,62 +649,57 @@ class RandomisationService
             return null;
         }
         $db = Yii::$app->db;
-        if ($cfg['method'] !== 'simple' && $cfg['method'] !== 'least_filled') {
-            $db->createCommand(
-                'INSERT IGNORE INTO {{%custom_form_arm_allocation}} (form_id, stratum_key, next_index, block_json) VALUES (:f, :s, 0, NULL)',
-                [':f' => (int)$form->id, ':s' => $stratum]
-            )->execute();
-        }
-        $attempts = 0;
-        while (true) {
-        $attempts++;
-        $tx = $db->beginTransaction();
-        try {
-            $again = (new Query())->from('{{%custom_form_arm_assignment}}')->where(['answer_id' => (int)$answer->id])->one($db);
-            if ($again) {
-                $tx->commit();
-                return $again;
-            }
-            $quotaChoice = (new QuotaService())->chooseArm($form, $answer, $values, $cfg['arms'], $this->seedFor($answer, 'arm-quota'));
-            if ($quotaChoice === false) {
-                $tx->rollBack();
-                return null;
-            }
-            $code = is_string($quotaChoice) && $quotaChoice !== ''
-                ? $quotaChoice
-                : $this->drawArm($form, $cfg, $stratum, $answer);
-            if ($code === '') {
-                $tx->rollBack();
-                return null;
-            }
-            $name = $code;
-            foreach ($cfg['arms'] as $arm) {
-                if ($arm['code'] === $code) {
-                    $name = $arm['name'];
+        // The first starts insert the same allocation row. InnoDB can deadlock that
+        // insert-then-lock; retry the whole assignment rather than dropping the response.
+        for ($attempt = 1; $attempt <= 8; $attempt++) {
+            $tx = $db->beginTransaction();
+            try {
+                $again = (new Query())->from('{{%custom_form_arm_assignment}}')->where(['answer_id' => (int)$answer->id])->one($db);
+                if ($again) {
+                    $tx->commit();
+                    return $again;
                 }
-            }
-            $db->createCommand()->insert('{{%custom_form_arm_assignment}}', [
-                'answer_id' => (int)$answer->id,
-                'arm_code' => $code,
-                'arm_name' => $name,
-                'method' => $cfg['method'],
-                'stratum_key' => $stratum,
-                'assigned_at' => gmdate('Y-m-d H:i:s'),
-                'assigned_by' => null,
-            ])->execute();
-            $tx->commit();
-            break;
-        } catch (\Throwable $e) {
-            if ($tx->isActive) {
-                $tx->rollBack();
-            }
-            $deadlock = $e instanceof \yii\db\Exception && (int)($e->errorInfo[1] ?? 0) === 1213;
-            if (!$deadlock || $attempts >= 5) {
+                $quotaChoice = (new QuotaService())->chooseArm($form, $answer, $values, $cfg['arms'], $this->seedFor($answer, 'arm-quota'));
+                if ($quotaChoice === false) {
+                    $tx->rollBack();
+                    return null;
+                }
+                $code = is_string($quotaChoice) && $quotaChoice !== ''
+                    ? $quotaChoice
+                    : $this->drawArm($form, $cfg, $stratum, $answer);
+                if ($code === '') {
+                    $tx->rollBack();
+                    return null;
+                }
+                $name = $code;
+                foreach ($cfg['arms'] as $arm) {
+                    if ($arm['code'] === $code) {
+                        $name = $arm['name'];
+                    }
+                }
+                $db->createCommand()->insert('{{%custom_form_arm_assignment}}', [
+                    'answer_id' => (int)$answer->id,
+                    'arm_code' => $code,
+                    'arm_name' => $name,
+                    // Say honestly how the arm was chosen: by a quota (least filled) or by the configured method.
+                    'method' => (is_string($quotaChoice) && $quotaChoice !== '') ? 'quota_directed' : $cfg['method'],
+                    'stratum_key' => $stratum,
+                    'assigned_at' => gmdate('Y-m-d H:i:s'),
+                    'assigned_by' => null,
+                ])->execute();
+                $tx->commit();
+                return $this->assignment($answer);
+            } catch (\Throwable $e) {
+                if ($tx->isActive) {
+                    $tx->rollBack();
+                }
+                if ($attempt < 8 && $this->isDeadlock($e)) {
+                    continue;
+                }
                 throw $e;
             }
         }
-        }
-        return $this->assignment($answer);
+        return null;
     }
 
     public function override(FormAnswer $answer, string $toCode, string $reason, ?int $actorId): bool
@@ -680,6 +735,7 @@ class RandomisationService
             $db->createCommand()->update('{{%custom_form_arm_assignment}}', [
                 'arm_code' => $toCode,
                 'arm_name' => $name,
+                'assigned_by' => $actorId,
             ], ['answer_id' => (int)$answer->id])->execute();
             $tx->commit();
         } catch (\Throwable $e) {
@@ -732,6 +788,9 @@ class RandomisationService
      */
     public function seedForAnswer(FormAnswer $answer, string $scope): int
     {
+        if ($answer->isNewRecord || !$answer->id) {
+            return $this->engine->seedInt(self::pending((int)$answer->form_id)['seed'], $scope);
+        }
         $row = (new Query())->from('{{%custom_form_presentation}}')->where(['answer_id' => (int)$answer->id])->one();
         $hex = (string)($row['seed'] ?? '');
         if ($hex === '') {
@@ -740,10 +799,44 @@ class RandomisationService
         return $this->engine->seedInt($hex, $scope);
     }
 
-    private function nextRotateOffset(int $formId, string $scope, int $length): int
+    /** Set while previewing or test-filling: rotation then never advances the live counter (V3-48). */
+    public static bool $preview = false;
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function assignPreview(FormAnswer $answer, CustomForm $form): ?array
+    {
+        $cfg = $this->config($form);
+        if (!$cfg['arms'] || !$answer->id) {
+            return null;
+        }
+        $code = $this->engine->weightedPick($cfg['arms'], $this->seedFor($answer, 'arm:preview'));
+        $name = $code;
+        foreach ($cfg['arms'] as $arm) {
+            if ($arm['code'] === $code) {
+                $name = $arm['name'];
+            }
+        }
+        Yii::$app->db->createCommand()->insert('{{%custom_form_arm_assignment}}', [
+            'answer_id' => (int)$answer->id,
+            'arm_code' => $code,
+            'arm_name' => $name,
+            'method' => 'preview',
+            'stratum_key' => '',
+            'assigned_at' => gmdate('Y-m-d H:i:s'),
+            'assigned_by' => null,
+        ])->execute();
+        return $this->assignment($answer);
+    }
+
+    private function nextRotateOffset(int $formId, string $scope, int $length, ?FormAnswer $answer = null, int $seed = 0): int
     {
         if ($length < 2) {
             return 0;
+        }
+        if (self::$preview || ($answer && !$answer->isNewRecord && $answer->isTest())) {
+            return $seed % $length;
         }
         $db = Yii::$app->db;
         $tx = $db->beginTransaction();
@@ -776,15 +869,34 @@ class RandomisationService
     {
         $orders = $this->orders($answer);
         $orders[$bucket][$key] = array_values($order);
-        Yii::$app->db->createCommand()->update('{{%custom_form_presentation}}', [
-            'orders_json' => json_encode([
-                'options' => $orders['options'],
-                'questions' => $orders['questions'],
-                'pages' => $orders['pages'],
-                'shown' => $orders['shown'],
-                'loops' => $orders['loops'] ?? [],
-            ], JSON_UNESCAPED_UNICODE),
-        ], ['answer_id' => (int)$answer->id])->execute();
+        if ($answer->isNewRecord || !$answer->id) {
+            $pending = self::pending((int)$answer->form_id);
+            $pending['orders'] = $orders;
+            self::savePending((int)$answer->form_id, $pending);
+            return;
+        }
+        // Read-modify-write under a row lock, so two requests for one response (autosave and a
+        // page change) cannot drop each other's orders (V3-56).
+        $db = Yii::$app->db;
+        $tx = $db->beginTransaction();
+        try {
+            $locked = $db->createCommand('SELECT orders_json FROM {{%custom_form_presentation}} WHERE answer_id = :a FOR UPDATE', [
+                ':a' => (int)$answer->id,
+            ])->queryScalar();
+            $current = json_decode((string)$locked, true);
+            $current = is_array($current) ? $current : [];
+            foreach (['options', 'questions', 'pages', 'shown', 'loops'] as $name) {
+                $current[$name] = is_array($current[$name] ?? null) ? $current[$name] : [];
+            }
+            $current[$bucket][$key] = array_values($order);
+            $db->createCommand()->update('{{%custom_form_presentation}}', [
+                'orders_json' => json_encode($current, JSON_UNESCAPED_UNICODE),
+            ], ['answer_id' => (int)$answer->id])->execute();
+            $tx->commit();
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            throw $e;
+        }
     }
 
     /**
@@ -823,6 +935,40 @@ class RandomisationService
         return implode('|', $parts);
     }
 
+    private function isDeadlock(\Throwable $e): bool
+    {
+        $text = $e->getMessage();
+        return str_contains($text, '1213') || str_contains($text, '40001') || str_contains($text, 'Deadlock');
+    }
+
+    /**
+     * Make sure the allocation row exists in its own committed transaction.
+     * Doing that insert inside the lock transaction deadlocks parallel first starts.
+     */
+    private function ensureAllocationRow(int $formId, string $stratum): void
+    {
+        $db = Yii::$app->db;
+        $sql = 'INSERT IGNORE INTO {{%custom_form_arm_allocation}} (form_id, stratum_key, next_index, block_json) VALUES (:f, :s, 0, NULL)';
+        $params = [':f' => $formId, ':s' => $stratum];
+        if ($db->getTransaction() === null) {
+            $db->createCommand($sql, $params)->execute();
+            return;
+        }
+        $side = new \yii\db\Connection([
+            'dsn' => $db->dsn,
+            'username' => $db->username,
+            'password' => $db->password,
+            'charset' => $db->charset ?: 'utf8mb4',
+            'tablePrefix' => $db->tablePrefix,
+        ]);
+        $side->open();
+        try {
+            $side->createCommand($sql, $params)->execute();
+        } finally {
+            $side->close();
+        }
+    }
+
     /**
      * @param array $cfg
      */
@@ -834,24 +980,51 @@ class RandomisationService
             return $this->engine->weightedPick($cfg['arms'], $seed);
         }
         if ($method === 'least_filled') {
-            $counts = [];
-            $rows = (new Query())
-                ->from(['g' => '{{%custom_form_arm_assignment}}'])
-                ->innerJoin(['a' => '{{%custom_form_answer}}'], 'a.id = g.answer_id')
-                ->select(['g.arm_code', 'n' => 'COUNT(*)'])
-                ->where(['a.form_id' => (int)$form->id, 'a.is_test' => 0, 'g.stratum_key' => $stratum])
-                ->groupBy('g.arm_code')
-                ->all();
-            foreach ($rows as $row) {
-                $counts[(string)$row['arm_code']] = (int)$row['n'];
+            // V3-48: counted under a lock (so two starts cannot both see the same counts), only
+            // over completes and responses active in the last day (abandoned ones do not hold
+            // places), and with a random element so the next arm cannot be predicted.
+            $db = Yii::$app->db;
+            $own = $db->getTransaction() === null ? $db->beginTransaction() : null;
+            try {
+                $this->ensureAllocationRow((int)$form->id, $stratum);
+                $db->createCommand(
+                    'SELECT next_index FROM {{%custom_form_arm_allocation}} WHERE form_id = :f AND stratum_key = :s FOR UPDATE',
+                    [':f' => (int)$form->id, ':s' => $stratum]
+                )->queryScalar();
+                $counts = [];
+                $rows = (new Query())
+                    ->from(['g' => '{{%custom_form_arm_assignment}}'])
+                    ->innerJoin(['a' => '{{%custom_form_answer}}'], 'a.id = g.answer_id')
+                    ->select(['g.arm_code', 'n' => 'COUNT(*)'])
+                    ->where(['a.form_id' => (int)$form->id, 'a.is_test' => 0, 'g.stratum_key' => $stratum])
+                    ->andWhere(['or',
+                        ['a.status' => FormAnswer::STATUS_COMPLETE],
+                        ['>=', 'a.updated_at', date('Y-m-d H:i:s', time() - 86400)],
+                    ])
+                    ->groupBy('g.arm_code')
+                    ->all();
+                foreach ($rows as $row) {
+                    $counts[(string)$row['arm_code']] = (int)$row['n'];
+                }
+                $codes = array_map(static fn($arm) => $arm['code'], $cfg['arms']);
+                $code = $this->engine->minimise($counts, $cfg['arms'], $codes, $seed);
+                if ($own) {
+                    $own->commit();
+                }
+            } catch (\Throwable $e) {
+                if ($own) {
+                    $own->rollBack();
+                }
+                throw $e;
             }
-            $codes = array_map(static fn($arm) => $arm['code'], $cfg['arms']);
-            return $this->engine->leastFilled($counts, $codes, $seed);
+            return $code;
         }
         $db = Yii::$app->db;
-        // The row is created before this transaction. Lock that row and allocate from it (V3-6).
+        // The row is created and committed before the lock. Inserting it inside the same
+        // transaction as SELECT ... FOR UPDATE deadlocks the first parallel starts (V3-6).
         $own = $db->getTransaction() === null ? $db->beginTransaction() : null;
         try {
+            $this->ensureAllocationRow((int)$form->id, $stratum);
             $row = $db->createCommand(
                 'SELECT next_index, block_json FROM {{%custom_form_arm_allocation}} WHERE form_id = :f AND stratum_key = :s FOR UPDATE',
                 [':f' => (int)$form->id, ':s' => $stratum]

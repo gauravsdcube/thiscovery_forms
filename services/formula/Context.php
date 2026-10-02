@@ -77,6 +77,12 @@ final class Context
     {
         $context = new self();
         $context->today = $today !== '' ? $today : gmdate('Y-m-d');
+        // Loop member ids. Their arrays are always instance maps, whatever the key shape:
+        // codes 0..n arrive as a PHP list and 1..n as integer keys (V3-15).
+        $loops = [];
+        foreach ((is_array($values['__loops'] ?? null) ? $values['__loops'] : []) as $loopId) {
+            $loops[(string)$loopId] = true;
+        }
         foreach ($fields as $field) {
             if (!$field instanceof FormField) {
                 continue;
@@ -86,10 +92,31 @@ final class Context
                 $name = 'id' . (int)$field->id;
             }
             $raw = $values[$name] ?? $values[(int)$field->id] ?? $values[(string)$field->id] ?? $values['id' . (int)$field->id] ?? null;
-            $context->rememberField($name, $field, $raw);
+            $context->rememberField($name, $field, $raw, isset($loops[(string)(int)$field->id]));
         }
         foreach ($values as $key => $raw) {
             $key = (string)$key;
+            if ($key === '__today') {
+                // The response's frozen formula date (V3-9).
+                if (is_string($raw) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+                    $context->today = $raw;
+                }
+                continue;
+            }
+            if ($key === '__named') {
+                // Named formulas (fn:name), already parsed into trees (V3-13).
+                if (is_array($raw)) {
+                    foreach ($raw as $name => $tree) {
+                        if (is_array($tree)) {
+                            $context->named[(string)$name] = $tree;
+                        }
+                    }
+                }
+                continue;
+            }
+            if (str_starts_with($key, '__')) {
+                continue;
+            }
             if (str_starts_with($key, 'panel.')) {
                 $context->panel[substr($key, 6)] = self::scalar($raw);
             } elseif ($key === 'arm') {
@@ -107,7 +134,7 @@ final class Context
         return $context;
     }
 
-    private function rememberField(string $name, FormField $field, mixed $raw): void
+    private function rememberField(string $name, FormField $field, mixed $raw, bool $loop = false): void
     {
         foreach ($field->getChoicePairs() as $pair) {
             $code = (string)$pair['code'];
@@ -116,11 +143,16 @@ final class Context
                 $this->scores[$name][$code] = Decimal::canonical((string)$pair['score']);
             }
         }
-        if (is_array($raw) && self::isInstanceMap($raw)) {
+        $grid = in_array((string)$field->type, ['grid_single', 'grid_multi'], true);
+        if (is_array($raw) && $raw !== [] && ($loop || $grid || self::isInstanceMap($raw))) {
             $items = [];
             foreach ($raw as $key => $cell) {
-                $value = self::scalar($cell);
+                $value = $grid ? self::scalar($cell, FormField::TYPE_RADIO) : self::scalar($cell, (string)$field->type);
                 $items[] = ['key' => (string)$key, 'value' => $value];
+                if ($grid) {
+                    // Grid rows are addressable as [question.row] (V3-13).
+                    $this->rows[$name][(string)$key] = $value;
+                }
             }
             $this->instances[$name] = $items;
             $this->store($name, (int)$field->id, Value::list(array_map(static fn ($item) => $item['value'], $items)));
@@ -132,6 +164,10 @@ final class Context
 
     private function store(string $name, int $id, Value $value): void
     {
+        if (isset($this->rows[$name])) {
+            $this->rows[(string)$id] = $this->rows[$name];
+            $this->rows['id' . $id] = $this->rows[$name];
+        }
         $this->fields[$name] = $value;
         $this->fields[(string)$id] = $value;
         $this->fields['id' . $id] = $value;
@@ -144,15 +180,9 @@ final class Context
     /** @param array<mixed> $raw */
     private static function isInstanceMap(array $raw): bool
     {
-        if ($raw === []) {
-            return false;
-        }
-        foreach ($raw as $key => $value) {
-            if (is_int($key)) {
-                return false;
-            }
-        }
-        return true;
+        // Without loop or grid metadata, only a keyed map (not a plain list of choices)
+        // can be an instance map. Loop members and grids are decided by type (V3-15).
+        return $raw !== [] && !array_is_list($raw);
     }
 
     public static function scalar(mixed $raw, string $type = ''): Value
@@ -164,6 +194,9 @@ final class Context
             return Value::bool($raw);
         }
         if (is_array($raw)) {
+            // "0" means unticked only for a single yes/no checkbox. In a list of ticked
+            // options it is the option coded 0, so it is kept (LOG-10).
+            $itemType = $type === FormField::TYPE_CHECKBOX ? FormField::TYPE_RADIO : $type;
             $items = [];
             foreach ($raw as $item) {
                 if (is_array($item)) {
@@ -171,7 +204,7 @@ final class Context
                 }
                 $text = trim((string)$item);
                 if ($text !== '') {
-                    $items[] = self::leaf($text, $type);
+                    $items[] = self::leaf($text, $itemType);
                 }
             }
             return Value::list($items);

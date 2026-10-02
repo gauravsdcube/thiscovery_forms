@@ -387,6 +387,16 @@ class TranslationService
         if (isset($overlay['items']) && is_array($overlay['items']) && array_key_exists('items', $decoded)) {
             $this->applyItemLabels($field, $overlay['items']);
         }
+        if (isset($overlay['loop_items']) && is_array($overlay['loop_items']) && is_array($decoded['loop']['items'] ?? null)) {
+            // Fixed loop items, relabelled by code (V3-46).
+            foreach ($decoded['loop']['items'] as $i => $item) {
+                $code = is_array($item) ? (string)($item['code'] ?? '') : '';
+                $label = trim((string)($overlay['loop_items'][$code] ?? ''));
+                if ($code !== '' && $label !== '') {
+                    $decoded['loop']['items'][$i]['label'] = $label;
+                }
+            }
+        }
         if (isset($overlay['lowLabel']) && array_key_exists('lowLabel', $decoded)) {
             $decoded['lowLabel'] = $overlay['lowLabel'];
         }
@@ -421,6 +431,9 @@ class TranslationService
         }
         if (isset($data['rating_high_label']) && trim((string)$data['rating_high_label']) !== '') {
             $extra['highLabel'] = (string)$data['rating_high_label'];
+        }
+        if (!empty($data['loop_items']) && is_array($data['loop_items'])) {
+            $extra['loop_items'] = $this->stringMap($data['loop_items']);
         }
         foreach (['rows', 'columns', 'items'] as $key) {
             if (!isset($data[$key]) || !$field) {
@@ -724,6 +737,7 @@ class TranslationService
             'rows' => is_array($overlay['rows'] ?? null) ? $overlay['rows'] : [],
             'columns' => is_array($overlay['columns'] ?? null) ? $overlay['columns'] : [],
             'items' => is_array($overlay['items'] ?? null) ? $overlay['items'] : [],
+            'loop_items' => is_array($overlay['loop_items'] ?? null) ? $overlay['loop_items'] : [],
         ];
     }
 

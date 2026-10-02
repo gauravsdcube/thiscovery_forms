@@ -24,7 +24,10 @@ abstract class BaseQuestionType implements QuestionTypeInterface
                     'n' => 0,
                 ];
             }
-            $grouped[$key]['value'] += (float)($cell['value'] ?? 0);
+            // A cell may carry its response's weight (packed by FormsDataProvider): weighted
+            // totals use it, and the unweighted count stays in n (SCO-14).
+            $weight = isset($cell['weight']) && is_numeric($cell['weight']) ? (float)$cell['weight'] : 1.0;
+            $grouped[$key]['value'] += (float)($cell['value'] ?? 0) * $weight;
             $grouped[$key]['n'] += (int)($cell['n'] ?? 0);
         }
         return [
@@ -56,6 +59,12 @@ abstract class BaseQuestionType implements QuestionTypeInterface
             return $value;
         }
         if (!is_string($value) || $value === '') {
+            return $value;
+        }
+        // Only stored lists and objects are JSON. A plain code stays exactly as stored: "1.0"
+        // and "1e2" are not numbers to re-format (SCO-21).
+        $first = ltrim($value)[0] ?? '';
+        if ($first !== '[' && $first !== '{') {
             return $value;
         }
         $decoded = json_decode($value, true);

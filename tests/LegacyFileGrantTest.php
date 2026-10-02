@@ -1,6 +1,6 @@
 <?php
 /**
- * NEW-20. A file uploaded before grants existed can still be kept, and a
+ * NEW-20 / V3-50. Only files attached to the response are granted again, and a
  * cleared file is deleted only after the answer save commits.
  */
 require __DIR__ . '/support/bootstrap.php';
@@ -38,8 +38,9 @@ $answer->save(false);
 $submit = new SubmitForm(['form' => $form]);
 $submit->editingAnswer = $answer;
 $submit->loadValuesFromRequest(['values' => [(string)$field->id => (string)$loose->guid]]);
-if (($submit->values[(int)$field->id] ?? '') !== (string)$loose->guid) {
-    $failures[] = 'an unattached file from this user was rejected';
+// V3-50: an unattached HumHub file is no longer granted just because this user owns it.
+if (($submit->values[(int)$field->id] ?? '') === (string)$loose->guid) {
+    $failures[] = 'an unattached file from another module was accepted';
 }
 
 $kept = new File();

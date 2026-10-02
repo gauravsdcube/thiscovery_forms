@@ -60,7 +60,31 @@ class ExportSettings
         return [
             'exclude_columns' => array_values(array_unique($clean)),
             'pii_scrub' => !empty($export['pii_scrub']),
+            // Analysis-ready by default (SCO-12): one 0/1 column per multiple-choice option, codes
+            // for why an answer is empty, and complete responses only.
+            'multi_columns' => !array_key_exists('multi_columns', $export) || !empty($export['multi_columns']),
+            'missing_codes' => !array_key_exists('missing_codes', $export) || !empty($export['missing_codes']),
+            'include_in_progress' => !empty($export['include_in_progress']),
         ];
+    }
+
+    /** Codes written for an empty answer when missing codes are on (SCO-12). */
+    public const MISSING_SKIPPED = '-99';
+    public const MISSING_HIDDEN = '-98';
+    public const MISSING_NOT_REACHED = '-97';
+
+    public static function missingCodeLabels(): array
+    {
+        return [
+            self::MISSING_SKIPPED => Yii::t('ThiscoveryFormsModule.base', 'Shown but not answered'),
+            self::MISSING_HIDDEN => Yii::t('ThiscoveryFormsModule.base', 'Hidden by logic'),
+            self::MISSING_NOT_REACHED => Yii::t('ThiscoveryFormsModule.base', 'Not reached'),
+        ];
+    }
+
+    public static function optionColumnKey(FormField $field, string $code): string
+    {
+        return self::fieldColumnKey($field) . '.opt.' . $code;
     }
 
     public static function isPiiScrub(CustomForm $form): bool
@@ -88,8 +112,9 @@ class ExportSettings
     /**
      * @param string[] $exclude
      */
-    public static function persist(CustomForm $form, array $exclude, bool $piiScrub): void
+    public static function persist(CustomForm $form, array $exclude, bool $piiScrub, ?array $analysis = null): void
     {
+        $analysis = $analysis ?? array_intersect_key(self::get($form), array_flip(['multi_columns', 'missing_codes', 'include_in_progress']));
         $clean = [];
         foreach ($exclude as $key) {
             $key = trim((string)$key);
@@ -100,6 +125,9 @@ class ExportSettings
         $form->setSetting('export', [
             'exclude_columns' => array_values(array_unique($clean)),
             'pii_scrub' => $piiScrub,
+            'multi_columns' => !empty($analysis['multi_columns']),
+            'missing_codes' => !empty($analysis['missing_codes']),
+            'include_in_progress' => !empty($analysis['include_in_progress']),
         ]);
     }
 
@@ -120,7 +148,11 @@ class ExportSettings
         $known = array_map('strval', $known);
         $include = array_map('strval', $include);
         $exclude = array_values(array_diff($known, $include));
-        self::persist($form, $exclude, !empty($request->post('export_pii_scrub')));
+        self::persist($form, $exclude, !empty($request->post('export_pii_scrub')), [
+            'multi_columns' => !empty($request->post('export_multi_columns')),
+            'missing_codes' => !empty($request->post('export_missing_codes')),
+            'include_in_progress' => !empty($request->post('export_include_in_progress')),
+        ]);
     }
 
     public static function downloadFilename(CustomForm $form): string
@@ -284,6 +316,21 @@ class ExportSettings
                 'field' => $field,
                 'comment' => false,
             ];
+            if ($field->type === FormField::TYPE_CHECKBOX && self::get($form)['multi_columns']) {
+                foreach ($field->getChoicePairs() as $pair) {
+                    $code = (string)$pair['code'];
+                    $cols[] = [
+                        'key' => self::optionColumnKey($field, $code),
+                        'header' => self::uniqueHeader($headerMode === ExportService::HEADER_VARIABLE
+                            ? $svc->fieldHeader($field, $headerMode) . '_' . preg_replace('/[^A-Za-z0-9_]+/', '_', $code)
+                            : $header . ' = ' . (string)$pair['label'], $usedHeaders),
+                        'group' => self::GROUP_QUESTION,
+                        'lock' => $lock,
+                        'field' => $field,
+                        'comment' => false,
+                    ];
+                }
+            }
             if ($field->supportsJustification()) {
                 $cols[] = [
                     'key' => self::commentColumnKey($field),

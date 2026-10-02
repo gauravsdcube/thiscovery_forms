@@ -144,19 +144,28 @@ class m260929_210000_econsent extends Migration
 
     private function backfillLegacy(): void
     {
-        $members = (new Query())->from('{{%form_panel_member}}')->where(['not', ['consent_at' => null]])->all();
-        foreach ($members as $member) {
-            $forms = (new Query())->from('{{%custom_form}}')->all();
-            foreach ($forms as $form) {
-                $settings = json_decode((string)($form['settings_json'] ?? ''), true);
-                $settings = is_array($settings) ? $settings : [];
-                $panelId = (int)($settings['panel_id'] ?? 0);
-                if ($panelId < 1) {
-                    $panelId = (int)($form['enrol_panel_id'] ?? 0);
-                }
-                if ($panelId !== (int)$member['panel_id']) {
-                    continue;
-                }
+        // Forms are grouped by panel once, then each member is matched to its panel's forms:
+        // O(forms + members) instead of loading every form for every member (V3-53).
+        $formsByPanel = [];
+        foreach ((new Query())->select(['id', 'settings_json', 'enrol_panel_id'])->from('{{%custom_form}}')->each(200) as $form) {
+            $settings = json_decode((string)($form['settings_json'] ?? ''), true);
+            $settings = is_array($settings) ? $settings : [];
+            $panelId = (int)($settings['panel_id'] ?? 0);
+            if ($panelId < 1) {
+                $panelId = (int)($form['enrol_panel_id'] ?? 0);
+            }
+            if ($panelId > 0) {
+                $formsByPanel[$panelId][] = $form;
+            }
+        }
+        if ($formsByPanel === []) {
+            return;
+        }
+        $members = (new Query())->from('{{%form_panel_member}}')
+            ->where(['not', ['consent_at' => null]])
+            ->andWhere(['panel_id' => array_keys($formsByPanel)]);
+        foreach ($members->each(500) as $member) {
+            foreach ($formsByPanel[(int)$member['panel_id']] ?? [] as $form) {
                 $docId = $this->legacyDocumentId((int)$form['id']);
                 $exists = (new Query())->from('{{%custom_form_consent_record}}')->where([
                     'form_id' => (int)$form['id'],

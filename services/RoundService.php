@@ -91,7 +91,35 @@ class RoundService
             $round->closes_at = date('Y-m-d H:i:s');
         }
         $round->status = $status;
-        return $round->save(false, ['status', 'opens_at', 'closes_at', 'updated_at']);
+        $ok = $round->save(false, ['status', 'opens_at', 'closes_at', 'updated_at']);
+        if ($ok && $status === FormRound::STATUS_CLOSED && $round->form) {
+            $this->frozenFor($round->form, $round);
+        }
+        return $ok;
+    }
+
+    /**
+     * Items frozen after a round. Worked out when the round closes, whether or not its summary
+     * is ever published, and stored; a round closed without one gets it here on first use
+     * (SCO-9). Publishing the summary recomputes it.
+     *
+     * @return int[]
+     */
+    public function frozenFor(CustomForm $form, FormRound $round): array
+    {
+        if (!$form->freezesOnConsensus()) {
+            return [];
+        }
+        if ($round->frozen_field_ids_json !== null && $round->frozen_field_ids_json !== '') {
+            return $round->getFrozenFieldIds();
+        }
+        if ((string)$round->status !== FormRound::STATUS_CLOSED) {
+            return [];
+        }
+        $ids = $this->computeFrozenFieldIds($form, $round);
+        $round->frozen_field_ids_json = json_encode($ids);
+        $round->save(false, ['frozen_field_ids_json', 'updated_at']);
+        return $ids;
     }
 
     public function applyDelphiPreset(CustomForm $form, int $roundCount = 3): void
@@ -143,8 +171,10 @@ class RoundService
                     'a.status' => FormAnswer::STATUS_COMPLETE,
                     'a.is_test' => 0,
                     'af.field_id' => $field->id,
-                ])
-                ->all();
+                ]);
+            // Integrity-excluded, screened-out and over-quota answers do not count (SCO-7, V3-35).
+            \humhub\modules\thiscoveryForms\models\FormIntegrityMeta::scopeIncludedInAnalysis($rows);
+            $rows = $rows->all();
             if (!$rows) {
                 continue;
             }
@@ -152,6 +182,7 @@ class RoundService
             $counts = [];
             $weightTotal = 0.0;
             $justifications = [];
+            $justTotal = 0;
             foreach ($rows as $row) {
                 $val = (string)$row['value'];
                 $w = ($row['weight'] === null || $row['weight'] === '') ? 1.0 : (float)$row['weight'];
@@ -161,8 +192,11 @@ class RoundService
                 $counts[$val] = ($counts[$val] ?? 0) + $w;
                 $weightTotal += $w;
                 $just = trim((string)($row['justification'] ?? ''));
-                if ($just !== '' && count($justifications) < 40) {
-                    $justifications[] = $just;
+                if ($just !== '') {
+                    $justTotal++;
+                    if (count($justifications) < 40) {
+                        $justifications[] = $just;
+                    }
                 }
             }
             if ($weightTotal <= 0) {
@@ -171,12 +205,34 @@ class RoundService
 
             $parts[] = '<h4>' . htmlspecialchars($field->label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</h4><ul>';
             arsort($counts);
-            foreach ($counts as $label => $w) {
-                $pct = round(($w / $weightTotal) * 100);
-                $parts[] = '<li>' . htmlspecialchars((string)$label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            // Labels, not codes, and percentages that add up to 100 (largest remainder) (SCO-8).
+            $labels = [];
+            foreach ($field->getChoicePairs() as $pair) {
+                $labels[(string)$pair['code']] = (string)$pair['label'];
+            }
+            foreach (self::percentages($counts, $weightTotal) as $code => $pct) {
+                $label = $labels[(string)$code] ?? (string)$code;
+                $parts[] = '<li>' . htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                     . ' — ' . $pct . '%</li>';
             }
             $parts[] = '</ul>';
+            // Where the item stands, and its spread on a numeric scale (SCO-5).
+            $consensus = $this->itemConsensus($form, $field, $rows);
+            $line = [];
+            if ($consensus['status'] === self::CONSENSUS_IN) {
+                $line[] = Yii::t('ThiscoveryFormsModule.base', 'Consensus reached (agree).');
+            } elseif ($consensus['status'] === self::CONSENSUS_OUT) {
+                $line[] = Yii::t('ThiscoveryFormsModule.base', 'Consensus reached (disagree).');
+            } else {
+                $line[] = Yii::t('ThiscoveryFormsModule.base', 'No consensus yet.');
+            }
+            if ($consensus['median'] !== null) {
+                $line[] = Yii::t('ThiscoveryFormsModule.base', 'Median {m}, interquartile range {iqr}.', [
+                    'm' => rtrim(rtrim(number_format((float)$consensus['median'], 2, '.', ''), '0'), '.'),
+                    'iqr' => rtrim(rtrim(number_format((float)$consensus['iqr'], 2, '.', ''), '0'), '.'),
+                ]);
+            }
+            $parts[] = '<p>' . htmlspecialchars(implode(' ', $line), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
 
             if ($justifications) {
                 $parts[] = '<p><strong>' . htmlspecialchars(
@@ -188,6 +244,12 @@ class RoundService
                     $parts[] = '<li>' . htmlspecialchars($just, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</li>';
                 }
                 $parts[] = '</ul>';
+                if ($justTotal > count($justifications)) {
+                    $parts[] = '<p class="text-muted">' . htmlspecialchars(Yii::t('ThiscoveryFormsModule.base', 'Showing {shown} of {total} comments.', [
+                        'shown' => count($justifications),
+                        'total' => $justTotal,
+                    ]), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
+                }
             }
         }
 
@@ -203,11 +265,44 @@ class RoundService
     }
 
     /**
+     * Whole percentages that sum to exactly 100 (largest remainder method), in the order given.
+     *
+     * @param array<string,float> $counts
+     * @return array<string,int>
+     */
+    public static function percentages(array $counts, float $total): array
+    {
+        if ($total <= 0 || $counts === []) {
+            return [];
+        }
+        $floors = [];
+        $remainders = [];
+        foreach ($counts as $key => $w) {
+            $exact = $w / $total * 100;
+            $floors[$key] = (int)floor($exact);
+            $remainders[$key] = $exact - floor($exact);
+        }
+        $left = 100 - array_sum($floors);
+        arsort($remainders);
+        foreach (array_keys($remainders) as $key) {
+            if ($left <= 0) {
+                break;
+            }
+            $floors[$key]++;
+            $left--;
+        }
+        $out = [];
+        foreach (array_keys($counts) as $key) {
+            $out[$key] = $floors[$key];
+        }
+        return $out;
+    }
+
+    /**
      * @return int[]
      */
     public function computeFrozenFieldIds(CustomForm $form, FormRound $round): array
     {
-        $threshold = $form->getConsensusThreshold();
         $frozen = [];
         foreach ($form->getAllFields()->all() as $field) {
             if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING], true)) {
@@ -223,49 +318,125 @@ class RoundService
                     'a.status' => FormAnswer::STATUS_COMPLETE,
                     'a.is_test' => 0,
                     'af.field_id' => $field->id,
-                ])
-                ->all();
-            $bands = $form->getConsensusBands();
-            $excluded = array_fill_keys($bands['exclude'], true);
-            $counts = [];
-            $total = 0.0;
-            foreach ($rows as $row) {
-                $val = (string)$row['value'];
-                if ($val === '' || isset($excluded[$val])) {
-                    continue;
-                }
-                $w = ($row['weight'] === null || $row['weight'] === '') ? 1.0 : (float)$row['weight'];
-                $counts[$val] = ($counts[$val] ?? 0) + $w;
-                $total += $w;
-            }
-            if ($total <= 0) {
-                continue;
-            }
-            if ($bands['agree_from'] !== null && $bands['agree_to'] !== null) {
-                $agree = 0.0;
-                $disagree = 0.0;
-                foreach ($counts as $val => $weight) {
-                    if ($this->inConsensusBand((string)$val, $bands['agree_from'], $bands['agree_to'])) {
-                        $agree += $weight;
-                    }
-                    if ($bands['disagree_from'] !== null && $bands['disagree_to'] !== null
-                        && $this->inConsensusBand((string)$val, $bands['disagree_from'], $bands['disagree_to'])) {
-                        $disagree += $weight;
-                    }
-                }
-                $agreeShare = ($agree / $total) * 100;
-                $disagreeShare = ($disagree / $total) * 100;
-                if ($agreeShare >= $threshold && $disagreeShare < $threshold) {
-                    $frozen[] = (int)$field->id;
-                }
-                continue;
-            }
-            $max = max($counts);
-            if (($max / $total) * 100 >= $threshold) {
+                ]);
+            // Integrity-excluded, screened-out and over-quota answers do not count (SCO-7, V3-35).
+            \humhub\modules\thiscoveryForms\models\FormIntegrityMeta::scopeIncludedInAnalysis($rows);
+            $rows = $rows->all();
+            $result = $this->itemConsensus($form, $field, $rows);
+            // Only agreement freezes an item; consensus out is reported in the summary, so a
+            // majority disagreeing is never mistaken for agreement (SCO-5).
+            if ($result['status'] === self::CONSENSUS_IN) {
                 $frozen[] = (int)$field->id;
             }
         }
         return $frozen;
+    }
+
+    public const CONSENSUS_IN = 'in';
+    public const CONSENSUS_OUT = 'out';
+    public const CONSENSUS_NONE = 'none';
+
+    /**
+     * One item's consensus (SCO-5). The question's own bands and excluded codes, or the
+     * form's. With an agree band: consensus in when the agree share reaches the threshold
+     * (and the disagree share does not), consensus out when the disagree share does. An
+     * optional IQR limit must also hold for consensus in. With no bands, the most common
+     * answer reaching the threshold counts as in. "Unable to score" codes are left out of
+     * the denominator. Median and IQR are given for numeric scales.
+     *
+     * @param array<int,array{value:mixed,weight:mixed}> $rows
+     * @return array{status:string,agree:?float,disagree:?float,top:?float,median:?float,iqr:?float,n:float}
+     */
+    public function itemConsensus(CustomForm $form, FormField $field, array $rows): array
+    {
+        $threshold = $form->getConsensusThreshold();
+        $bands = $field->getConsensusOverride() ?? array_merge($form->getConsensusBands(), ['iqr_max' => null]);
+        if ($bands['agree_from'] === null && $bands['disagree_from'] === null) {
+            // A question that only sets excluded codes or an IQR limit keeps the form's bands.
+            $formBands = $form->getConsensusBands();
+            foreach (['agree_from', 'agree_to', 'disagree_from', 'disagree_to'] as $key) {
+                $bands[$key] = $formBands[$key];
+            }
+            if (!$bands['exclude']) {
+                $bands['exclude'] = $formBands['exclude'];
+            }
+        }
+        $excluded = array_fill_keys(array_map('strval', $bands['exclude']), true);
+        $counts = [];
+        $numeric = [];
+        $total = 0.0;
+        foreach ($rows as $row) {
+            $val = (string)($row['value'] ?? '');
+            if ($val === '' || isset($excluded[$val])) {
+                continue;
+            }
+            $w = (($row['weight'] ?? null) === null || $row['weight'] === '') ? 1.0 : (float)$row['weight'];
+            $counts[$val] = ($counts[$val] ?? 0) + $w;
+            $total += $w;
+            if (is_numeric($val)) {
+                $numeric[] = [(float)$val, $w];
+            }
+        }
+        $out = ['status' => self::CONSENSUS_NONE, 'agree' => null, 'disagree' => null, 'top' => null, 'median' => null, 'iqr' => null, 'n' => $total];
+        if ($total <= 0) {
+            return $out;
+        }
+        if ($numeric && count($numeric) === count(array_filter($rows, static fn ($r) => (string)($r['value'] ?? '') !== '' && !isset($excluded[(string)$r['value']])))) {
+            $out['median'] = self::weightedQuantile($numeric, 0.5);
+            $out['iqr'] = round(self::weightedQuantile($numeric, 0.75) - self::weightedQuantile($numeric, 0.25), 4);
+        }
+        $out['top'] = round(max($counts) / $total * 100, 2);
+        if ($bands['agree_from'] !== null && $bands['agree_to'] !== null) {
+            $agree = 0.0;
+            $disagree = 0.0;
+            foreach ($counts as $val => $weight) {
+                if ($this->inConsensusBand((string)$val, $bands['agree_from'], $bands['agree_to'])) {
+                    $agree += $weight;
+                }
+                if ($bands['disagree_from'] !== null && $bands['disagree_to'] !== null
+                    && $this->inConsensusBand((string)$val, $bands['disagree_from'], $bands['disagree_to'])) {
+                    $disagree += $weight;
+                }
+            }
+            $out['agree'] = round($agree / $total * 100, 2);
+            $out['disagree'] = round($disagree / $total * 100, 2);
+            $iqrOk = $bands['iqr_max'] === null || ($out['iqr'] !== null && $out['iqr'] <= $bands['iqr_max']);
+            if ($out['agree'] >= $threshold && $out['disagree'] < $threshold && $iqrOk) {
+                $out['status'] = self::CONSENSUS_IN;
+            } elseif ($out['disagree'] >= $threshold) {
+                $out['status'] = self::CONSENSUS_OUT;
+            }
+            return $out;
+        }
+        $iqrOk = $bands['iqr_max'] === null || ($out['iqr'] !== null && $out['iqr'] <= $bands['iqr_max']);
+        if ($out['top'] >= $threshold && $iqrOk) {
+            $out['status'] = self::CONSENSUS_IN;
+        }
+        return $out;
+    }
+
+    /**
+     * Weighted quantile: the smallest value whose cumulative weight reaches q of the total.
+     *
+     * @param array<int,array{0:float,1:float}> $pairs value, weight
+     */
+    public static function weightedQuantile(array $pairs, float $q): float
+    {
+        usort($pairs, static fn ($a, $b) => $a[0] <=> $b[0]);
+        $total = array_sum(array_column($pairs, 1));
+        if ($total <= 0) {
+            return 0.0;
+        }
+        $target = $q * $total;
+        $cum = 0.0;
+        foreach ($pairs as $i => [$value, $weight]) {
+            $next = $cum + $weight;
+            if ($target <= $next) {
+                return (float)$value;
+            }
+            $cum = $next;
+        }
+        return (float)end($pairs)[0];
     }
 
     private function inConsensusBand(string $value, string $from, string $to): bool

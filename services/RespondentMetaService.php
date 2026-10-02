@@ -51,11 +51,18 @@ class RespondentMetaService
     /**
      * One stored value for a metadata field. Combined JSON is only for older fields with no key.
      */
-    public function valueFor(string $key, $posted, $request = null): string
+    public function valueFor(string $key, $posted, $request = null, ?\humhub\modules\thiscoveryForms\models\CustomForm $form = null): string
     {
         $key = self::normalizeKey($key);
         $overlay = $this->postedOverlay($posted, $key);
         $bundle = $this->capture($overlay, $request);
+        // GOV-8: the address is stored truncated (/24 or /48), and a fully anonymous form keeps
+        // neither the address nor the full browser string.
+        $bundle['ip'] = self::truncateIp((string)$bundle['ip']);
+        if ($form && $form->hidesIdentityFromManagers() && \humhub\modules\thiscoveryForms\Module::identityEnforced()) {
+            $bundle['ip'] = '';
+            $bundle['userAgent'] = '';
+        }
         if ($key === '') {
             return json_encode($bundle, JSON_UNESCAPED_UNICODE);
         }
@@ -144,6 +151,19 @@ class RespondentMetaService
             return [$key => $posted];
         }
         return [];
+    }
+
+    /** 203.0.113.42 -> 203.0.113.0; 2001:db8:1:2::9 -> 2001:db8:1:: (a /48). */
+    public static function truncateIp(string $ip): string
+    {
+        $packed = @inet_pton($ip);
+        if ($packed === false) {
+            return '';
+        }
+        if (strlen($packed) === 4) {
+            return (string)inet_ntop(substr($packed, 0, 3) . "\0");
+        }
+        return (string)inet_ntop(substr($packed, 0, 6) . str_repeat("\0", 10));
     }
 
     /**

@@ -56,6 +56,12 @@ $check((float)$answer->weight === 0.0, 'anonymous completion did not keep the me
 
 $answer->delete();
 
+// SCO-6: adding an existing member again (studio add, people picker) without a weight keeps it.
+$readded = $svc->addEmailMember($panel, 'hb8-zero@example.test');
+$check((float)$readded->weight === 0.0, 'adding an existing member again reset the weight to ' . $readded->weight);
+$fresh = $svc->addEmailMember($panel, 'hb8-new-' . bin2hex(random_bytes(3)) . '@example.test');
+$check((float)$fresh->weight === 1.0, 'a new member did not start at weight 1');
+
 if ($failures) {
     echo 'FAILED ' . count($failures) . "\n";
     exit(1);

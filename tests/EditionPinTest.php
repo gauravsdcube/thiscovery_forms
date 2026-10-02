@@ -60,6 +60,17 @@ $versions->applyFillDefinition($missing, $ghost, false);
 $check(!empty($missing->editionLoadFailed), 'a missing edition was treated as available');
 $check($missing->fields === [] || count($missing->fields) === 0, 'a missing edition still showed the draft');
 
+// DAT-8: an unpublished question and a draft relabel do not reach the export while every
+// response was filled against a published edition.
+$draftOnly = ReviewLib::field($form, FormField::TYPE_TEXT, 'Draft only question', ['variable' => 'dat_draft_only', 'required' => 0]);
+$old->label = 'Draft relabel not published';
+$old->save(false);
+$draftCsv = (new ExportService())->toCsv(ReviewLib::reload($form));
+$check(!str_contains($draftCsv, 'Draft only question'), 'an unpublished question became an export column');
+$check(!str_contains($draftCsv, 'Draft relabel not published'), 'a draft relabel reached the export');
+$check(str_contains($draftCsv, 'Old question renamed'), 'the export does not use the newest published label');
+$draftOnly->delete();
+
 $old->softDelete();
 $csv = (new ExportService())->toCsv(ReviewLib::reload($form));
 $check(str_contains($csv, 'Edition ID'), 'the export has no edition column');

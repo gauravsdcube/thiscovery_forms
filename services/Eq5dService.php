@@ -37,7 +37,7 @@ class Eq5dService
     {
         $digits = '';
         foreach ($this->dimensionFields($form) as $field) {
-            $digits .= (string)$this->dimensionLevel($field, $values[$field->id] ?? null);
+            $digits .= $field ? (string)$this->dimensionLevel($field, $values[$field->id] ?? null) : (string)self::MISSING_DIMENSION;
         }
         if (strlen($digits) < 5) {
             $digits = str_pad($digits, 5, (string)self::MISSING_DIMENSION);
@@ -48,7 +48,9 @@ class Eq5dService
         if ($vasField) {
             $raw = $values[$vasField->id] ?? '';
             if ($raw !== '' && $raw !== null && is_numeric($raw)) {
-                $vas = (int)$raw;
+                // 0-100 only, rounded rather than truncated (72.6 is 73) (SCO-23).
+                $number = (float)$raw;
+                $vas = ($number >= 0 && $number <= 100) ? (int)round($number) : self::MISSING_VAS;
             }
         }
 
@@ -59,12 +61,16 @@ class Eq5dService
     }
 
     /**
-     * @return FormField[]
+     * The five dimensions in order. Once any dimension is tagged, untagged questions are never
+     * borrowed: a dimension without a tagged question is null and scores as missing (V3-42).
+     * A form with no tags is not guessed at either: scoring the first five radio questions
+     * gave wrong profiles (SCO-11). Publishing an EQ-5D form needs all five tagged.
+     *
+     * @return array<int, FormField|null>
      */
     public function dimensionFields(CustomForm $form): array
     {
         $byRole = [];
-        $radios = [];
         foreach ($form->getAllFields()->all() as $field) {
             if ($field->type !== FormField::TYPE_RADIO || !$field->collectsAnswer()) {
                 continue;
@@ -72,18 +78,25 @@ class Eq5dService
             $role = $field->getInstrumentRole();
             if (in_array($role, self::dimensionRoles(), true)) {
                 $byRole[$role] = $field;
-            } else {
-                $radios[] = $field;
             }
         }
-        if (count($byRole) === 5) {
-            $ordered = [];
-            foreach (self::dimensionRoles() as $role) {
-                $ordered[] = $byRole[$role];
-            }
-            return $ordered;
+        $ordered = [];
+        foreach (self::dimensionRoles() as $role) {
+            $ordered[] = $byRole[$role] ?? null;
         }
-        return array_slice($radios, 0, 5);
+        return $ordered;
+    }
+
+    /** @return string[] why an EQ-5D form cannot be published */
+    public function authoringErrors(CustomForm $form): array
+    {
+        if (!$form->isEq5d()) {
+            return [];
+        }
+        $missing = count(array_filter($this->dimensionFields($form), static fn ($f) => $f === null));
+        return $missing > 0
+            ? [\Yii::t('ThiscoveryFormsModule.base', 'EQ-5D needs a question tagged for each of the five dimensions; {n} are not tagged.', ['n' => $missing])]
+            : [];
     }
 
     public function vasField(CustomForm $form): ?FormField

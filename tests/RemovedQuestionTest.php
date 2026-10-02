@@ -1,7 +1,8 @@
 <?php
 /**
- * NEW-11. A removed question with no answers is deleted. One that has answers
- * stays removed, keeps its original removal time, and is labelled as removed.
+ * NEW-11 / V3-36. On a form that was never published, a removed question with no answers is
+ * deleted. Once an edition is published, a removed question is kept as removed (the edition may
+ * still show it), keeps its original removal time, and is labelled as removed.
  */
 require __DIR__ . '/support/bootstrap.php';
 
@@ -63,8 +64,23 @@ $saved = $form->saveFieldsFromPost([
 if (!$saved) {
     $failures[] = 'save failed';
 }
-if (FormField::findOne((int)$empty->id)) {
-    $failures[] = 'answer-less question was kept';
+$emptyAfter = FormField::findOne((int)$empty->id);
+if (!$emptyAfter || !$emptyAfter->isRemoved()) {
+    $failures[] = 'a question of a published form was hard-deleted (V3-36)';
+}
+
+// A form that has never been published deletes an answer-less question outright.
+$draft = ReviewLib::form(review_space(), 'EV R11 draft only', ['allow_anonymous' => 1]);
+ReviewLib::clearFields($draft);
+$draftKeep = ReviewLib::field($draft, FormField::TYPE_TEXT, 'Keep', ['variable' => 'r11d_keep', 'sort_order' => 0]);
+$draftGone = ReviewLib::field($draft, FormField::TYPE_TEXT, 'Gone', ['variable' => 'r11d_gone', 'sort_order' => 1]);
+$draft = ReviewLib::reload($draft);
+$draft->current_edition_id = null;
+$draft->saveFieldsFromPost([
+    (int)$draftKeep->id => ['id' => (int)$draftKeep->id, 'type' => FormField::TYPE_TEXT, 'label' => 'Keep', 'variable' => 'r11d_keep', 'sort_order' => 0],
+]);
+if (FormField::findOne((int)$draftGone->id)) {
+    $failures[] = 'an answer-less question of a never-published form was kept';
 }
 $kept->refresh();
 if (!$kept->isRemoved()) {

@@ -122,7 +122,9 @@ class RandomisationEngine
         if (!$unit) {
             return [];
         }
+        // Whole multiples of the weighted unit only, so every block keeps the ratio (V3-48).
         $blockSize = max(count($unit), $blockSize);
+        $blockSize = (int)(ceil($blockSize / count($unit)) * count($unit));
         $slots = [];
         while (count($slots) < $blockSize) {
             foreach ($unit as $code) {
@@ -151,6 +153,24 @@ class RandomisationEngine
      * @param array<string, int> $counts code => assigned
      * @param string[] $eligible
      */
+    /**
+     * Least-filled with a random element: 80% of the time the least-filled arm (ties at
+     * random), otherwise a weighted draw over all arms. Balance is kept, but the next arm
+     * cannot be worked out from the counts (allocation concealment, V3-48).
+     *
+     * @param array<string,int> $counts
+     * @param array<int, array{code:string,weight:int}> $arms
+     * @param string[] $eligible
+     */
+    public function minimise(array $counts, array $arms, array $eligible, int $seed): string
+    {
+        $next = $this->stream($seed);
+        if ($next(100) < 80) {
+            return $this->leastFilled($counts, $eligible, $seed ^ 0x5A5A5A5A);
+        }
+        return $this->weightedPick($arms, $seed ^ 0x3C3C3C3C);
+    }
+
     public function leastFilled(array $counts, array $eligible, int $seed): string
     {
         $eligible = array_values(array_unique(array_map('strval', $eligible)));

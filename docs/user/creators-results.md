@@ -76,3 +76,13 @@ The form author and managers can be notified when someone submits. Check that si
 - [Response integrity](creators-response-integrity.md)
 - [Import questions from CSV](creators-csv-import.md)
 - [Form types](creators-form-types.md)
+
+## Notes for analysts
+
+- **Time stamps** in the answers CSV (submitted, updated) are ISO 8601 in the form's time zone (Settings), with the offset, for example `2026-10-01T14:03:00+01:00`.
+- **Choice percentages** on the dashboard use people who answered as the base. On multiple-choice questions they can add up to more than 100%.
+- **Delphi round summaries** show whole percentages that add up to 100.
+- **Number questions** show n, mean, median, quartiles and range on the dashboard.
+- **Response rates** for waves use the members invited to that wave. Drop-off follows the same people from one wave to the next.
+- **EQ-5D:** the export gives the five-digit profile (`9` marks a missing dimension) and the VAS (0–100, rounded; `999` if missing). No EQ-5D index (utility) value is calculated, because value sets are country-specific and licensed. Apply the value set for your country in your analysis software.
+- **Excluded responses** are left out of exports unless you choose to include them. The integrity status columns show quarantined responses.

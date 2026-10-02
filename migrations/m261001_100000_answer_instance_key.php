@@ -25,6 +25,15 @@ class m261001_100000_answer_instance_key extends Migration
         $this->db->schema->refresh();
         $answerField = $this->db->schema->getTableSchema('{{%custom_form_answer_field}}', true);
         if ($answerField && isset($answerField->columns['instance_key'])) {
+            // The new unique key exists before the old one goes, so there is never a moment with
+            // no uniqueness on (answer, question) (V3-53). While instance_key is still blank
+            // everywhere, the new key is at least as strict as the old one.
+            $existing = $this->db->createCommand('SHOW INDEX FROM ' . $table . ' WHERE Key_name = :name', [
+                ':name' => 'idx_cfaf_answer_field_instance',
+            ])->queryAll();
+            if ($existing === []) {
+                $this->createIndex('idx_cfaf_answer_field_instance', '{{%custom_form_answer_field}}', ['answer_id', 'field_id', 'instance_key'], true);
+            }
             $legacy = $this->db->createCommand(
                 'SHOW INDEX FROM ' . $table . ' WHERE Key_name = ' . $this->db->quoteValue('idx_cfaf_answer_field')
             )->queryAll();
@@ -32,12 +41,6 @@ class m261001_100000_answer_instance_key extends Migration
                 $this->execute('ALTER TABLE ' . $table . ' DROP INDEX idx_cfaf_answer_field');
             }
             $this->db->schema->refresh();
-            $existing = $this->db->createCommand('SHOW INDEX FROM ' . $table . ' WHERE Key_name = :name', [
-                ':name' => 'idx_cfaf_answer_field_instance',
-            ])->queryAll();
-            if ($existing === []) {
-                $this->createIndex('idx_cfaf_answer_field_instance', '{{%custom_form_answer_field}}', ['answer_id', 'field_id', 'instance_key'], true);
-            }
         }
         $answer = $this->db->schema->getTableSchema('{{%custom_form_answer}}', true);
         if ($answer && !isset($answer->columns['current_instance_key'])) {

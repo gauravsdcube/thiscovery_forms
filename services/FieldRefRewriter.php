@@ -61,11 +61,36 @@ class FieldRefRewriter
         if ($nextHelp !== $help) {
             $field->help_text = $nextHelp;
         }
-        foreach (['options_json', 'logic_json'] as $column) {
+        // Piped labels ({{answer:12}}) point at the copy too (V3-52).
+        $label = (string)$field->label;
+        $nextLabel = self::text($label, $idMap);
+        if ($nextLabel !== $label) {
+            $field->label = $nextLabel;
+        }
+        foreach (['options_json', 'logic_json', 'actions_json', 'validation_json'] as $column) {
+            if (!$field->hasAttribute($column)) {
+                continue;
+            }
             $raw = (string)$field->$column;
             $next = self::text($raw, $idMap);
             if ($next !== $raw) {
                 $field->$column = $next;
+            }
+        }
+        // A loop's source or name question given by id must point at the copy (V3-46).
+        $options = json_decode((string)$field->options_json, true);
+        if (is_array($options) && is_array($options['loop'] ?? null)) {
+            $changed = false;
+            foreach (['field_key', 'label_field'] as $key) {
+                $value = trim((string)($options['loop'][$key] ?? ''));
+                $id = ctype_digit($value) ? (int)$value : (preg_match('/^id(\d+)$/', $value, $m) ? (int)$m[1] : 0);
+                if ($id > 0 && isset($idMap[$id])) {
+                    $options['loop'][$key] = (string)$idMap[$id];
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $field->options_json = json_encode($options, JSON_UNESCAPED_UNICODE);
             }
         }
     }

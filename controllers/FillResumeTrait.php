@@ -28,6 +28,22 @@ use yii\web\UploadedFile;
  */
 trait FillResumeTrait
 {
+    /**
+     * Shown after a page-exit quota ended or redirected the response (V3-47). It only renders
+     * the messages the quota left in this session; there is nothing to fill.
+     */
+    public function actionQuotaClosed($id)
+    {
+        $form = $this->findForm($id);
+        $this->applyFillLayout($form);
+        return $this->render('thankyou', [
+            'formModel' => $form,
+            'contentContainer' => $this->contentContainer ?? null,
+            'answer' => null,
+            'isPreview' => $this->isPreviewMode($form),
+        ]);
+    }
+
     protected function resumeService(): ResumeService
     {
         return new ResumeService();
@@ -368,7 +384,7 @@ trait FillResumeTrait
             }
             $code = (string)(Yii::$app->request->post('resume_code')
                 ?: Yii::$app->request->get('resume', ''));
-            if ($code !== '' && $this->resumeService()->normalizeCode($code) === $existing->resume_code) {
+            if ($code !== '' && $this->resumeService()->matches($existing, $code)) {
                 return true;
             }
             $user = Yii::$app->user->getIdentity();
@@ -536,8 +552,13 @@ trait FillResumeTrait
             Yii::$app->response->format = Response::FORMAT_JSON;
             return [
                 'success' => true,
-                'resume_code' => (string)$answer->resume_code,
+                'resume_code' => \humhub\modules\thiscoveryForms\services\ResumeService::plainFor($answer),
                 'quota_message' => (string)$submit->quotaMessage,
+                // A page-exit quota acts, not just notes (V3-47): end/redirect closes the response
+                // and the page moves to the closing page; goto moves to the quota's page.
+                'quota_halt' => (string)$submit->quotaHalt,
+                'quota_page' => $submit->quotaHalt === 'goto' ? (int)$submit->quotaPage : null,
+                'quota_closed_url' => in_array((string)$submit->quotaHalt, ['end', 'redirect'], true) ? Url::toQuotaClosed($form) : '',
                 'roster_changed' => (bool)$submit->rosterChanged,
                 'roster_key' => (string)$submit->rosterKey,
             ];
@@ -599,7 +620,7 @@ trait FillResumeTrait
             return $this->redirect(Url::toView($form));
         }
 
-        if (!$this->resumeService()->sendResumeEmail($form, $answer, $email)) {
+        if (!$this->resumeService()->sendResumeEmail($form, $answer, $email, $code)) {
             Yii::$app->session->setFlash('error', Yii::t(
                 'ThiscoveryFormsModule.base',
                 'Could not send the email. Check the address and try again.'
@@ -612,7 +633,7 @@ trait FillResumeTrait
             ));
         }
 
-        return $this->redirect(Url::toResume($form, $answer->resume_code));
+        return $this->redirect(Url::toResume($form, $this->resumeService()->normalizeCode($code)));
     }
 
     /**
@@ -634,7 +655,7 @@ trait FillResumeTrait
             return $this->redirect(Url::toView($form));
         }
 
-        return $this->redirect(Url::toResume($form, $answer->resume_code));
+        return $this->redirect(Url::toResume($form, $this->resumeService()->normalizeCode($code)));
     }
 
     /**
@@ -655,7 +676,8 @@ trait FillResumeTrait
 
         return [
             'fillContext' => $ctx,
-            'panelToken' => $ctx->tokenAccess ? ($ctx->member->token ?? $token) : $token,
+            // The signed link token the page came with; the stored token never reaches the page (SEC-16).
+            'panelToken' => $token,
             'ownDraft' => $ownDraft,
             'startNew' => $this->isStartNewRequest(),
             'isPreview' => $this->isPreviewMode($form),
@@ -722,6 +744,9 @@ trait FillResumeTrait
 
     protected function runSubmitActions(CustomForm $form, FillContext $ctx, FormAnswer $answer): void
     {
+        if (!$this->isPreviewMode($form)) {
+            (new \humhub\modules\thiscoveryForms\services\FormActionService())->sendDeferred($form, $answer, $this->postedActionVars($form, $answer), $ctx->member);
+        }
         $actions = $form->submit_actions ?: $form->getSetting('submit_actions', []);
         if (!$actions) {
             return;
@@ -749,6 +774,23 @@ trait FillResumeTrait
         $trigger = (string)Yii::$app->request->post('trigger', '');
         $fieldId = (int)Yii::$app->request->post('field_id', 0);
         $ip = (string)(Yii::$app->request->userIP ?? '');
+        $source = null;
+        if ($fieldId) {
+            foreach ($form->fields as $candidate) {
+                if ((int)$candidate->id === $fieldId) {
+                    $source = $candidate;
+                    break;
+                }
+            }
+        }
+        $actions = [];
+        if (\humhub\modules\thiscoveryForms\services\FormActionService::acceptsRunTrigger($trigger) && $source) {
+            $actions = $source->getActions();
+        }
+        // Nothing to run: answer at once, without a draft or a place in the rate limit (V3-40).
+        if (!is_array($actions) || $actions === []) {
+            return ['ok' => true, 'vars' => [], 'gotoPageKey' => '', 'gotoEnd' => false];
+        }
         if (\humhub\modules\thiscoveryForms\services\FormActionService::tooManyRuns((int)$form->id, $ip)) {
             return ['ok' => false, 'error' => Yii::t('ThiscoveryFormsModule.base', 'Too many requests. Please wait and try again.')];
         }
@@ -767,20 +809,11 @@ trait FillResumeTrait
                 $this->rememberProgressDraft($form, $created);
             }
         }
-        $source = null;
-        if ($fieldId) {
-            foreach ($form->fields as $candidate) {
-                if ((int)$candidate->id === $fieldId) {
-                    $source = $candidate;
-                    break;
-                }
-            }
-        }
-        $actions = [];
-        if (\humhub\modules\thiscoveryForms\services\FormActionService::acceptsRunTrigger($trigger) && $source) {
-            $actions = $source->getActions();
-        }
-        $result = (new \humhub\modules\thiscoveryForms\services\FormActionService())->run(
+        $runner = new \humhub\modules\thiscoveryForms\services\FormActionService();
+        // A guest could otherwise send a branded email to any address by leaving a page, without
+        // ever submitting; their page-exit emails wait for the submission (SEC-5).
+        $runner->deferEmails = Yii::$app->user->isGuest;
+        $result = $runner->run(
             $form,
             is_array($actions) ? $actions : [],
             $submit->values,
@@ -788,8 +821,10 @@ trait FillResumeTrait
             $answer instanceof FormAnswer ? $answer : null,
             $ctx->member,
             $source,
-            $this->isPreviewMode($form)
+            $this->isPreviewMode($form),
+            $trigger === 'page'
         );
+        \humhub\modules\thiscoveryForms\services\FormActionService::rememberDeferred((int)$form->id, $runner->deferred);
         return ['ok' => true] + $result;
     }
 
@@ -808,16 +843,35 @@ trait FillResumeTrait
         }
 
         $fieldId = (int)Yii::$app->request->post('field_id', Yii::$app->request->get('field_id', 0));
+        // The quota is per file question: a posted id that is not one on this form is refused,
+        // so it cannot be varied to get a fresh allowance (V3-50).
+        $fileField = null;
+        foreach ($form->fields as $candidate) {
+            if ((int)$candidate->id === $fieldId && $candidate->type === \humhub\modules\thiscoveryForms\models\FormField::TYPE_FILE) {
+                $fileField = $candidate;
+                break;
+            }
+        }
+        if (!$fileField) {
+            throw new ForbiddenHttpException();
+        }
         $guest = Yii::$app->user->isGuest;
         $ip = (string)(Yii::$app->request->userIP ?? '');
         $files = [];
+        $fileRules = $fileField->getFileRules();
         foreach (UploadedFile::getInstancesByName('files') as $uploaded) {
-            $reason = \humhub\modules\thiscoveryForms\services\UploadQuota::allows(
+            // Type and content first (SEC-13), then size and quota.
+            $reason = \humhub\modules\thiscoveryForms\services\UploadQuota::typeError(
+                (string)$uploaded->name,
+                (string)$uploaded->tempName,
+                $fileRules['types']
+            ) ?? \humhub\modules\thiscoveryForms\services\UploadQuota::allows(
                 (int)$form->id,
                 $fieldId,
                 (int)$uploaded->size,
                 $guest,
-                $ip
+                $ip,
+                $fileRules['maxMb'] !== null ? $fileRules['maxMb'] * 1048576 : null
             );
             if ($reason !== null) {
                 $files[] = [
@@ -917,6 +971,7 @@ trait FillResumeTrait
         if (!$form) {
             throw new NotFoundHttpException('Form not found.');
         }
+        CustomForm::assertNotTrashed($form);
 
         $this->assertFillAccess($form);
 
@@ -929,13 +984,7 @@ trait FillResumeTrait
             throw new ForbiddenHttpException('File does not belong to this form.');
         }
 
-        if (empty($file->object_model) || empty($file->object_id)) {
-            try {
-                $form->fileManager->attach($file->guid);
-            } catch (\Throwable $e) {
-                Yii::warning('Thiscovery Forms form-file attach failed: ' . $e->getMessage(), 'thiscovery-forms');
-            }
-        }
+        // A GET never changes anything: files are attached when the form is saved (SEC-15).
 
         $filePath = $file->store->get();
         if (!$filePath || !is_file($filePath)) {
@@ -944,9 +993,16 @@ trait FillResumeTrait
 
         $response = Yii::$app->response;
         $response->format = Response::FORMAT_RAW;
-        $response->headers->set('Content-Type', $file->mime_type ?: 'application/octet-stream');
-        $response->headers->set('Content-Disposition', 'inline; filename="' . rawurlencode($file->file_name) . '"');
-        $response->headers->set('Cache-Control', 'public, max-age=86400');
+        // Only images and PDF display inline; SVG, HTML and anything else download, so a file
+        // can never run script on this site. Private forms are not cached by shared caches (SEC-15).
+        $mime = strtolower((string)($file->mime_type ?: 'application/octet-stream'));
+        $inline = in_array($mime, ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'], true);
+        $response->headers->set('Content-Type', $inline ? $mime : 'application/octet-stream');
+        $response->headers->set('X-Content-Type-Options', 'nosniff');
+        $response->headers->set('Content-Security-Policy', "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; sandbox");
+        $response->headers->set('Content-Disposition', ($inline ? 'inline' : 'attachment') . '; filename="' . rawurlencode($file->file_name) . '"');
+        $public = $form->allowsAnonymous() && $form->isOpen() && !$form->hidesIdentityFromManagers();
+        $response->headers->set('Cache-Control', $public ? 'public, max-age=86400' : 'private, max-age=300');
         $response->stream = fopen($filePath, 'rb');
         return $response;
     }

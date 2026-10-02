@@ -221,6 +221,12 @@ class FormIntegrityMeta extends ActiveRecord
                 [$alias . '.id' => null],
                 ['<>', $alias . '.analysis_status', self::ANALYSIS_EXCLUDED],
             ]);
+        // Screened-out, over-quota and not-consented responses are not completed questionnaires,
+        // so they never feed charts, MaxDiff, Delphi consensus or counts (V3-35).
+        $answerAlias = strpos($answerIdColumn, '.') !== false ? substr($answerIdColumn, 0, strpos($answerIdColumn, '.')) : '';
+        if ($answerAlias !== '' && FormAnswer::getTableSchema()->getColumn('outcome') !== null) {
+            $query->andWhere([$answerAlias . '.outcome' => ['', FormAnswer::OUTCOME_COMPLETE]]);
+        }
     }
 
     public function getPageTimings(): array

@@ -157,6 +157,9 @@ $matrix = (new MatrixQuestionType('grid_multi', 'Grid'))->extractCells(['mood' =
 $keys = array_map(static fn(array $cell): string => (string)$cell['bucket_key'], $matrix);
 $check(in_array('mood|happy', $keys, true), 'grid key missing mood|happy: ' . implode(',', $keys));
 $check(!in_array('mood|0', $keys, true), 'grid key used the list index');
+$zero = (new MatrixQuestionType('grid_multi', 'Grid'))->extractCells(['pain' => ['0', '2']], []);
+$zeroKeys = array_map(static fn(array $cell): string => (string)$cell['bucket_key'], $zero);
+$check(in_array('pain|0', $zeroKeys, true) && in_array('pain|2', $zeroKeys, true), 'a grid column coded 0 was dropped: ' . implode(',', $zeroKeys));
 
 $gridForm = ReviewLib::form($space, 'EV high A11Y', ['allow_anonymous' => 0, 'allow_multiple' => 1]);
 ReviewLib::clearFields($gridForm);

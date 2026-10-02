@@ -24,6 +24,10 @@ class ChoiceOptions
                 return ['code' => $code, 'label' => $label];
             }
         }
+        // "1|Yes" without spaces: a short code with no spaces before the bar (SCO-22).
+        if (preg_match('/^([^\s|]{1,32})\|(\S.*)$/u', $line, $m)) {
+            return ['code' => $m[1], 'label' => trim($m[2])];
+        }
         return ['code' => $line, 'label' => $line];
     }
 
@@ -73,6 +77,19 @@ class ChoiceOptions
             $raw = $decoded;
         }
         $out = [];
+        $seen = [];
+        // Duplicate codes (an import with two "1" options) are kept apart as 1, 1-2 rather
+        // than merged into one option (SCO-22), as typed lists already are.
+        $unique = static function (array $pair) use (&$seen): array {
+            $base = $pair['code'];
+            $n = 2;
+            while (isset($seen[$pair['code']])) {
+                $pair['code'] = $base . '-' . $n;
+                $n++;
+            }
+            $seen[$pair['code']] = true;
+            return $pair;
+        };
         foreach ($raw as $item) {
             if (is_array($item)) {
                 $code = trim((string)($item['code'] ?? $item['value'] ?? ''));
@@ -87,14 +104,14 @@ class ChoiceOptions
                 if (isset($item['score']) && $item['score'] !== '' && $item['score'] !== null) {
                     $pair['score'] = (string)$item['score'];
                 }
-                $out[] = $pair;
+                $out[] = $unique($pair);
                 continue;
             }
             $pair = self::parseLine(trim((string)$item));
             if ($pair['code'] === '') {
                 continue;
             }
-            $out[] = $pair;
+            $out[] = $unique($pair);
         }
         return $out;
     }

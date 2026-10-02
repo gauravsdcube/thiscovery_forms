@@ -53,6 +53,19 @@ Lean HumHub module for creating forms at **space** and **network (global)** leve
 **Space:** Create forms, Manage forms, Answer forms, View form answers  
 **Global (Groups):** Create / Manage / Answer / View global forms
 
+## Tests
+
+- **Standalone** (no HumHub, no database): `php tests/standalone/run.php`. Covers the formula engine, with the same generated cases run in PHP and in Node to prove the browser and server agree, plus analytics, randomisation, resume and upload checks. Needs PHP 8.2 and Node 20.
+- **HumHub suite** (`tests/*Test.php`): runs against a HumHub install with this module in `protected/modules/thiscovery-forms`, and writes to that database, so it refuses to start unless `THISCOVERY_FORMS_TEST_DB=1`. On a fresh install, seed the test users and space once, then run everything:
+
+  ```
+  THISCOVERY_FORMS_TEST_DB=1 php protected/modules/thiscovery-forms/tests/support/seed.php
+  THISCOVERY_FORMS_TEST_DB=1 php protected/modules/thiscovery-forms/tests/run.php
+  ```
+
+  Mail tests read Mailpit on `127.0.0.1:8025`.
+- **CI**: `.github/workflows/ci.yml` runs lint, JavaScript syntax and the standalone suite on every push. The HumHub job also needs the sibling Thiscovery modules; it is described at the top of the workflow.
+
 ## License
 
 AGPL-3.0-or-later — see `COPYRIGHT`.

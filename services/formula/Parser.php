@@ -9,6 +9,15 @@ final class Parser
 {
     private const KEYWORDS = ['and', 'or', 'not', 'in', 'not_in', 'true', 'false', 'empty', 'date', 'datetime'];
 
+    /** Functions a formula may call. Anything else is an error, not a silent blank (V3-54). */
+    public const FUNCTIONS = [
+        'and', 'or', 'not', 'sum', 'mean', 'min', 'max', 'count', 'count_eq', 'count_answered', 'count_selected',
+        'round', 'floor', 'ceil', 'abs', 'sqrt', 'if', 'coalesce', 'ifempty', 'min_valid', 'concat', 'lower',
+        'upper', 'length', 'contains_text', 'today', 'date_diff', 'add_days', 'add_months', 'year', 'month',
+        'any_eq', 'all_eq', 'between', 'is_empty', 'is_answered', 'selected', 'selected_all', 'selected_only',
+        'code_of', 'score_of',
+    ];
+
     /** @var list<array{t:string,v:string,line:int,col:int}> */
     private array $tokens = [];
     private int $index = 0;
@@ -188,6 +197,9 @@ final class Parser
             if ($this->peek()['t'] !== '(') {
                 throw new FormulaException('Expected ( after ' . $token['v'] . '.', $token['line'], $token['col']);
             }
+            if (!in_array(strtolower($token['v']), self::FUNCTIONS, true)) {
+                throw new FormulaException('Unknown function ' . $token['v'] . '.', $token['line'], $token['col']);
+            }
             $this->index++;
             $args = [];
             if ($this->peek()['t'] !== ')') {
@@ -224,6 +236,11 @@ final class Parser
             throw new FormulaException('Expected ).', $token['line'], $token['col']);
         }
         $this->index++;
+        // A real calendar date: 2024-2-3 used to compare as text, and 2024-02-30 was accepted (V3-54).
+        $pattern = $kind === 'date' ? '/^(\d{4})-(\d{2})-(\d{2})$/' : '/^(\d{4})-(\d{2})-(\d{2})[T ]([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/';
+        if (!preg_match($pattern, (string)$arg['v'], $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+            throw new FormulaException($kind . ' expects a real date written YYYY-MM-DD' . ($kind === 'datetime' ? ' HH:MM' : '') . '.', $arg['line'], $arg['col']);
+        }
         return ['op' => 'lit', 'lit' => $kind, 'v' => $arg['v']];
     }
 
@@ -316,6 +333,14 @@ final class Parser
             if (ctype_space($ch)) {
                 $col++;
                 $i++;
+                continue;
+            }
+            $last = $tokens ? $tokens[count($tokens) - 1] : null;
+            if ($ch === '[' && $last && $last['t'] === 'ident' && in_array(strtolower($last['v']), ['in', 'not_in'], true)) {
+                // After in / not_in a bracket opens a list ([a] in [1, 2]), not a reference (V3-38).
+                $tokens[] = ['t' => '[', 'v' => '[', 'line' => $line, 'col' => $col];
+                $i++;
+                $col++;
                 continue;
             }
             if ($ch === '[') {

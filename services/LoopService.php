@@ -16,6 +16,11 @@ use Yii;
  */
 class LoopService
 {
+    /** Most repeats a loop may have (V3-55). */
+    public const MAX_REPEATS = 100;
+    /** A roster keeps at most this many removed rows per parent, beyond its maximum (V3-55). */
+    public const MAX_HIDDEN_ROWS = 50;
+
     /** @var array{label:string,index:int,count:int,key:string,parent?:array{label:string,index:int,count:int,key:string}}|null */
     public static $pipe = null;
 
@@ -30,10 +35,31 @@ class LoopService
         return in_array($value, ['1', 'true', 'on'], true);
     }
 
+    /** @var array<string,bool> schema checks, once per request (V3-20) */
+    private static array $schemaChecks = [];
+
+    /** For migrations and tests that change the schema mid-request. */
+    public static function resetSchemaChecks(): void
+    {
+        self::$schemaChecks = [];
+        self::$formulaLoopIds = [];
+    }
+
+    private static function hasColumn(string $table, string $column): bool
+    {
+        $key = $table . '.' . $column;
+        if (!array_key_exists($key, self::$schemaChecks)) {
+            // Refreshed once, then answered from memory: this ran for every field of every
+            // answer, reloading the schema each time (V3-20).
+            $schema = Yii::$app->db->schema->getTableSchema($table, true);
+            self::$schemaChecks[$key] = $schema !== null && isset($schema->columns[$column]);
+        }
+        return self::$schemaChecks[$key];
+    }
+
     public static function columnReady(): bool
     {
-        $schema = Yii::$app->db->schema->getTableSchema('{{%custom_form_answer_field}}', true);
-        return $schema && isset($schema->columns['instance_key']);
+        return self::hasColumn('{{%custom_form_answer_field}}', 'instance_key');
     }
 
     public function saveFormSettings(CustomForm $form, array $posted): void
@@ -74,8 +100,8 @@ class LoopService
         return [
             'source' => $source,
             'field_key' => trim((string)($loop['field_key'] ?? '')),
-            'max' => max(0, (int)($loop['max'] ?? 0)),
-            'min' => max(0, (int)($loop['min'] ?? 0)),
+            'max' => min(self::MAX_REPEATS, max(0, (int)($loop['max'] ?? 0))),
+            'min' => min(self::MAX_REPEATS, max(0, (int)($loop['min'] ?? 0))),
             'items' => $items,
             'randomise' => !empty($loop['randomise']),
             'show' => ($show === null || $show === '') ? null : max(0, (int)$show),
@@ -93,6 +119,31 @@ class LoopService
             return [];
         }
         $fields = $fields ?? array_values($form->fields);
+        return $this->loopFieldIdsOf($fields);
+    }
+
+    /** @var array<string, array<int, true>> */
+    private static array $loopIdCache = [];
+
+    /**
+     * @param FormField[] $fields
+     * @return array<int, true>
+     */
+    private function loopFieldIdsOf(array $fields): array
+    {
+        // Memoised on the structure (ids, types and group options), so edits within the
+        // request are still seen, but repeated calls per field and answer are free (V3-20).
+        $signature = '';
+        foreach ($fields as $field) {
+            if ($field instanceof FormField) {
+                $signature .= (int)$field->id . ':' . $field->type
+                    . ($field->type === FormField::TYPE_QUESTION_GROUP ? ':' . md5((string)$field->options_json) : '') . ',';
+            }
+        }
+        $signature = md5($signature);
+        if (isset(self::$loopIdCache[$signature])) {
+            return self::$loopIdCache[$signature];
+        }
         $ids = [];
         $stack = [];
         foreach ($fields as $field) {
@@ -111,7 +162,150 @@ class LoopService
                 $ids[(int)$field->id] = true;
             }
         }
-        return $ids;
+        return self::$loopIdCache[$signature] = $ids;
+    }
+
+    /** @var array<string,list<int>> loop member ids by form and structure, for formula contexts */
+    private static array $formulaLoopIds = [];
+
+    /**
+     * Loop member ids for a formula context (Context::fromValues reads `__loops`), found
+     * from the fields' form. Cached per request; empty when loops are off (V3-15).
+     *
+     * @param FormField[] $fields
+     * @return list<int>
+     */
+    public static function formulaLoopIds(array $fields): array
+    {
+        $first = null;
+        foreach ($fields as $field) {
+            if ($field instanceof FormField && (int)$field->form_id > 0) {
+                $first = $field;
+                break;
+            }
+        }
+        if (!$first) {
+            return [];
+        }
+        $formId = (int)$first->form_id;
+        // Keyed on the field structure too, so fields added within a request are seen.
+        $key = $formId . ':' . (Module::loopsEnabled() ? '1' : '0') . ':' . count($fields) . ':' . implode(',', array_map(
+            static fn($f) => $f instanceof FormField ? (int)$f->id : 0,
+            $fields
+        ));
+        if (!isset(self::$formulaLoopIds[$key])) {
+            $form = CustomForm::findOne($formId);
+            self::$formulaLoopIds[$key] = $form ? array_keys((new self())->loopFieldIds($form, $fields)) : [];
+        }
+        return self::$formulaLoopIds[$key];
+    }
+
+    /**
+     * The loop groups around each loop member (and each group inside a loop), outermost
+     * first: field id => group ids.
+     *
+     * @param FormField[] $fields
+     * @return array<int, list<int>>
+     */
+    public function loopScopes(array $fields): array
+    {
+        $out = [];
+        $stack = [];
+        foreach ($fields as $field) {
+            if (!$field instanceof FormField) {
+                continue;
+            }
+            $chain = array_values(array_filter($stack));
+            if ($field->type === FormField::TYPE_QUESTION_GROUP) {
+                // A group inside a loop is shown or hidden per repeat too.
+                if ($chain) {
+                    $out[(int)$field->id] = $chain;
+                }
+                $stack[] = $this->config($field) ? (int)$field->id : 0;
+                continue;
+            }
+            if ($field->type === FormField::TYPE_GROUP_END && $stack) {
+                array_pop($stack);
+                continue;
+            }
+            if ($chain && $field->collectsAnswer()) {
+                $out[(int)$field->id] = $chain;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * The answers as one repeat sees them (V3-18). Answers in the same loop (or an
+     * enclosing one) become that repeat's cell, so "If yes, when?" is judged per repeat;
+     * answers outside the loop, or in another loop, are left as they are.
+     *
+     * @param array<int|string,mixed> $values
+     * @param array<int, list<int>> $scopes from loopScopes()
+     * @return array<int|string,mixed>
+     */
+    public function scopedValues(array $values, array $scopes, int $targetId, string $path): array
+    {
+        $target = $scopes[$targetId] ?? [];
+        if ($target === [] || $path === '') {
+            return $values;
+        }
+        $segments = explode('/', $path);
+        foreach ($scopes as $fieldId => $chain) {
+            $depth = count($chain);
+            if ($depth > count($target) || array_slice($target, 0, $depth) !== $chain) {
+                continue;
+            }
+            if (!array_key_exists($fieldId, $values)) {
+                continue;
+            }
+            $key = implode('/', array_slice($segments, 0, $depth));
+            $raw = $values[$fieldId];
+            $values[$fieldId] = is_array($raw) && array_key_exists($key, $raw) ? $raw[$key] : null;
+        }
+        return $values;
+    }
+
+    /**
+     * Readable names for a loop question's repeats in one response ("Asthma", or
+     * "Alex — Asthma" when nested), instead of raw instance keys (V3-45).
+     *
+     * @return array<string,string> instance path => label
+     */
+    public function instanceLabels(FormAnswer $answer, FormField $target): array
+    {
+        $form = $answer->form;
+        if (!$form) {
+            return [];
+        }
+        $fields = array_values($form->fields);
+        $labels = [];
+        foreach ($this->columnPaths($fields, $target) as $column) {
+            $labels[(string)$column['code']] = (string)$column['label'];
+        }
+        $previous = RandomisationService::$current;
+        RandomisationService::$current = $answer;
+        try {
+            $map = $answer->getValuesMap();
+            foreach ($this->loopStack($fields, $target) as $group) {
+                $cfg = $this->config($group);
+                if (($cfg['source'] ?? '') !== 'roster') {
+                    continue;
+                }
+                foreach ($this->rosterInstanceKeys($answer, $group, true) as $key) {
+                    $name = $this->rosterName($group, $key, $map, $fields);
+                    if ($name !== '') {
+                        $labels[$key] = $name;
+                    }
+                }
+            }
+            foreach ($this->shownPaths($fields, $target, $map) as $path) {
+                $labels[(string)$path['code']] = $labels[(string)$path['code']] ?? (string)$path['label'];
+            }
+        } finally {
+            RandomisationService::$current = $previous;
+        }
+        return $labels;
     }
 
     public function isLoopField(CustomForm $form, FormField $field): bool
@@ -154,7 +348,7 @@ class LoopService
             if (!$source) {
                 return [];
             }
-            $raw = $this->sourceRaw($source, $values, $parentKey);
+            $raw = $this->sourceRaw($source, $values, $parentKey, $fields);
             if ($raw === null || $raw === '' || $raw === []) {
                 return [];
             }
@@ -177,7 +371,7 @@ class LoopService
             if (!$source || $cfg['max'] < 1) {
                 return [];
             }
-            $raw = $this->sourceRaw($source, $values, $parentKey);
+            $raw = $this->sourceRaw($source, $values, $parentKey, $fields);
             if ($raw === null || $raw === '' || !is_numeric($raw)) {
                 return [];
             }
@@ -286,10 +480,9 @@ class LoopService
                 }
             }
         }
-        if ($deepest > 1) {
-            foreach ($loopGroups as $group) {
-                $errors = array_merge($errors, $this->nestedCodeErrors($group, $fields));
-            }
+        // Repeat codes are checked on every loop, not only nested ones (V3-55).
+        foreach ($loopGroups as $group) {
+            $errors = array_merge($errors, $this->nestedCodeErrors($group, $fields));
         }
         return $errors;
     }
@@ -323,14 +516,21 @@ class LoopService
             }
         }
         $errors = [];
+        $seen = [];
         foreach ($codes as $code) {
-            if (str_contains($code, '/')) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}”, which cannot contain a slash.', [
+            if (isset($seen[strtolower($code)])) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}” twice.', ['label' => $label, 'code' => $code]);
+                continue;
+            }
+            $seen[strtolower($code)] = true;
+            if (preg_match('/[\/\[\]"]/', $code) || str_contains($code, '__')) {
+                // / nests repeats, [ ] and " address them in formulas, and __ joins export columns.
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}”, which cannot contain /, [, ], " or __.', [
                     'label' => $label,
                     'code' => $code,
                 ]);
-            } elseif (strlen($code) > 90) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}”, which is too long to nest.', [
+            } elseif (strlen($code) > 64) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses repeat code “{code}”, which is longer than 64 characters.', [
                     'label' => $label,
                     'code' => $code,
                 ]);
@@ -499,6 +699,8 @@ class LoopService
         if (!$source) {
             return [];
         }
+        // Every option gets a column. The maximum caps how many *selected* options repeat,
+        // so capping the columns at the first N *defined* options lost data (V3-19).
         $out = [];
         foreach ($source->getChoicePairs() as $pair) {
             $code = (string)$pair['code'];
@@ -506,9 +708,6 @@ class LoopService
                 continue;
             }
             $out[] = ['code' => $code, 'label' => (string)$pair['label']];
-            if ($cfg['max'] > 0 && count($out) >= $cfg['max']) {
-                break;
-            }
         }
         return $out;
     }
@@ -713,7 +912,12 @@ class LoopService
                 $parts[] = (string)$level['heading'];
                 continue;
             }
-            $parts[] = $level['label'] . ', ' . $level['index'] . ' of ' . $level['count'];
+            // Translatable as a whole, not stitched together from English pieces (V3-46).
+            $parts[] = Yii::t('ThiscoveryFormsModule.base', '{label}, {index} of {count}', [
+                'label' => $level['label'],
+                'index' => $level['index'],
+                'count' => $level['count'],
+            ]);
         }
         return implode(' — ', $parts);
     }
@@ -790,12 +994,15 @@ class LoopService
 
     /**
      * @param array<string,mixed> $values
+     * @param FormField[] $fields
      * @return mixed
      */
-    private function sourceRaw(FormField $source, array $values, string $parentKey)
+    private function sourceRaw(FormField $source, array $values, string $parentKey, array $fields)
     {
         $raw = $values[(int)$source->id] ?? $values[(string)$source->variable] ?? null;
-        if ($parentKey !== '' && is_array($raw) && !array_is_list($raw) && array_key_exists($parentKey, $raw)) {
+        // A source inside the parent loop is keyed by instance; key shape cannot tell (V3-15).
+        if ($parentKey !== '' && is_array($raw) && array_key_exists($parentKey, $raw)
+            && isset($this->loopFieldIdsOf($fields)[(int)$source->id])) {
             return $raw[$parentKey];
         }
         return $raw;
@@ -807,6 +1014,9 @@ class LoopService
      */
     private function splitPage(array $items): array
     {
+        // Only the outermost loop's own start and end rows are consumed. Every other group
+        // row is kept, so a nested loop still ends where it ends and a plain group keeps its
+        // wrapper. Dropping an inner end row put later questions inside the inner loop (V3-16).
         $chunks = [];
         $current = ['loop' => null, 'items' => []];
         $depth = 0;
@@ -814,7 +1024,7 @@ class LoopService
         foreach ($items as $field) {
             if ($field->type === FormField::TYPE_QUESTION_GROUP) {
                 $depth++;
-                if ($depth === 1 && $this->config($field)) {
+                if ($current['loop'] === null && $this->config($field)) {
                     if ($current['items']) {
                         $chunks[] = $current;
                     }
@@ -822,6 +1032,8 @@ class LoopService
                     $loopAt = $depth;
                     continue;
                 }
+                $current['items'][] = $field;
+                continue;
             }
             if ($field->type === FormField::TYPE_GROUP_END && $depth > 0) {
                 if ($current['loop'] && $depth === $loopAt) {
@@ -832,12 +1044,10 @@ class LoopService
                     continue;
                 }
                 $depth--;
+                $current['items'][] = $field;
+                continue;
             }
-            if ($field->type !== FormField::TYPE_QUESTION_GROUP || $current['loop']) {
-                if ($field->type !== FormField::TYPE_GROUP_END) {
-                    $current['items'][] = $field;
-                }
-            }
+            $current['items'][] = $field;
         }
         if ($current['items'] || $current['loop']) {
             $chunks[] = $current;
@@ -898,8 +1108,7 @@ class LoopService
 
     public static function rosterColumnReady(): bool
     {
-        $schema = Yii::$app->db->schema->getTableSchema('{{%custom_form_answer}}', true);
-        return $schema && isset($schema->columns['roster_json']);
+        return self::hasColumn('{{%custom_form_answer}}', 'roster_json');
     }
 
     /**
@@ -959,6 +1168,11 @@ class LoopService
             $shown = [];
         }
         if (count($shown) >= $cfg['max']) {
+            return null;
+        }
+        // Add/remove cycles no longer grow the stored row list without limit (V3-55).
+        $hidden = is_array($bucket['hidden'][$parentKey] ?? null) ? $bucket['hidden'][$parentKey] : [];
+        if (count($hidden) >= self::MAX_HIDDEN_ROWS) {
             return null;
         }
         $key = $this->freshRosterKey($bucket);
@@ -1139,8 +1353,8 @@ class LoopService
     private function rosterHeading(FormField $group, string $name, int $index, int $count): string
     {
         $label = trim((string)$group->label) ?: Yii::t('ThiscoveryFormsModule.base', 'Row');
-        $base = $label . ' ' . $index . ' of ' . $count;
-        return $name !== '' ? $base . ': ' . $name : $base;
+        $base = Yii::t('ThiscoveryFormsModule.base', '{label} {index} of {count}', ['label' => $label, 'index' => $index, 'count' => $count]);
+        return $name !== '' ? Yii::t('ThiscoveryFormsModule.base', '{heading}: {name}', ['heading' => $base, 'name' => $name]) : $base;
     }
 
     /**

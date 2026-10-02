@@ -42,6 +42,7 @@ class FormActionService
             'page_key' => '',
             'name' => '',
             'value' => '',
+            'condition' => '',
         ];
     }
 
@@ -70,7 +71,19 @@ class FormActionService
                 'page_key' => trim((string)($row['page_key'] ?? '')),
                 'name' => self::sanitizeName((string)($row['name'] ?? '')),
                 'value' => (string)($row['value'] ?? ''),
+                // Optional formula; the action only runs when it is true (LOG-11).
+                'condition' => trim((string)($row['condition'] ?? '')),
+                'when' => null,
             ];
+            if ($action['condition'] !== '') {
+                try {
+                    $action['when'] = (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($action['condition']);
+                } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
+                    // Refused at save (conditionErrors). A stored one that no longer parses
+                    // never runs, rather than running unconditionally.
+                    $action['when'] = false;
+                }
+            }
             if ($fn === self::FN_SEND_EMAIL && $action['template_id'] < 1) {
                 continue;
             }
@@ -143,6 +156,99 @@ class FormActionService
         return substr($name, 0, 64);
     }
 
+    /**
+     * Why a list of actions cannot be saved: a condition that is not a valid formula.
+     *
+     * @param mixed $list
+     * @return string[]
+     */
+    public static function conditionErrors($list): array
+    {
+        $errors = [];
+        foreach (is_array($list) ? $list : [] as $row) {
+            $condition = is_array($row) ? trim((string)($row['condition'] ?? '')) : '';
+            if ($condition === '') {
+                continue;
+            }
+            try {
+                (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($condition);
+            } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Action condition “{condition}”: {error}', [
+                    'condition' => $condition,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+        return $errors;
+    }
+
+    /**
+     * Whether an action's condition holds for these answers. No condition means always.
+     *
+     * @param array<int|string,mixed> $values
+     */
+    public static function conditionMet(CustomForm $form, array $action, array $values): bool
+    {
+        $when = $action['when'] ?? null;
+        if ($when === null) {
+            return true;
+        }
+        if (!is_array($when)) {
+            return false;
+        }
+        return (new LogicEngine())->rulesMet(['when' => $when], $values, $form->fields);
+    }
+
+    /** When true, email actions are collected in $deferred instead of sent. */
+    public bool $deferEmails = false;
+    /** @var array<int, array{action: array, field_id: int}> */
+    public array $deferred = [];
+
+    private static function deferredKey(int $formId): string
+    {
+        return 'cf-deferred-emails-' . $formId;
+    }
+
+    /** Keep a guest's page-exit emails until the response is submitted (SEC-5). */
+    public static function rememberDeferred(int $formId, array $deferred): void
+    {
+        if ($deferred === [] || !Yii::$app->has('session')) {
+            return;
+        }
+        $key = self::deferredKey($formId);
+        $all = Yii::$app->session->get($key, []);
+        foreach ($deferred as $row) {
+            // One entry per action and question: leaving a page twice queues it once.
+            $all[md5(json_encode($row['action']) . ':' . $row['field_id'])] = $row;
+        }
+        Yii::$app->session->set($key, array_slice($all, -50, null, true));
+    }
+
+    /**
+     * Send the emails a guest's pages queued, now that the response is complete. Each is
+     * checked again against the final answers, and the usual caps and duplicate log apply.
+     */
+    public function sendDeferred(CustomForm $form, FormAnswer $answer, array $vars = [], ?FormPanelMember $member = null): void
+    {
+        if (!Yii::$app->has('session')) {
+            return;
+        }
+        $key = self::deferredKey((int)$form->id);
+        $rows = Yii::$app->session->get($key, []);
+        Yii::$app->session->remove($key);
+        $values = $answer->getValuesMap();
+        foreach (is_array($rows) ? $rows : [] as $row) {
+            $source = null;
+            foreach ($form->fields as $field) {
+                if ((int)$field->id === (int)($row['field_id'] ?? 0)) {
+                    $source = $field;
+                    break;
+                }
+            }
+            $this->run($form, [$row['action'] ?? []], $values, $vars, $answer, $member, $source, false, true);
+        }
+    }
+
     public static function acceptsRunTrigger(string $trigger): bool
     {
         return in_array($trigger, ['field', 'page'], true);
@@ -183,6 +289,33 @@ class FormActionService
         ];
     }
 
+    /** The type a stored variable's value has: number, date or text. */
+    public static function leafType(string $value): string
+    {
+        if ($value !== '' && preg_match('/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/', $value)) {
+            return 'number';
+        }
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+            return 'date';
+        }
+        return 'text';
+    }
+
+    /**
+     * A template may be used only by forms in its own space, or anywhere when it is global
+     * (V3-50): a template id from another space is ignored.
+     */
+    public static function templateAllowed(CustomForm $form, FormEmailTemplate $template): bool
+    {
+        if ($template->contentcontainer_id === null || (int)$template->contentcontainer_id === 0) {
+            return true;
+        }
+        if ($form->isGlobal()) {
+            return false;
+        }
+        return (int)$template->contentcontainer_id === (int)($form->content->contentcontainer_id ?? 0);
+    }
+
     /**
      * @param array<string, mixed> $base
      * @param array<string, mixed> $posted
@@ -205,15 +338,74 @@ class FormActionService
         return $vars;
     }
 
+    /**
+     * Per browser session (the configured 60 per 10 minutes) and five times that per address,
+     * so people sharing a hospital NAT are not throttled; an IPv6 address counts by its /64,
+     * so rotating addresses within one connection does not reset it. Counted under a mutex
+     * so parallel calls cannot both read the same count (V3-40).
+     */
     public static function tooManyRuns(int $formId, string $ip, int $limit = 60, int $window = 600): bool
     {
-        $key = 'cf-run-actions-' . $formId . '-' . hash('sha256', $ip);
-        $count = (int)Yii::$app->cache->get($key);
-        if ($count >= $limit) {
-            return true;
+        $sessionId = Yii::$app->has('session') ? (string)Yii::$app->session->id : '';
+        $keys = ['cf-run-actions-ip-' . $formId . '-' . hash('sha256', self::networkOf($ip)) => $limit * 5];
+        if ($sessionId !== '') {
+            $keys['cf-run-actions-s-' . $formId . '-' . hash('sha256', $sessionId)] = $limit;
         }
-        Yii::$app->cache->set($key, $count + 1, $window);
-        return false;
+        return self::countAndCheck($keys, $window);
+    }
+
+    /**
+     * Action emails are capped per recipient (3 a day per form) and per network (20 an hour),
+     * so the form cannot be used to send mail to arbitrary addresses (V3-40, SEC-5).
+     */
+    public static function emailAllowed(int $formId, string $to, string $ip): bool
+    {
+        return !self::countAndCheck([
+            'cf-action-mail-to-' . $formId . '-' . hash('sha256', strtolower(trim($to))) => 3,
+        ], 86400) && !self::countAndCheck([
+            'cf-action-mail-ip-' . $formId . '-' . hash('sha256', self::networkOf($ip)) => 20,
+        ], 3600);
+    }
+
+    /** An IPv4 address, or the /64 prefix of an IPv6 one. */
+    public static function networkOf(string $ip): string
+    {
+        $packed = @inet_pton($ip);
+        if ($packed === false) {
+            return $ip;
+        }
+        if (strlen($packed) === 16) {
+            return bin2hex(substr($packed, 0, 8)) . '::/64';
+        }
+        return $ip;
+    }
+
+    /**
+     * Increment every counter; true when any is now over its limit.
+     *
+     * @param array<string,int> $limits cache key => limit
+     */
+    private static function countAndCheck(array $limits, int $window): bool
+    {
+        $mutex = Yii::$app->has('mutex') ? Yii::$app->mutex : null;
+        $lock = 'cf-rate-' . md5(implode('|', array_keys($limits)));
+        $locked = $mutex ? $mutex->acquire($lock, 2) : false;
+        try {
+            $over = false;
+            foreach ($limits as $key => $limit) {
+                $count = (int)Yii::$app->cache->get($key);
+                if ($count >= $limit) {
+                    $over = true;
+                    continue;
+                }
+                Yii::$app->cache->set($key, $count + 1, $window);
+            }
+            return $over;
+        } finally {
+            if ($locked) {
+                $mutex->release($lock);
+            }
+        }
     }
 
     /**
@@ -230,7 +422,8 @@ class FormActionService
         ?FormAnswer $answer = null,
         ?FormPanelMember $member = null,
         ?FormField $sourceField = null,
-        bool $preview = false
+        bool $preview = false,
+        bool $sideEffects = true
     ): array {
         $actions = self::normalizeList($actions);
         $functions = self::normalizeFunctions($form->custom_functions ?? $form->getSetting('custom_functions', []));
@@ -250,6 +443,9 @@ class FormActionService
 
         foreach ($actions as $action) {
             $fn = $action['fn'];
+            if (!self::conditionMet($form, $action, $values)) {
+                continue;
+            }
             if ($fn === self::FN_GOTO_PAGE) {
                 $gotoPageKey = $action['page_key'];
                 $gotoEnd = false;
@@ -270,14 +466,21 @@ class FormActionService
 
             if ($fn === self::FN_SET_VARIABLE || $fn === self::FN_CUSTOM) {
                 if ($name !== '') {
-                    $vars[$name] = $this->evaluateStoredValue($form, $values, $resolved);
+                    $vars[$name] = $this->evaluateStoredValue($form, $values, $resolved, $rawValue, $vars);
                     $written[$name] = $vars[$name];
                 }
                 continue;
             }
 
             if ($fn === self::FN_SEND_EMAIL) {
-                if ($preview) {
+                // Emails go at page exit and on submit, never while an answer is still being
+                // changed (LOG-11).
+                if ($preview || !$sideEffects) {
+                    continue;
+                }
+                if ($this->deferEmails) {
+                    // A guest's page-exit email waits for a real submission (SEC-5).
+                    $this->deferred[] = ['action' => $action, 'field_id' => $sourceField ? (int)$sourceField->id : 0];
                     continue;
                 }
                 $this->sendEmail($emails, $form, $action['template_id'], $values, $vars, $answer, $member, $sourceField);
@@ -337,7 +540,7 @@ class FormActionService
         ?FormField $sourceField
     ): void {
         $template = FormEmailTemplate::findOne($templateId);
-        if (!$template) {
+        if (!$template || !self::templateAllowed($form, $template)) {
             return;
         }
         $anonymous = EmailTemplateService::isAnonymousForm($form);
@@ -356,6 +559,10 @@ class FormActionService
         }
         $to = $emails->emailFromAnswer($form, $answer, $member, $values, false);
         if ($to === '') {
+            return;
+        }
+        if (!self::emailAllowed((int)$form->id, $to, (string)(Yii::$app->request->userIP ?? ''))) {
+            Yii::warning('Thiscovery Forms action email skipped: send limit reached for form #' . (int)$form->id, 'thiscovery-forms');
             return;
         }
         $extra = $vars;
@@ -384,10 +591,20 @@ class FormActionService
      *
      * @param array<int|string,mixed> $values
      */
-    private function evaluateStoredValue(CustomForm $form, array $values, string $resolved): string
+    private function evaluateStoredValue(CustomForm $form, array $values, string $resolved, string $raw = '', array $vars = []): string
     {
+        // Answers are referenced, not pasted into the formula text: {{answer:x}} becomes [x] and
+        // {{var:x}} becomes [var:x] before parsing, so a typed answer can never be read as
+        // formula syntax (V3-38). Text that is not a formula is stored as resolved.
+        $formula = $raw !== '' ? $raw : $resolved;
+        $formula = preg_replace('/\{\{\s*(?:answer|field):\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/', '[$1]', $formula) ?? $formula;
+        $formula = preg_replace('/\{\{\s*var:\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/', '[var:$1]', $formula) ?? $formula;
+        foreach ($vars as $key => $value) {
+            $values['var:' . $key] = $value;
+        }
         try {
-            $tree = (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($resolved);
+            $tree = (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($formula);
+            $values['__loops'] = array_keys((new LoopService())->loopFieldIds($form));
             $context = \humhub\modules\thiscoveryForms\services\formula\Context::fromValues($values, array_values($form->fields));
             $value = (new \humhub\modules\thiscoveryForms\services\formula\Evaluator($context))->evaluate($tree);
             if (!$value->isEmpty()) {
@@ -411,7 +628,8 @@ class FormActionService
         if ($schema && isset($schema->columns['variables_json'])) {
             foreach ($written as $name => $value) {
                 unset($plain[$name]);
-                $formula[$name] = ['t' => 'text', 'v' => (string)$value];
+                // Stored with its type (V3-54): it was always "text".
+                $formula[$name] = ['t' => self::leafType((string)$value), 'v' => (string)$value];
             }
         }
         $columns = ['updated_at'];

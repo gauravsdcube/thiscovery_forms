@@ -115,6 +115,27 @@ class FormSnapshotService
      */
     public function import(CustomForm $form, array $snapshot, bool $preserveStatus = true): bool
     {
+        // Restore is all or nothing: settings, questions, translations and stages (V3-37).
+        $tx = \Yii::$app->db->beginTransaction();
+        try {
+            $ok = $this->importUnsafe($form, $snapshot, $preserveStatus);
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            unset($form->fields);
+            throw $e;
+        }
+        if ($ok) {
+            $tx->commit();
+            return true;
+        }
+        $tx->rollBack();
+        $form->refresh();
+        unset($form->fields);
+        return false;
+    }
+
+    private function importUnsafe(CustomForm $form, array $snapshot, bool $preserveStatus): bool
+    {
         $meta = is_array($snapshot['meta'] ?? null) ? $snapshot['meta'] : [];
         $currentStatus = (int)$form->status;
 
@@ -190,14 +211,31 @@ class FormSnapshotService
             }
         }
 
+        $fields = $this->fieldsFromRows($form, is_array($snapshot['fields'] ?? null) ? $snapshot['fields'] : []);
+        $this->bindHydratedFieldsToLiveRows($form, $fields);
+        unset($form->fields);
+        $form->populateRelation('fields', $fields);
+        $form->syncSettingsAttributes();
+    }
+
+    /**
+     * Unsaved questions built from post rows, in posted order. The studio re-renders these
+     * when a save is refused, so the author keeps their changes (V3-37).
+     *
+     * @return FormField[]
+     */
+    public function fieldsFromRows(CustomForm $form, array $rows): array
+    {
         $fields = [];
-        foreach (($snapshot['fields'] ?? []) as $i => $row) {
-            if (!is_array($row)) {
+        $i = 0;
+        foreach ($rows as $row) {
+            if (!is_array($row) || trim((string)($row['type'] ?? '')) === '') {
                 continue;
             }
             $field = FormField::fromPostRow($row);
             $field->form_id = (int)$form->id;
-            $field->id = (int)($row['id'] ?? (1000000 + $i));
+            $rawId = $row['id'] ?? '';
+            $field->id = ($rawId !== '' && (int)$rawId > 0) ? (int)$rawId : (1000000 + $i);
             $field->sort_order = (int)($row['sort_order'] ?? ($i * 10));
             $formula = trim((string)($row['logic_formula'] ?? ''));
             $rules = is_array($row['logic_rules'] ?? null) ? $row['logic_rules'] : [];
@@ -212,11 +250,10 @@ class FormSnapshotService
                 ));
             }
             $fields[] = $field;
+            $i++;
         }
-        $this->bindHydratedFieldsToLiveRows($form, $fields);
-        unset($form->fields);
-        $form->populateRelation('fields', $fields);
-        $form->syncSettingsAttributes();
+        usort($fields, static fn(FormField $a, FormField $b): int => (int)$a->sort_order <=> (int)$b->sort_order);
+        return $fields;
     }
 
     /**
@@ -237,14 +274,12 @@ class FormSnapshotService
         $live = FormField::find()->where(['form_id' => (int)$form->id])->all();
         $byId = [];
         $byVar = [];
-        $byLabelType = [];
         foreach ($live as $row) {
             $byId[(int)$row->id] = $row;
             $var = strtolower(trim((string)$row->variable));
             if ($var !== '') {
                 $byVar[$var][] = $row;
             }
-            $byLabelType[mb_strtolower(trim((string)$row->label)) . "\0" . $row->type][] = $row;
         }
 
         $used = [];
@@ -267,12 +302,9 @@ class FormSnapshotService
                     $resolved = $pick($byVar[$var]);
                 }
             }
-            if (!$resolved) {
-                $labelKey = mb_strtolower(trim((string)$field->label)) . "\0" . $field->type;
-                if (!empty($byLabelType[$labelKey])) {
-                    $resolved = $pick($byLabelType[$labelKey]);
-                }
-            }
+            // No label-and-type fallback: two "Please specify" boxes would be bound to one row
+            // and their answers merged. Variable names are unique per form (DAT-10), so a
+            // variable match is safe; anything else is left unbound (DAT-4).
             if ($resolved) {
                 $newId = (int)$resolved->id;
                 if ($oldId) {

@@ -51,7 +51,7 @@ class GlobalController extends Controller
             ['login', 'actions' => [
                 'index', 'create', 'edit', 'edit-answer', 'answers',
                 'dashboard', 'overview', 'export', 'delete',
-                'integrity', 'integrity-status', 'integrity-note', 'access-tokens',
+                'integrity', 'integrity-status', 'integrity-note', 'access-tokens', 'arm-override',
                 'save-template', 'export-questions', 'import-questions', 'sample-questions',
                 'library-list', 'library-save', 'library-delete', 'library-insert',
                 'insert-health-status',
@@ -61,7 +61,7 @@ class GlobalController extends Controller
                 'translations-save', 'generate-translations', 'export-translations', 'import-translations',
                 'stage-save', 'stage-delete', 'stage-move',
                 'catalogue', 'project', 'answer-approve', 'answer-changes', 'answer-archive',
-                'answer-detail',
+                'answer-detail', 'answer-erase',
                 'folder-edit', 'folder-delete', 'move-form',
                 'panels', 'panel-edit', 'panel-view', 'panel-delete', 'panel-member',
                 'panel-member-add', 'panel-member-remove', 'panel-import', 'panel-sample',
@@ -70,6 +70,7 @@ class GlobalController extends Controller
                 'regenerate-preview', 'regenerate-dashboard-share',
                 'help', 'help-download',
                 'publish-version', 'restore-version', 'delete-revision', 'delete-edition',
+                'trash', 'restore-form', 'purge-form',
             ]],
         ];
     }
@@ -128,6 +129,7 @@ class GlobalController extends Controller
         $this->subLayout = '@humhub/modules/admin/views/layouts/main';
 
         $request = Yii::$app->request;
+        $unsavedFields = null;
 
         if ($request->isPost) {
             if (!$form->load($request->post())) {
@@ -146,7 +148,13 @@ class GlobalController extends Controller
                 if ($fieldRows === null) {
                     Yii::$app->session->setFlash('error', $fieldError);
                 } elseif (!$form->saveFieldsFromPost($fieldRows)) {
-                    Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'Form saved, but some fields could not be stored.'));
+                    // Nothing was written (V3-37). Show the reasons, and keep the author's edits on screen.
+                    Yii::$app->session->setFlash('error', $form->designRefusalMessage());
+                    try {
+                        $unsavedFields = (new \humhub\modules\thiscoveryForms\services\FormSnapshotService())->fieldsFromRows($form, $fieldRows);
+                    } catch (\Throwable $e) {
+                        $unsavedFields = null;
+                    }
                 } else {
                     $integrityPost = Yii::$app->request->post('integrity');
                     if (is_array($integrityPost)) {
@@ -187,7 +195,7 @@ class GlobalController extends Controller
             'formModel' => $form,
             'isNew' => $isNew,
             'contentContainer' => null,
-            'fields' => $isNew ? $seedFields : $form->fields,
+            'fields' => $unsavedFields ?? ($isNew ? $seedFields : $form->fields),
         ]);
     }
 
@@ -352,6 +360,7 @@ class GlobalController extends Controller
         $answer = $submit->save($existing, $anonymous, false, $isPreview);
 
         if (!$answer) {
+            (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->refundAccessToken($form, $ctx);
             Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
             return $this->renderFillView($form, $submit, $existing, [
                 'editingAnswer' => $existing && $existing->isComplete(),
@@ -405,13 +414,16 @@ class GlobalController extends Controller
             throw new ForbiddenHttpException();
         }
 
-        $stats = (new DashboardService())->getFormDashboard($form);
+        // Respondents allowed to see answers get the public-safe dashboard: no other people's
+        // free text, roster names or integrity panels. The full one needs export rights (SEC-11).
+        $restricted = !$form->canExportAnswers();
+        $stats = (new DashboardService())->getFormDashboard($form, $restricted);
 
         return $this->render('@thiscovery-forms/views/form/dashboard', [
             'formModel' => $form,
             'stats' => $stats,
             'contentContainer' => null,
-            'isPublic' => false,
+            'isPublic' => $restricted,
         ]);
     }
 
@@ -456,15 +468,13 @@ class GlobalController extends Controller
     {
         $form = $this->findForm($id);
         \humhub\modules\thiscoveryForms\services\ExportAudit::authorize($form);
-        $csv = (new ExportService())->toCsv($form, Yii::$app->request->post());
-        \humhub\modules\thiscoveryForms\services\ExportAudit::record($form, $csv);
-        $filename = ExportSettings::downloadFilename($form);
-
-        Yii::$app->response->format = Response::FORMAT_RAW;
-        Yii::$app->response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
-        Yii::$app->response->headers->set('Content-Disposition', 'attachment; filename="' . $filename . '"');
-
-        return "\xEF\xBB\xBF" . $csv;
+        // Streamed from a temporary file, not built in memory (DAT-15).
+        [$fh, $rows] = (new ExportService())->toCsvHandle($form, Yii::$app->request->post(), true);
+        \humhub\modules\thiscoveryForms\services\ExportAudit::recordRows($form, $rows);
+        rewind($fh);
+        return Yii::$app->response->sendStreamAsFile($fh, ExportSettings::downloadFilename($form), [
+            'mimeType' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function actionDelete($id)
@@ -482,6 +492,8 @@ class GlobalController extends Controller
         if (!$form) {
             throw new NotFoundHttpException();
         }
+
+        CustomForm::assertNotTrashed($form);
 
         return $form;
     }

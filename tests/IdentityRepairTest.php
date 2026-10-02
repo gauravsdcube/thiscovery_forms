@@ -150,6 +150,24 @@ if ($selected !== []) {
     if ((string)$meta->access_token_hash !== 'tok-r4') {
         $failures[] = 'reversal did not restore the token hash';
     }
+
+    // V3-30: client hashes are cleared too, and the log expires.
+    $meta->updateAttributes(['ip_hash' => str_repeat('a', 64), 'session_hash' => str_repeat('b', 64)]);
+    $second = $repair->apply($repair->selectAnswers(ReviewLib::reload($formB), '2026-01-01 00:00:00'), $userId);
+    $meta->refresh();
+    if ($meta->ip_hash !== null || $meta->session_hash !== null) {
+        $failures[] = 'client hashes survived the repair';
+    }
+    Yii::$app->db->createCommand()->update('custom_form_identity_repair_log', [
+        'ran_at' => date('Y-m-d H:i:s', time() - (IdentityRepair::REVERSAL_DAYS + 1) * 86400),
+    ], ['run_id' => $second])->execute();
+    $repair->purgeExpired();
+    if ((new Query())->from('custom_form_identity_repair_log')->where(['run_id' => $second])->exists()) {
+        $failures[] = 'expired repair-log identities were kept';
+    }
+    if ($repair->reverse($second) !== 0) {
+        $failures[] = 'an expired run could still be reversed';
+    }
 }
 
 if ($failures) {

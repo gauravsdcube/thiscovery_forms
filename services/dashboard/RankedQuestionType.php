@@ -41,6 +41,9 @@ class RankedQuestionType extends BaseQuestionType
         if (!is_array($decoded)) {
             return [];
         }
+        if ($this->id === 'maxdiff' || (isset($decoded['sets']) && is_array($decoded['sets']))) {
+            return $this->maxDiffCells($decoded, $questionMeta);
+        }
         if (array_key_exists('best', $decoded) || array_key_exists('worst', $decoded)) {
             $cells = [];
             $best = $decoded['best'] ?? '';
@@ -89,6 +92,52 @@ class RankedQuestionType extends BaseQuestionType
                 'n' => 1,
             ];
             $i++;
+        }
+        return $cells;
+    }
+
+    /**
+     * MaxDiff (SCO-3): per set, the best item scores +1 and the worst -1 (rank_score), and every
+     * item shown in the set counts once (shown), so a dashboard can report
+     * (best - worst) / shown per item, the standard count score.
+     *
+     * @param array<mixed> $decoded
+     */
+    private function maxDiffCells(array $decoded, array $questionMeta): array
+    {
+        $sets = $decoded['sets'] ?? $decoded;
+        if (!is_array($sets)) {
+            return [];
+        }
+        $cell = fn (string $code, string $metric, float $value): array => [
+            'bucket_key' => mb_substr($code, 0, 190),
+            'bucket_label' => mb_substr($this->optionLabel($questionMeta, $code), 0, 255),
+            'metric' => $metric,
+            'value' => $value,
+            'n' => 1,
+        ];
+        $cells = [];
+        foreach ($sets as $pair) {
+            if (!is_array($pair)) {
+                continue;
+            }
+            $best = is_scalar($pair['best'] ?? null) ? (string)$pair['best'] : '';
+            $worst = is_scalar($pair['worst'] ?? null) ? (string)$pair['worst'] : '';
+            if ($best === '' && $worst === '') {
+                continue;
+            }
+            if ($best !== '') {
+                $cells[] = $cell($best, 'rank_score', 1.0);
+            }
+            if ($worst !== '' && $worst !== $best) {
+                $cells[] = $cell($worst, 'rank_score', -1.0);
+            }
+            $shown = is_array($pair['items'] ?? null) ? $pair['items'] : array_filter([$best, $worst], 'strlen');
+            foreach (array_unique(array_map('strval', $shown)) as $item) {
+                if ($item !== '') {
+                    $cells[] = $cell($item, 'shown', 1.0);
+                }
+            }
         }
         return $cells;
     }

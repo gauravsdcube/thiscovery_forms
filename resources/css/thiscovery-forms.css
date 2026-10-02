@@ -220,16 +220,6 @@
     min-height: 0;
 }
 
-.cf-settings-main > .cf-set-toolbar {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-    margin: 0;
-    padding: .35rem 1.75rem;
-    background: #fff;
-    border-bottom: 1px solid #e2e8f0;
-}
-
 .cf-studio__workspace {
     display: grid;
     grid-template-columns: 240px minmax(0, 1fr);
@@ -409,22 +399,9 @@
 }
 
 .cf-settings-pane__title {
-    margin: 0 0 .35rem;
+    margin: 0 0 1rem;
     font-size: 1.2rem;
     font-weight: 650;
-}
-
-.cf-settings-pane__lead {
-    margin: 0 0 1rem;
-    color: #64748b;
-    font-size: .88rem;
-    line-height: 1.4;
-}
-
-.cf-set-acc .cf-export-cols {
-    margin-top: .85rem;
-    border: 0;
-    padding: 0;
 }
 
 .cf-export-cols {
@@ -474,8 +451,6 @@
     padding: .05rem .4rem;
     margin-left: .15rem;
 }
-
-.cf-end-block {
     border: 1px solid #e5e7eb;
     border-radius: 10px;
     padding: 1rem 1.1rem 1.15rem;
@@ -1755,7 +1730,8 @@ body.cf-fill-standalone #topbar-second {
     -webkit-appearance: none;
     width: 1.15rem;
     height: 1.15rem;
-    border: 2px solid #94a3b8;
+    /* #64748b on white is about 4.8:1; #94a3b8 was 2.6:1, under the 3:1 minimum (A11Y-6). */
+    border: 2px solid #64748b;
     background: #fff;
     box-shadow: none;
     cursor: pointer;
@@ -2214,7 +2190,11 @@ body.cf-fill-standalone #topbar-second {
 .cf-ranking-handle:focus {
     background: #e2e8f0;
     color: #1e293b;
-    outline: none;
+}
+
+.cf-ranking-handle:focus-visible {
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
 }
 
 .cf-ranking-handle:active,
@@ -4288,10 +4268,15 @@ body.cf-fill-standalone #topbar-second {
     text-align: center;
 }
 
-.cf-hotspot-region.is-selected,
-.cf-hotspot-region:focus {
+/* Selected and focused look different: focus is a visible ring, selection a fill (A11Y-6). */
+.cf-hotspot-region.is-selected {
     background: rgba(37, 99, 235, .4);
-    outline: none;
+    border-width: 3px;
+}
+
+.cf-hotspot-region:focus-visible {
+    outline: 3px solid #1e3a8a;
+    outline-offset: 2px;
 }
 
 .cf-image-upload {
@@ -4881,3 +4866,32 @@ body.cf-fill-standalone #topbar-second {
 [class*="space-profile-acronym"] > span {
     color: #fff;
 }
+
+
+/* Rating pills show keyboard focus (A11Y-6). */
+.cf-rating-option input:focus-visible + .cf-rating-pill,
+.cf-rating-option:focus-within .cf-rating-pill {
+    outline: 3px solid #2563eb;
+    outline-offset: 2px;
+}
+
+/* Respect a request for less motion (A11Y-9). */
+@media (prefers-reduced-motion: reduce) {
+    #cf-fill *,
+    #cf-fill *::before,
+    #cf-fill *::after,
+    [data-cf-fill-form] *,
+    [data-cf-fill-form] *::before,
+    [data-cf-fill-form] *::after {
+        animation-duration: .01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: .01ms !important;
+        scroll-behavior: auto !important;
+    }
+}
+
+/* Route map (LOG-9) */
+.cf-route-map { padding-left: 1.5em; }
+.cf-route-map__page { margin-bottom: .75em; }
+.cf-route-map__jumps { margin: .25em 0 0; padding-left: 1.25em; }
+.cf-route-map__jumps code { white-space: normal; word-break: break-word; }

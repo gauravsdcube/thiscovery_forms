@@ -21,9 +21,14 @@ ThiscoveryFormsAsset::register($this);
 $valueMap = [];
 $answerFieldMap = [];
 foreach ($answer->answerFields as $af) {
+    // Loop repeats are listed separately below, never collapsed into one value (V3-45).
+    if ((string)($af->instance_key ?? '') !== '') {
+        continue;
+    }
     $answerFieldMap[(int)$af->field_id] = $af;
     $valueMap[(int)$af->field_id] = $af->getDisplayValue();
 }
+$loopService = new \humhub\modules\thiscoveryForms\services\LoopService();
 
 $pager = (new FormPager())->buildPages($formModel->getAllFields()->all());
 $pages = $pager['pages'];
@@ -78,6 +83,24 @@ $isAuthor = $user && (int)$answer->created_by === (int)$user->id;
                         <?php
                         /** @var FormField $field */
                         if (!$field->collectsAnswer()) {
+                            continue;
+                        }
+                        $repeats = $answer->loopCells((int)$field->id);
+                        if ($repeats !== []) {
+                            $repeatLabels = $loopService->instanceLabels($answer, $field);
+                            ?>
+                            <div class="cf-answer-field">
+                                <div class="cf-answer-field__label"><?= Html::encode($field->label) ?></div>
+                                <div class="cf-answer-field__value">
+                                    <dl class="cf-answer-repeats">
+                                        <?php foreach ($repeats as $key => $cell): ?>
+                                            <dt><?= Html::encode($repeatLabels[$key] ?? $key) ?></dt>
+                                            <dd><?= $cell->getAnswerHtml() ?></dd>
+                                        <?php endforeach; ?>
+                                    </dl>
+                                </div>
+                            </div>
+                            <?php
                             continue;
                         }
                         $afValue = $valueMap[(int)$field->id] ?? '';

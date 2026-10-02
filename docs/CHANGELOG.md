@@ -2,7 +2,156 @@
 
 All notable changes to this module are documented in this file.
 
-## 1.30.1 (October 2, 2026)
+## 1.30.5 (October 2, 2026)
+
+Corrections found when the database gates were run.
+
+- Consent rules run even when a page posts no answers, so a missing signature is rejected.
+- A finished response is recorded as complete whether or not arm randomisation is on, so editing it does not change the quota count.
+- An anonymous completion does not keep the member's weight on the answer.
+- Parallel arm assignment creates the allocation row in its own committed step and retries a deadlock, so every start is assigned and the arms stay balanced.
+- A group end with no label is saved under the standard label.
+
+## 1.30.4 (October 2, 2026)
+
+Studio behaviour kept while applying the 1.30.3 review fixes.
+
+- Saving a form shows “Form saved.” in the status bar and on the studio page.
+- Settings are grouped in the studio navigation, and each group can be collapsed. Consent, loops, and randomisation each have their own page. The route map stays in that navigation.
+- Incomplete responses are kept unless that setting is turned off.
+- Status stays locked until an edition has been published.
+- Removing a question asks for confirmation.
+
+### Later
+
+- Webhooks, including `quota.full`, are not sent.
+- On a fully anonymous form the completion email log still stores the member and the email address, so one completion on a day can still be matched to that person.
+- Resume codes already stored are hashed in place. The plain codes cannot be restored.
+- When two live questions share a variable name, only the oldest keeps it. The studio asks for a new name on the next save.
+
+## 1.30.3 (October 2, 2026)
+
+Medium and Low fixes from the version 3 review (V3-37 to V3-57), and the earlier findings that were still open.
+
+Remaining Open and Partial rows of the version 3 status table:
+
+- Fix (LOG-6): option order is always per respondent (the off-by-default setting is gone); the order is seeded by the session so the order stored is the one first shown.
+- Fix (LOG-8): go-to and skip-page rules on a hidden question don't route, on the server or in the browser.
+- Fix (LOG-9): saving and publishing refuse duplicate page keys, go-to targets that don't exist, a question shown or hidden by its own answer, and rules that read a later page. The studio has a read-only Route map.
+- Fix (LOG-10): page breaks have an "Otherwise go to" page; new formula functions `selected_all` and `selected_only`; an option coded 0 in a multiple-choice answer counts as ticked; "Skip this question" (identical to Hide) is no longer offered.
+- Fix (LOG-11): every action can have an "Only if" condition; email actions send at page exit or submit, never while an answer is being changed.
+- Fix (LOG-12): answer rules per question: text length and pattern, date range (with `today`), and a cross-answer check formula, enforced on submit and checked on the page. Text answers have a hard length cap. Migration `m261005_100000_field_validation`.
+- Fix (DAT-8): export columns and the codebook use the published editions, not the draft.
+- Fix (DAT-9): a new choice with no code gets a fixed number that never follows its label and is never reused.
+- Fix (DAT-10): a chosen variable name already in use is refused instead of silently becoming `_2`; the database allows one live question per name. Migration `m261005_110000_unique_live_variable`.
+- Fix (DAT-16): drafts resume by page key. Migration `m261005_120000_answer_page_key`.
+- Fix (DAT-18): a stray group end is dropped at save.
+- Fix (DAT-19): imports, clones, restores and translation imports record a revision.
+- Fix (GOV-4): managers can pseudonymise or delete one response and erase a panel member (keeping or deleting their answers); every erasure is logged with mode, actor and reason. Migration `m261005_130000_erasure_modes`.
+- Fix (SEC-11): respondents who may view answers see the public-safe dashboard.
+- Fix (SEC-13): fill uploads are limited to known file types whose content matches the extension; each file question can narrow types and lower the size limit.
+- Fix (INT-3): a similar pair is flagged on both responses; forms with more than 250 responses get a background comparison against up to 5,000.
+- Fix (SCO-1): MaxDiff questions have several design versions; each respondent sees one, and the version and items shown are stored with the answer.
+- Fix (SCO-3): MaxDiff answers give dashboard cells (best, worst, shown).
+- Fix (SCO-5): per-question consensus bands, excluded codes and IQR limit; consensus out; median and IQR in the round summary.
+- Fix (SCO-9): consensus items freeze when a round closes, whether or not its summary is published.
+- Fix (SCO-12): exports default to complete responses, add a 0/1 column per multiple-choice option, and code empty answers (-99 skipped, -98 hidden, -97 not reached).
+- Fix (A11Y-2): the file question is a named group, and every question exposes its required state.
+- Fix (A11Y-4): one alert per failed page instead of one per question.
+- Tests (NEW-22): `tests/support/seed.php` prepares a fresh HumHub for the suite; CI runs lint, JavaScript checks and the standalone suite, and a HumHub job runs the full suite once the sibling modules are configured.
+- Already covered by earlier fixes, no change: LOG-5 (V3-10), DAT-3 (V3-37), SCO-7, SCO-16, SCO-25, A11Y-1 (V3-49).
+
+"Fixed with gaps" rows of the version 3 status table:
+
+- Fix (DAT-4): edition questions are never bound to a live row by label and type, so two questions with the same label can't be merged.
+- Fix (INT-2): consistency rules apply only when the respondent was shown every question they read.
+- Fix (SCO-4): a multi-select grid column coded 0 reaches the dashboard.
+- Fix (SCO-6): adding an existing panel member again (people picker, studio "add member") keeps their weight; 0 is allowed.
+- Fix (SCO-11): EQ-5D never scores untagged questions; an EQ-5D form needs all five dimensions tagged to publish.
+- Fix (SEC-5): a guest's page-exit emails wait for the submission and its checks.
+- Already closed by V3 fixes, no change: LOG-4 (V3-38), DAT-5 and DAT-6 (V3-52), DAT-7 (V3-52), GOV-3 (V3-44), SEC-1, SEC-2, SEC-12, SEC-14 and NEW-14 (V3-50), SEC-6 (V3-32), SEC-10 (V3-41), INT-4 (V3-51), SCO-2 (V3-42), A11Y-3 and NEW-16 (V3-49), A11Y-5, NEW-11 (V3-36), NEW-15 (V3-34), NEW-17 (V3-37), NEW-19 (SCO-18).
+
+- Fix (INT-8, SEC-8, regressed in 1.30.0): a submit counts towards the rate limit only if it is kept. A save rejected for validation errors, a failed CAPTCHA or a failed write gives its count back, and an attempt already over the limit is not counted. Counting runs under a mutex, so concurrent submits cannot slip past. IPv4 is keyed by exact address and IPv6 by /64, and a submit that uses up the allowance is the one flagged.
+- Fix (LOG-1, regressed in 1.30.0): if the formula engine isn't loaded in the browser, go-to and skip-page rules never fire, instead of firing for everyone. The server applies the real route on submit.
+- Tests: the GOV-2 regression (V3-2) is covered: on a fully anonymous form, the completion email log has no answer id and keeps only the date.
+- Fix (V3-37): saving questions is all or nothing. The rows are written in a transaction (a savepoint inside an outer one). The design checks run against the written structure: backward go-tos, loops, quotas, consent, formula policy and legacy rules. Any failure rolls every question write back, so an invalid design is never stored. The studio shows the reasons and keeps the author's unsaved edits on screen, and import reports the same reasons. Clone and snapshot restore also run in a single transaction (DAT-3).
+- Fix (V3-43): a required tick box left unticked is a missing answer, not a refusal. Consent statements have accessible names, and Yes/No answers are grouped. Agreeing stamps the panel member's consent date. Withdrawal by token is atomic and scoped to the form, reaches the person's account and all their panel memberships, and un-satisfies the consent requirement. The certificate shows labels, the signer and the details, and can be printed or saved as a PDF.
+- Fix (V3-44): a manager who changes someone else's completed response must give a reason, and is recorded as the actor even on anonymous forms. Filling in a blank is audited, and filling in a draft is not. The answer detail has a change history.
+- Fix (V3-45): loop repeats are never collapsed (`getFieldValue`/`loopCells`, the record title, the project view, the dashboard provider). Unticking a repeat clears it, and "Please specify" text is kept per repeat. Quota page checks and resume use the expanded pages (`FormPager::fillPages`). The dashboard counts only shown repeats. Repeats are named by their labels, not raw keys.
+- Fix (V3-46): loop, block-randomisation and consent settings survive question import/export (JSON and CSV), library insert and clone, and loop source keys are remapped. Fixed loop items can be translated. Loop headings are single translatable messages.
+- Fix (V3-47): a page-exit quota check acts over AJAX: end/redirect goes to a closing page, and goto moves the page. Saving a quota keeps its status, and changes to its rules or action are audited (with a reason once anyone has been counted). The allocation CSV works and is the per-response allocation log. A reinstated response takes its quota place back.
+- Fix (V3-48): block sizes must be a multiple of the total arm weight. Least-filled is locked minimisation with a random element and ignores abandoned assignments. The arm override has a manager UI and is logged. Preview never advances rotation counters.
+- Fix (V3-51): rate limits are per address and per session, never per /24 network, so shared networks aren't blocked. Legacy speeding values are read correctly. Similarity is chance-adjusted. Loop attention checks need every repeat to pass.
+- Fix (V3-38): `in [..]` and `not_in [..]` lists parse. A rule that fails to evaluate is false, not a 500 error. The dependency graph follows named formulas, and cycles are left empty in the browser too. Running out of steps is logged. Calculations read only visible answers. Action formulas reference answers rather than pasting them in.
+- Perf (V3-39): visibility (the hidden-answer fixed point) and formula contexts are worked out once per set of answers.
+- Fix (V3-40): run-actions with no actions needs no draft. The rate limit is per session and five times that per address, with IPv6 counted by /64, under a mutex. Action emails are capped per recipient and per network. Email templates from another space are ignored.
+- Fix (V3-41): plain negative numbers export as numbers, and every export CSV row is neutralised.
+- Fix (V3-42): MaxDiff sets are kept while the design is unchanged and cover every item. `score_of` on an unscored option is empty. The EQ-5D profile needs all five dimensions, and partly tagged EQ-5D never borrows untagged questions.
+- Fix (V3-49): Best/Worst and MaxDiff radios are named and headers are scoped. Widget groups are named by the question. Loop error ids are unique per repeat. The error summary links to each question. Pages have accessible names. Stacked grids keep one named copy, mirrored and re-synced when the layout changes.
+- Fix (V3-50): library insert needs create permission, folder moves respect the folder ACL, uploads need a real file question and are capped per network, frozen answers ignore "specify" text, `grantLegacy` grants only attached files, and respondent-only viewers see only their own responses (SEC-11).
+- Fix (V3-52): renaming a variable rewrites every reference. Import renames references in every formula, and clone rewrites piped labels. A response opened on an older edition must be re-checked, and `id5`-style variable names are not allowed.
+- Fix (V3-53): the eConsent backfill is linear, the unique key is swapped without a gap, the condition-column drop is documented as irreversible, and a new migration adds consent member/user indexes.
+- Fix (V3-54): real date literals only, known functions only, and unknown question references are refused at publish. Operator chains don't count as depth. `concat` truncates by character. Variables are stored with their type. `contains_text` on a list matches whole items. `1e5` is refused as a number answer. The formula guide documents all of this.
+- Fix (V3-55): repeat codes are validated on every loop. Input ids are unique, there are at most 100 repeats, and removed roster rows are capped.
+- Fix (V3-56): a quota's parent and wave must be on the same form. Previews and test fills get an arm that isn't counted. Stored orders are locked. Page blocks can show N pages.
+- Fix (V3-57): the `toFolderDelete` deprecation is fixed. The consent audit records refusals as "refused", and consent times are UTC. The routing-alignment flag and its dead code are removed. A hard delete cleans up dependent rows and refuses when real consent records exist.
+- Feature (GOV-7): deleting a form moves it to a trash. Answers are kept, it can be restored, and every trash, restore and permanent delete is logged. A permanent delete happens only from the trash, after typing the title, and never while consent records exist.
+- Feature (GOV-8): IP metadata is truncated, and fully anonymous forms store no IP or browser string. A daily retention job removes old email logs (365 days), abandoned drafts (180 days) and integrity client hashes (90 days); each period is configurable. `php yii thiscovery-forms/retention/run`.
+- Fix (DAT-11): a per-page submit token stops duplicate responses from double submits, and single-response forms refuse a second completed response under a lock.
+- Fix (DAT-12): drafts keep answers that logic hides; only the final submit removes them.
+- Fix (DAT-14): resume codes are stored as a keyed hash, expire after 60 days, and failed lookups are rate-limited. Emailing a code needs the code. The fill page sends no referrer.
+- Perf (DAT-15): exports are streamed rather than built in memory, and the similarity check skips forms with nothing to compare.
+- Fix (SEC-15 to 20): form files are served safely; panel links are signed and expire; brief documents have decompression caps; LLM briefs are redacted and the API key goes only to allowed hosts; creator HTML can't overwrite form fields; panel admin needs Manage forms.
+- Fix (INT-6, INT-7, INT-9): straight-lining respects reverse-keyed items and opt-outs; a shared IP address alone is information only; consistency rules accept labels and survive cloning.
+- Fix (SCO-8, SCO-10, SCO-13 to SCO-25): Delphi summaries show labels and percentages that sum to 100; multi-select charts use respondents as the base; wave invites send once, retry failures and respect withdrawal; question segments and weights are available to the dashboard module; Other detection is stricter; analytics fixes (response rates, unique respondents, rating steps, number statistics, codes, option parsing, EQ-5D VAS, time zones). Analyst notes are added.
+- Fix (A11Y-6 to 9): focus styles and contrast, accessible ranking, labelled drilldown levels, VAS value text, and reduced-motion support.
+- Migrations: `m261003_100000_consent_member_indexes`, `m261004_100000_form_lifecycle_log` and `m261004_110000_hash_resume_codes`.
+- Tests: `StudioAtomicSaveTest`, `AnswerAuditTest`, `QuotaFixesTest`, `IntegrityScoringTest`, `RespondentVisibilityTest`, `VariableRenameTest`, `FormTrashTest`, `RetentionTest`, `DuplicateSubmitTest`, `DraftHiddenTest`, `ResumeCodeTest` and `SecurityLowTest`. Standalone tests: `FormulaEdgeTest` and `AnalyticsTest`. `ConsentHardeningTest`, `EconsentTest`, `LoopHighsTest`, `RandomisationTest`, `PollSubmitTest` and the standalone randomisation statistics are extended.
+
+## 1.30.2 (September 30, 2026)
+
+High fixes from the version 3 review (V3-9 to V3-36). Nothing is in production, so no data repair is needed.
+
+### Formulas
+- Fix (V3-9): `today()` is frozen when the response starts, in the form's time zone, and the browser gets the same date.
+- Fix (V3-10): the browser evaluator is a full port of the PHP one. A generated parity test (over 43,000 formula trees on typed questions, loops included) requires identical results from PHP and Node.
+- Fix (V3-11): a choice coded "0" is an answer. Ordering comparisons read numeric codes as numbers.
+- Fix (V3-12): `%` is floored, `sqrt` is exact to 12 places, and `and()`/`or()` take any number of arguments.
+- Fix (V3-13): named formulas, grid rows, action variables and panel values reach server formulas. Declared URL parameters are stored on the response.
+- Fix (V3-14): calculated questions are recomputed whenever answers are read in the browser, so show/hide and routing see them.
+
+### Loops
+- Fix (V3-15): repeat codes 0..n and 1..n are instance answers, decided by loop membership rather than key shape, in PHP and in the browser.
+- Fix (V3-16): nested loops render the right questions. A question after an inner loop shows once per outer repeat, and a plain group before an inner loop no longer flattens it.
+- Fix (V3-17): every question type in a loop is parsed per repeat, including file, HTML, ranking, map and grid.
+- Fix (V3-18): visibility, required and piping work per repeat on the server and in the browser. `{{loop.*}}`, `{{loop.parent.*}}` and `{{answer:q[code]}}` are piped in the browser.
+- Fix (V3-19): choices loops export a column for every option. The long export (one row per repeat, which includes rosters) is on the dashboard and uses the wide export's permission check, logging, column rules, PII scrubbing and CSV neutralisation.
+- Fix (V3-20): schema checks run once per request, and values maps use eager-loaded answers, so exports and similarity checks no longer run a query per field per answer.
+
+### Quotas and randomisation
+- Fix (V3-21): quota cells and arm strata read calculated questions, variables and URL values, and match visible answers only.
+- Fix (V3-22): a new respondent's orders are drawn from a seed kept in the session and stored at first save, so the recorded order is the order shown.
+- Fix (V3-23): a quota's go-to records the diversion, so the respondent can finish.
+- Fix (V3-24): expiry and reconcile work under the counter lock.
+- Fix (V3-25): an over-quota respondent keeps their arm. Quota-directed arm choice is locked and logged.
+- Fix (V3-31): quota redirects must be https URLs on the allowlist, and are checked at save, at runtime and on the thank-you page. Only a network administrator can allowlist a host.
+
+### eConsent and governance
+- Fix (V3-26): on fully anonymous forms, consent is checkbox attestation only. The record keeps no name, witness, drawing, client hash or time of day.
+- Fix (V3-27): the page shows, and the record hashes, one server-side presentation of the sheet (language, title, body and items). A changed sheet is re-shown. Translations of a published version are locked.
+- Fix (V3-28): the server enforces the configured signature method, the witness details and must-read. The drawn signature works, and read-to-end is recorded on scroll.
+- Fix (V3-29): re-consent and quota-full emails go to real addresses. A hygiene test forbids test-only addresses and hard-coded dates.
+- Fix (V3-30): identity repair clears client hashes and the email-log and consent links, and keeps the removed identities for only 14 days (`repair-identity/finalise` removes them at once). User erasure finds token and invite answers, and clears the consent, email-log, integrity, repair-log and audit traces, in one transaction.
+
+### Integrity and studio
+- Fix (V3-32): a one-time invitation is given back when the submission fails.
+- Fix (V3-33): a removed question counts as shown only when this response answered it.
+- Fix (V3-34): polls are not blocked by the CAPTCHA setting.
+- Fix (V3-35): screened-out, over-quota and not-consented responses are excluded from every analysis scope, Delphi included.
+- Fix (V3-36): a question removed after publishing is kept as removed, never hard-deleted.
+- Tests: standalone `FormulaParityTest` and `HygieneTest`. HumHub tests `ConsentHardeningTest`, `ErasureCompletenessTest` and `LoopHighsTest`, with `EconsentTest` and `IdentityRepairTest` extended.
+
+## 1.30.1 (September 30, 2026)
 
 Critical fixes from the version 3 review (V3-1 to V3-8). Nothing is in production, so no data repair is needed.
 
@@ -15,14 +164,6 @@ Critical fixes from the version 3 review (V3-1 to V3-8). Nothing is in productio
 - Fix (V3-7): editing a completed response never counts it again for a quota or turns it into over-quota. A completed questionnaire always records outcome complete.
 - Fix (V3-8): dashboards aggregate only structured loop answers and never show roster names. The public dashboard has no loop breakdown.
 - Tests: `tests/standalone/run.php` runs pure-PHP checks without HumHub (calculated fields, number limits, randomisation statistics). `AllocationConcurrencyTest` and `QuotaEditTest` run on the HumHub test server.
-
-### Studio
-
-- Saving a form shows “Form saved.” in the status bar and on the studio page.
-- Settings are grouped in the studio navigation, and each group can be collapsed.
-- Incomplete responses are kept unless that setting is turned off.
-- Status stays locked until an edition has been published.
-- Removing a question asks for confirmation.
 
 ## 1.30.0
 

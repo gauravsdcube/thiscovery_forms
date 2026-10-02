@@ -54,6 +54,30 @@ $activities = $activities ?? [];
         </div>
     </div>
 
+    <details class="cf-member-erase mb-3">
+        <summary><?= Yii::t('ThiscoveryFormsModule.base', 'Erase this person (right to erasure)') ?></summary>
+        <?= Html::beginForm(Url::toPanelMemberRemove($panel, $contentContainer), 'post', ['class' => 'mt-2']) ?>
+            <?= Html::hiddenInput('member_id', $member->id) ?>
+            <fieldset>
+                <legend class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Their responses') ?></legend>
+                <div class="form-check">
+                    <?= Html::radio('erase', true, ['value' => 'keep', 'id' => 'cf-erase-keep', 'class' => 'form-check-input']) ?>
+                    <label class="form-check-label" for="cf-erase-keep"><?= Yii::t('ThiscoveryFormsModule.base', 'Keep them for research, without their identity') ?></label>
+                </div>
+                <div class="form-check">
+                    <?= Html::radio('erase', false, ['value' => 'delete', 'id' => 'cf-erase-delete', 'class' => 'form-check-input']) ?>
+                    <label class="form-check-label" for="cf-erase-delete"><?= Yii::t('ThiscoveryFormsModule.base', 'Delete them') ?></label>
+                </div>
+            </fieldset>
+            <label class="cf-label mt-2" for="cf-erase-reason"><?= Yii::t('ThiscoveryFormsModule.base', 'Reason (kept in the erasure log)') ?></label>
+            <?= Html::textInput('reason', '', ['class' => 'form-control', 'id' => 'cf-erase-reason', 'required' => true, 'maxlength' => 255]) ?>
+            <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Erase'), [
+                'class' => 'btn btn-danger btn-sm mt-2',
+                'data-confirm' => Yii::t('ThiscoveryFormsModule.base', 'Erase this person\'s contact details as chosen? This cannot be undone.'),
+            ]) ?>
+        <?= Html::endForm() ?>
+    </details>
+
     <?= Html::beginForm(Url::toPanelMember($member, $contentContainer), 'post', ['class' => 'cf-folder-form']) ?>
         <div class="cf-folder-form__card">
             <h2 class="cf-folder-form__h"><?= Yii::t('ThiscoveryFormsModule.base', 'Member record') ?></h2>

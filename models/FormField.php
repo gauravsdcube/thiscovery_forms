@@ -18,6 +18,7 @@ use yii\db\ActiveQuery;
  * @property string $type
  * @property string $label
  * @property string|null $variable
+ * @property string|null $variable_live the variable while live, NULL once removed (unique per form, DAT-10)
  * @property string|null $internal_label
  * @property string|null $help_text
  * @property int $required
@@ -26,6 +27,7 @@ use yii\db\ActiveQuery;
  * @property string|null $deleted_at
  * @property string|null $logic_json
  * @property string|null $actions_json
+ * @property string|null $validation_json
  *
  * @property-read CustomForm $form
  * @property-read FormField|null $conditionField
@@ -98,7 +100,7 @@ class FormField extends ActiveRecord
             [['variable'], 'match', 'pattern' => '/^[A-Za-z][A-Za-z0-9_]*$/', 'skipOnEmpty' => true,
                 'message' => Yii::t('ThiscoveryFormsModule.base', 'Variable must start with a letter and use only letters, numbers, and underscores.')],
             [['help_text'], 'string', 'max' => 500],
-            [['options_json', 'logic_json', 'actions_json'], 'string'],
+            [['options_json', 'logic_json', 'actions_json', 'validation_json'], 'string'],
             [['deleted_at'], 'safe'],
             [['type'], 'in', 'range' => array_keys(self::getTypeLabels())],
         ];
@@ -139,6 +141,10 @@ class FormField extends ActiveRecord
         $var = trim((string)$this->variable);
         if ($var === '') {
             $var = self::slugVariable((string)$this->label, (string)$this->type);
+        }
+        if (preg_match('/^id\d+$/i', $var)) {
+            // id5 is how formulas address question 5 by id; a variable of that name collided (V3-52).
+            $var = 'q_' . $var;
         }
         if ($used !== null) {
             $base = $var;
@@ -273,6 +279,29 @@ class FormField extends ActiveRecord
     /**
      * Hide the question from new fills. Stored answers keep this row id.
      */
+    public function beforeValidate()
+    {
+        // A group end is structural and hidden. The studio stores the type name when the label is blank.
+        if ($this->type === self::TYPE_GROUP_END && trim((string)$this->label) === '') {
+            $this->label = self::defaultLabelForType(self::TYPE_GROUP_END);
+        }
+        return parent::beforeValidate();
+    }
+
+    /** Keeps variable_live in step, so the unique index holds one live question per name. */
+    public function beforeSave($insert)
+    {
+        if (!parent::beforeSave($insert)) {
+            return false;
+        }
+        if ($this->hasAttribute('variable_live')) {
+            $variable = trim((string)$this->variable);
+            $removed = $this->hasAttribute('deleted_at') && $this->deleted_at !== null && $this->deleted_at !== '';
+            $this->variable_live = ($variable === '' || $removed || $this->type === self::TYPE_GROUP_END) ? null : $variable;
+        }
+        return true;
+    }
+
     public function softDelete(): bool
     {
         if (!self::supportsSoftDelete()) {
@@ -282,7 +311,7 @@ class FormField extends ActiveRecord
             return true;
         }
         $this->deleted_at = date('Y-m-d H:i:s');
-        return (bool)$this->save(false, ['deleted_at']);
+        return (bool)$this->save(false, $this->hasAttribute('variable_live') ? ['deleted_at', 'variable_live'] : ['deleted_at']);
     }
 
     public function displayLabel(): string
@@ -488,6 +517,58 @@ class FormField extends ActiveRecord
         $this->writeDecodedOptions($decoded);
     }
 
+    /** Left out of the straight-lining check (INT-6). */
+    public function isStraightlineExempt(): bool
+    {
+        $decoded = $this->decodedOptions();
+        return !($decoded && array_is_list($decoded)) && !empty($decoded['straightlineExempt']);
+    }
+
+    /** A reverse-keyed item: the same answer here and on a forward item is inconsistent (INT-6). */
+    public function isReverseKeyed(): bool
+    {
+        $decoded = $this->decodedOptions();
+        return !($decoded && array_is_list($decoded)) && !empty($decoded['reverseKeyed']);
+    }
+
+    /** @return string[] grid row codes that are reverse-keyed */
+    public function getReverseRows(): array
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            return [];
+        }
+        return array_values(array_filter(array_map('strval', is_array($decoded['reverseRows'] ?? null) ? $decoded['reverseRows'] : [])));
+    }
+
+    /**
+     * @param string[]|string $reverseRows
+     */
+    public function setStraightlineConfig(bool $exempt, bool $reverseKeyed, $reverseRows = []): void
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => array_values($decoded)];
+        }
+        if (is_string($reverseRows)) {
+            $reverseRows = array_map('trim', explode(',', $reverseRows));
+        }
+        $rows = array_values(array_unique(array_filter(array_map('strval', is_array($reverseRows) ? $reverseRows : []), 'strlen')));
+        foreach (['straightlineExempt' => $exempt, 'reverseKeyed' => $reverseKeyed] as $key => $on) {
+            if ($on) {
+                $decoded[$key] = true;
+            } else {
+                unset($decoded[$key]);
+            }
+        }
+        if ($rows) {
+            $decoded['reverseRows'] = $rows;
+        } else {
+            unset($decoded['reverseRows']);
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
     /**
      * Whether this question is treated as personal data for CSV export.
      * Defaults on for email, respondent IP, and panel name/email attributes.
@@ -648,12 +729,9 @@ class FormField extends ActiveRecord
         if (str_contains($option, ':')) {
             return false;
         }
-        $normalized = strtolower($option);
-        if ($normalized === 'other') {
-            return true;
-        }
-
-        return (bool)preg_match('/^other\b/i', $option);
+        // "Other", "Other (please specify)", "Other - please state", "Other, please describe";
+        // not an option that merely starts with the word, like "Other people's views" (SCO-15).
+        return (bool)preg_match('/^other(?:\s*(?:\(\s*(?:please\s+)?(?:specify|state|describe|say|give details)[^)]*\)|[-–,]\s*(?:please\s+)?(?:specify|state|describe|say|give details)\b.*))?\s*\.?$/iu', $option);
     }
 
     public static function otherSpecifyPrefix(string $option): string
@@ -756,7 +834,8 @@ class FormField extends ActiveRecord
                 return true;
             }
             foreach ([$pair['code'], $pair['label']] as $key) {
-                if (!self::isOtherOption($key)) {
+                // Only this question's own Other option, and only when it asks for text (SCO-15).
+                if (!self::isOtherOption($key) || !$this->allowsOtherSpecify()) {
                     continue;
                 }
                 $prefix = self::otherSpecifyPrefix($key);
@@ -764,12 +843,6 @@ class FormField extends ActiveRecord
                     return true;
                 }
             }
-        }
-        if (self::isOtherOption($item)) {
-            return true;
-        }
-        if (preg_match('/^(other\b[^:]*):\s+\S/i', $item)) {
-            return true;
         }
 
         return false;
@@ -1036,6 +1109,105 @@ class FormField extends ActiveRecord
         $this->writeDecodedOptions($decoded);
     }
 
+    /**
+     * Studio option rows with a label but no code get a fixed code when they are created, so
+     * the code never follows the label text (DAT-9). A row whose label matches an option that
+     * is already stored keeps that option's code; a new one takes the next free number.
+     *
+     * @param array<int|string,mixed> $rows
+     * @return array<int|string,mixed>
+     */
+    private function assignOptionCodes(array $rows): array
+    {
+        $blank = static fn ($row) => is_array($row) && array_key_exists('code', $row)
+            && trim((string)$row['code']) === '' && trim((string)($row['label'] ?? '')) !== '';
+        if (!array_filter($rows, $blank)) {
+            return $rows;
+        }
+        $stored = [];
+        // Numbers already used, now or before, are never handed out again, so a removed
+        // option's code is not reused for a different answer (codeSeq is the high-water mark).
+        $prevDecoded = json_decode((string)$this->options_json, true);
+        $next = is_array($prevDecoded) && !array_is_list($prevDecoded) ? (int)($prevDecoded['codeSeq'] ?? 0) + 1 : 1;
+        foreach ($this->options_json ? $this->getChoicePairs() : [] as $pair) {
+            $stored[mb_strtolower(trim((string)$pair['label']))] = (string)$pair['code'];
+            if (ctype_digit((string)$pair['code'])) {
+                $next = max($next, (int)$pair['code'] + 1);
+            }
+        }
+        // Codes this save already uses.
+        $taken = [];
+        foreach ($rows as $row) {
+            if (is_array($row) && trim((string)($row['code'] ?? '')) !== '') {
+                $code = trim((string)$row['code']);
+                $taken[$code] = true;
+                if (ctype_digit($code)) {
+                    $next = max($next, (int)$code + 1);
+                }
+            }
+        }
+        foreach ($rows as $i => $row) {
+            if (!$blank($row)) {
+                continue;
+            }
+            $label = mb_strtolower(trim((string)$row['label']));
+            $code = $stored[$label] ?? null;
+            if ($code === null || isset($taken[$code])) {
+                while (isset($taken[(string)$next])) {
+                    $next++;
+                }
+                $code = (string)$next;
+            }
+            $rows[$i]['code'] = $code;
+            $taken[$code] = true;
+        }
+        return $rows;
+    }
+
+    /**
+     * A file question's own limits (SEC-13): allowed extensions (a subset of
+     * UploadQuota::TYPES; empty means all of them) and a lower size limit in MB.
+     *
+     * @return array{types: string[], maxMb: ?int}
+     */
+    public function getFileRules(): array
+    {
+        $decoded = $this->type === self::TYPE_FILE ? $this->decodedOptions() : [];
+        $types = is_array($decoded['fileTypes'] ?? null) ? array_values(array_map('strval', $decoded['fileTypes'])) : [];
+        $max = isset($decoded['fileMaxMb']) && (int)$decoded['fileMaxMb'] > 0 ? (int)$decoded['fileMaxMb'] : null;
+        return ['types' => $types, 'maxMb' => $max];
+    }
+
+    public function setFileRules($types, $maxMb): void
+    {
+        if ($this->type !== self::TYPE_FILE) {
+            return;
+        }
+        $list = is_array($types) ? $types : preg_split('/[\s,;]+/', (string)$types);
+        $known = array_keys(\humhub\modules\thiscoveryForms\services\UploadQuota::TYPES);
+        $clean = [];
+        foreach ($list ?: [] as $type) {
+            $type = strtolower(ltrim(trim((string)$type), '.'));
+            if ($type !== '' && in_array($type, $known, true)) {
+                $clean[$type] = true;
+            }
+        }
+        $decoded = $this->decodedOptions();
+        if ($clean) {
+            $decoded['fileTypes'] = array_keys($clean);
+        } else {
+            unset($decoded['fileTypes']);
+        }
+        $cap = (int)floor(\humhub\modules\thiscoveryForms\services\UploadQuota::MAX_FILE_BYTES / 1048576);
+        $mb = (int)$maxMb;
+        if ($mb > 0) {
+            $decoded['fileMaxMb'] = min($mb, $cap);
+        } else {
+            unset($decoded['fileMaxMb']);
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
     public function getNumberMin(): ?float
     {
         return $this->numericBound('min');
@@ -1146,6 +1318,7 @@ class FormField extends ActiveRecord
     public function setOptionsFromText($text, bool $randomize = false, ?int $maxSelect = null, ?string $exclusiveOption = null, ?int $minSelect = null, ?bool $minSelectAll = null): void
     {
         if (is_array($text)) {
+            $text = $this->assignOptionCodes($text);
             $items = ChoiceOptions::itemsFromDecoded(array_values($text));
             // Also accept already-normalized [{code,label}]
             if (!$items) {
@@ -1273,6 +1446,16 @@ class FormField extends ActiveRecord
             if (!$otherSpecify) {
                 $payload['otherSpecify'] = false;
             }
+            // Highest numeric code ever used on this question (DAT-9).
+            $seq = (int)($prev['codeSeq'] ?? 0);
+            foreach ($items as $item) {
+                if (ctype_digit((string)$item['code'])) {
+                    $seq = max($seq, (int)$item['code']);
+                }
+            }
+            if ($seq > 0) {
+                $payload['codeSeq'] = $seq;
+            }
             $this->options_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
         } else {
             $this->options_json = json_encode($options, JSON_UNESCAPED_UNICODE);
@@ -1290,21 +1473,28 @@ class FormField extends ActiveRecord
     public function getShuffledChoicePairs(?int $userId = null, ?FormAnswer $answer = null): array
     {
         $pairs = $this->getChoicePairs();
-        if ($answer && !$answer->isNewRecord && $this->isRandomizeOptions()) {
+        $rand = \humhub\modules\thiscoveryForms\services\RandomisationService::class;
+        // A new respondent's first page uses the pending (session) orders, the same ones the
+        // first save will store (V3-22).
+        if (!$answer && $rand::$current instanceof FormAnswer && (int)$rand::$current->form_id === (int)$this->form_id) {
+            $answer = $rand::$current;
+        }
+        $pendingOk = $answer && $answer->isNewRecord && $this->form && $rand::active($this->form);
+        if ($answer && (!$answer->isNewRecord || $pendingOk) && $this->isRandomizeOptions()) {
             $order = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->optionOrder($this, $answer);
             if ($order) {
                 return $this->pairsInOrder($pairs, $order);
             }
         }
-        $perResponse = \humhub\modules\thiscoveryForms\Module::optionOrderPerResponse();
-        if ($perResponse && $answer && !$answer->isNewRecord) {
+        // Every respondent gets their own order, never one shared by all guests (LOG-6).
+        if ($answer && !$answer->isNewRecord) {
             $decodedVars = json_decode((string)$answer->vars_json, true);
             $stored = is_array($decodedVars) ? ($decodedVars['option_order'][(string)$this->id] ?? null) : null;
             if (is_array($stored) && $stored) {
                 return $this->pairsInOrder($pairs, $stored);
             }
         }
-        $exclusive = $perResponse ? $this->shufflePinnedLabels() : [];
+        $exclusive = $this->shufflePinnedLabels();
         $pinned = [];
         $rest = [];
         foreach ($pairs as $pair) {
@@ -1321,17 +1511,18 @@ class FormField extends ActiveRecord
             return $pairs;
         }
 
-        if ($perResponse) {
-            if ($answer && !$answer->isNewRecord) {
-                $seedKey = 'answer:' . (int)$answer->id;
-            } elseif ($answer && trim((string)$answer->resume_code) !== '') {
-                $seedKey = 'resume:' . trim((string)$answer->resume_code);
-            } else {
-                $seedKey = 'session:' . (string)(Yii::$app->session->id ?: '0');
-            }
+        // Seeded by the session first: the first page is shown before any answer exists, and
+        // the first save stores the order from the same session, so stored = shown. After
+        // that the stored order wins (above). Without a session, fall back to the answer.
+        $sessionId = Yii::$app->has('session') ? (string)Yii::$app->session->id : '';
+        if ($sessionId !== '') {
+            $seedKey = 'session:' . $sessionId;
+        } elseif ($answer && trim((string)$answer->resume_code) !== '') {
+            $seedKey = 'resume:' . trim((string)$answer->resume_code);
+        } elseif ($answer && !$answer->isNewRecord) {
+            $seedKey = 'answer:' . (int)$answer->id;
         } else {
-            $userId = $userId ?? (int)(Yii::$app->user->id ?? 0);
-            $seedKey = 'user:' . $userId . ':' . (int)$this->form_id;
+            $seedKey = 'guest:' . (int)$this->form_id;
         }
         $engine = new \humhub\modules\thiscoveryForms\services\RandomisationEngine();
         $order = $engine->shuffle(range(0, count($rest) - 1), $engine->seedInt($seedKey, 'options:' . (int)$this->id));
@@ -1378,7 +1569,7 @@ class FormField extends ActiveRecord
 
     public static function storeOptionOrder(CustomForm $form, FormAnswer $answer): void
     {
-        if (!\humhub\modules\thiscoveryForms\Module::optionOrderPerResponse() || $answer->isNewRecord) {
+        if ($answer->isNewRecord) {
             return;
         }
         $vars = json_decode((string)$answer->vars_json, true);
@@ -1539,6 +1730,8 @@ class FormField extends ActiveRecord
             'pageKey' => $pageKey,
             'title' => trim((string)($config['title'] ?? '')),
             'branches' => $branches,
+            // Where to go when no branch rule matches; empty means the next page (LOG-10).
+            'otherwise' => trim((string)($config['otherwise'] ?? '')),
         ], JSON_UNESCAPED_UNICODE);
     }
 
@@ -1548,6 +1741,7 @@ class FormField extends ActiveRecord
             'pageKey' => 'p' . (string)($this->id ?: 'new'),
             'title' => '',
             'branches' => [],
+            'otherwise' => '',
         ];
         if (!$this->options_json) {
             return $defaults;
@@ -1560,6 +1754,7 @@ class FormField extends ActiveRecord
             'pageKey' => (string)($decoded['pageKey'] ?? $defaults['pageKey']),
             'title' => (string)($decoded['title'] ?? ''),
             'branches' => is_array($decoded['branches'] ?? null) ? $decoded['branches'] : [],
+            'otherwise' => (string)($decoded['otherwise'] ?? ''),
         ];
     }
 
@@ -1914,13 +2109,29 @@ class FormField extends ActiveRecord
         if ($this->type === self::TYPE_MAXDIFF) {
             $setSize = max(2, (int)($config['setSize'] ?? 4));
             $setCount = max(1, (int)($config['setCount'] ?? max(1, count($items))));
+            $stored = json_decode((string)$this->options_json, true);
+            $stored = is_array($stored) ? $stored : [];
+            // Several versions of the design, each respondent seeing one, so pairs are not the
+            // same for everyone (SCO-1).
+            $versions = (int)($config['versions'] ?? $stored['versions'] ?? self::MAXDIFF_VERSIONS);
+            $versions = max(1, min(self::MAXDIFF_VERSIONS_MAX, $versions));
             $sets = $config['sets'] ?? [];
-            if (!is_array($sets) || !$sets) {
-                $sets = (new MaxDiffDesigner())->generateSets($items, $setSize, $setCount);
+            if (is_array($sets) && $sets) {
+                $designs = [$sets];
+            } elseif (!empty($stored['designs']) && ($stored['items'] ?? null) === $items
+                && (int)($stored['setSize'] ?? 0) === $setSize && (int)($stored['setCount'] ?? 0) === $setCount
+                && count($stored['designs']) === $versions) {
+                // Keep the stored designs while nothing they depend on changed: earlier answers
+                // are scored against the sets they saw (V3-42).
+                $designs = $stored['designs'];
+            } else {
+                $designs = self::maxDiffDesigns($items, $setSize, $setCount, $versions);
             }
             $payload['setSize'] = $setSize;
             $payload['setCount'] = $setCount;
-            $payload['sets'] = $sets;
+            $payload['versions'] = count($designs);
+            $payload['designs'] = $designs;
+            $payload['sets'] = $designs[0] ?? [];
         }
         $this->options_json = json_encode($payload, JSON_UNESCAPED_UNICODE);
     }
@@ -1954,12 +2165,72 @@ class FormField extends ActiveRecord
         $setSize = max(2, (int)($decoded['setSize'] ?? 4));
         $setCount = max(1, (int)($decoded['setCount'] ?? max(1, count($items) ?: 1)));
         $sets = is_array($decoded['sets'] ?? null) ? $decoded['sets'] : [];
+        $designs = is_array($decoded['designs'] ?? null) && $decoded['designs'] ? array_values($decoded['designs']) : [$sets];
         return [
             'items' => $items,
             'setSize' => $setSize,
             'setCount' => $setCount,
             'sets' => $sets,
+            'designs' => $designs,
+            'versions' => count($designs),
         ];
+    }
+
+    public const MAXDIFF_VERSIONS = 5;
+    public const MAXDIFF_VERSIONS_MAX = 20;
+
+    /**
+     * Version 1 is the designer's sets; each later version runs the designer on a reordered
+     * item list, so it pairs items differently while keeping each version balanced (SCO-1).
+     *
+     * @param string[] $items
+     * @return string[][][]
+     */
+    public static function maxDiffDesigns(array $items, int $setSize, int $setCount, int $versions): array
+    {
+        $designer = new MaxDiffDesigner();
+        $engine = new \humhub\modules\thiscoveryForms\services\RandomisationEngine();
+        $designs = [];
+        $seen = [];
+        for ($v = 0; $v < $versions; $v++) {
+            $order = $v === 0 ? $items : $engine->shuffle($items, $engine->seedInt('maxdiff-design', implode("\0", $items) . ':' . $v));
+            $sets = $designer->generateSets(array_values($order), $setSize, $setCount);
+            $key = json_encode($sets);
+            if ($v > 0 && isset($seen[$key])) {
+                continue;
+            }
+            $seen[$key] = true;
+            $designs[] = $sets;
+        }
+        return $designs ?: [[]];
+    }
+
+    /** The sets of one version; an unknown version falls back to the first. */
+    public function maxDiffSets(int $version): array
+    {
+        $designs = $this->getItemsConfig()['designs'];
+        return $designs[$version] ?? ($designs[0] ?? []);
+    }
+
+    /**
+     * Which version a respondent sees: the one stored with their answer, otherwise drawn from
+     * the session so the version shown before the first save is the one saved (SCO-1).
+     *
+     * @param mixed $value
+     */
+    public function maxDiffVersionFor($value): int
+    {
+        $count = max(1, $this->getItemsConfig()['versions']);
+        if (is_array($value) && isset($value['version']) && is_numeric($value['version'])
+            && (int)$value['version'] >= 0 && (int)$value['version'] < $count) {
+            return (int)$value['version'];
+        }
+        if ($count === 1) {
+            return 0;
+        }
+        $session = Yii::$app->has('session') ? (string)Yii::$app->session->id : '';
+        $engine = new \humhub\modules\thiscoveryForms\services\RandomisationEngine();
+        return $engine->seedInt('maxdiff-version:' . ($session !== '' ? $session : 'none'), 'field:' . (int)$this->id) % $count;
     }
 
     public function setDrilldownTree($tree): void
@@ -2184,6 +2455,243 @@ class FormField extends ActiveRecord
         ], JSON_UNESCAPED_UNICODE);
     }
 
+    /** Longest stored answer, even with no limit set: keeps answers inside the column (LOG-12). */
+    public const TEXT_HARD_MAX = 2000;
+    public const TEXTAREA_HARD_MAX = 16000;
+    public const PATTERN_MAX = 200;
+
+    /**
+     * Answer rules for this question (LOG-12), as the studio posts them:
+     * min_length, max_length, pattern, pattern_message (text, long text);
+     * date_min, date_max (date: YYYY-MM-DD or "today"); check, check_message (any question:
+     * a formula that must be true once the question is answered).
+     *
+     * @return array{min_length:string,max_length:string,pattern:string,pattern_message:string,date_min:string,date_max:string,check:string,check_message:string}
+     */
+    public function getValidation(): array
+    {
+        $out = ['min_length' => '', 'max_length' => '', 'pattern' => '', 'pattern_message' => '',
+            'date_min' => '', 'date_max' => '', 'check' => '', 'check_message' => '',
+            // Delphi consensus for this question, overriding the form's (SCO-5).
+            'consensus_agree_from' => '', 'consensus_agree_to' => '', 'consensus_disagree_from' => '',
+            'consensus_disagree_to' => '', 'consensus_exclude' => '', 'consensus_iqr_max' => ''];
+        if (!$this->hasAttribute('validation_json')) {
+            return $out;
+        }
+        $decoded = json_decode((string)$this->validation_json, true);
+        if (!is_array($decoded)) {
+            return $out;
+        }
+        foreach (array_keys($out) as $key) {
+            $out[$key] = trim((string)($decoded[$key] ?? ''));
+        }
+        return $out;
+    }
+
+    /**
+     * This question's consensus rule, or null to use the form's (SCO-5).
+     *
+     * @return array{agree_from:?string,agree_to:?string,disagree_from:?string,disagree_to:?string,exclude:string[],iqr_max:?float}|null
+     */
+    public function getConsensusOverride(): ?array
+    {
+        $rules = $this->getValidation();
+        $v = static fn (string $key): ?string => $rules[$key] !== '' ? $rules[$key] : null;
+        $exclude = array_values(array_filter(array_map('trim', explode(',', $rules['consensus_exclude'])), 'strlen'));
+        $iqr = $rules['consensus_iqr_max'] !== '' ? (float)$rules['consensus_iqr_max'] : null;
+        $out = [
+            'agree_from' => $v('consensus_agree_from'),
+            'agree_to' => $v('consensus_agree_to'),
+            'disagree_from' => $v('consensus_disagree_from'),
+            'disagree_to' => $v('consensus_disagree_to'),
+            'exclude' => $exclude,
+            'iqr_max' => $iqr,
+        ];
+        return ($out['agree_from'] === null && $out['disagree_from'] === null && !$exclude && $iqr === null) ? null : $out;
+    }
+
+    /** The check formula's parsed tree, or null when there is none (or it no longer parses). */
+    public function getValidationCheck(): ?array
+    {
+        $check = $this->getValidation()['check'];
+        if ($check === '') {
+            return null;
+        }
+        try {
+            return (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($check);
+        } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
+            return null;
+        }
+    }
+
+    /** Stores the rules, keeping only valid ones; validationErrors() reports the rest at save. */
+    public function setValidation($raw): void
+    {
+        if (!$this->hasAttribute('validation_json')) {
+            return;
+        }
+        $raw = is_array($raw) ? $raw : (is_string($raw) ? (json_decode($raw, true) ?: []) : []);
+        $keep = [];
+        $text = in_array($this->type, [self::TYPE_TEXT, self::TYPE_TEXTAREA], true);
+        if ($text) {
+            foreach (['min_length', 'max_length'] as $key) {
+                $value = trim((string)($raw[$key] ?? ''));
+                if ($value !== '' && ctype_digit($value)) {
+                    $keep[$key] = (string)min((int)$value, $this->textHardMax());
+                }
+            }
+            $pattern = trim((string)($raw['pattern'] ?? ''));
+            if ($pattern !== '' && self::patternError($pattern) === null) {
+                $keep['pattern'] = $pattern;
+                $keep['pattern_message'] = trim((string)($raw['pattern_message'] ?? ''));
+            }
+        }
+        if ($this->type === self::TYPE_DATE) {
+            foreach (['date_min', 'date_max'] as $key) {
+                $value = trim((string)($raw[$key] ?? ''));
+                if ($value !== '' && self::dateBoundValid($value)) {
+                    $keep[$key] = $value;
+                }
+            }
+        }
+        $check = trim((string)($raw['check'] ?? ''));
+        if ($check !== '') {
+            $keep['check'] = $check;
+            $keep['check_message'] = trim((string)($raw['check_message'] ?? ''));
+        }
+        if (in_array($this->type, [self::TYPE_RADIO, self::TYPE_DROPDOWN, self::TYPE_RATING], true)) {
+            foreach (['consensus_agree_from', 'consensus_agree_to', 'consensus_disagree_from', 'consensus_disagree_to', 'consensus_exclude'] as $key) {
+                $keep[$key] = mb_substr(trim((string)($raw[$key] ?? '')), 0, 255);
+            }
+            $iqr = trim((string)($raw['consensus_iqr_max'] ?? ''));
+            if ($iqr !== '' && is_numeric($iqr) && (float)$iqr >= 0) {
+                $keep['consensus_iqr_max'] = $iqr;
+            }
+        }
+        $keep = array_filter($keep, static fn ($v) => $v !== '');
+        $this->validation_json = $keep ? json_encode($keep, JSON_UNESCAPED_UNICODE) : null;
+    }
+
+    /**
+     * Why posted rules can't be saved.
+     *
+     * @return string[]
+     */
+    public static function validationErrors($raw, string $type, string $label): array
+    {
+        $raw = is_array($raw) ? $raw : [];
+        $errors = [];
+        $say = static fn (string $m, array $p = []) => Yii::t('ThiscoveryFormsModule.base', $m, ['label' => $label] + $p);
+        if (in_array($type, [self::TYPE_TEXT, self::TYPE_TEXTAREA], true)) {
+            $min = trim((string)($raw['min_length'] ?? ''));
+            $max = trim((string)($raw['max_length'] ?? ''));
+            foreach ([$min, $max] as $value) {
+                if ($value !== '' && !ctype_digit($value)) {
+                    $errors[] = $say('“{label}”: a length must be a whole number.');
+                }
+            }
+            if ($min !== '' && $max !== '' && ctype_digit($min) && ctype_digit($max) && (int)$min > (int)$max) {
+                $errors[] = $say('“{label}”: the shortest length is longer than the longest.');
+            }
+            $pattern = trim((string)($raw['pattern'] ?? ''));
+            if ($pattern !== '' && ($why = self::patternError($pattern)) !== null) {
+                $errors[] = $say('“{label}”: the answer pattern is not valid ({why}).', ['why' => $why]);
+            }
+        }
+        if ($type === self::TYPE_DATE) {
+            $min = trim((string)($raw['date_min'] ?? ''));
+            $max = trim((string)($raw['date_max'] ?? ''));
+            foreach ([$min, $max] as $value) {
+                if ($value !== '' && !self::dateBoundValid($value)) {
+                    $errors[] = $say('“{label}”: a date limit must be a real date written YYYY-MM-DD, or today.');
+                }
+            }
+            if ($min !== '' && $max !== '' && $min !== 'today' && $max !== 'today' && self::dateBoundValid($min) && self::dateBoundValid($max) && $min > $max) {
+                $errors[] = $say('“{label}”: the earliest date is after the latest.');
+            }
+        }
+        $check = trim((string)($raw['check'] ?? ''));
+        if ($check !== '') {
+            try {
+                (new \humhub\modules\thiscoveryForms\services\formula\Parser())->parse($check);
+            } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
+                $errors[] = $say('“{label}”: the answer check is not a valid formula: {why}', ['why' => $e->getMessage()]);
+            }
+        }
+        return $errors;
+    }
+
+    public function textHardMax(): int
+    {
+        return $this->type === self::TYPE_TEXTAREA ? self::TEXTAREA_HARD_MAX : self::TEXT_HARD_MAX;
+    }
+
+    /** The longest answer allowed: the question's limit, never above the hard cap. */
+    public function maxTextLength(): int
+    {
+        $max = $this->getValidation()['max_length'];
+        return $max !== '' ? min((int)$max, $this->textHardMax()) : $this->textHardMax();
+    }
+
+    /**
+     * A whole-answer regular expression. The author writes the inside; it is anchored and
+     * read as Unicode. Patterns are short and checked for compile errors at save.
+     */
+    public static function patternRegex(string $pattern): string
+    {
+        return '/^(?:' . str_replace('/', '\/', $pattern) . ')$/u';
+    }
+
+    public static function patternError(string $pattern): ?string
+    {
+        if (mb_strlen($pattern) > self::PATTERN_MAX) {
+            return Yii::t('ThiscoveryFormsModule.base', 'longer than {n} characters', ['n' => self::PATTERN_MAX]);
+        }
+        set_error_handler(static fn () => true);
+        try {
+            $ok = preg_match(self::patternRegex($pattern), '');
+        } finally {
+            restore_error_handler();
+        }
+        return $ok === false ? (preg_last_error_msg() ?: 'syntax') : null;
+    }
+
+    /** Whether an answer matches; a pattern that blows the backtrack limit counts as no match. */
+    public static function patternMatches(string $pattern, string $value): bool
+    {
+        $limit = ini_get('pcre.backtrack_limit');
+        ini_set('pcre.backtrack_limit', '100000');
+        try {
+            return @preg_match(self::patternRegex($pattern), $value) === 1;
+        } finally {
+            ini_set('pcre.backtrack_limit', (string)$limit);
+        }
+    }
+
+    public static function dateBoundValid(string $value): bool
+    {
+        return $value === 'today' || self::isRealDate($value);
+    }
+
+    public static function isRealDate(string $value): bool
+    {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $value, $m)) {
+            return false;
+        }
+        return checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
+    }
+
+    /** A date limit as YYYY-MM-DD, with "today" read in the form's time zone. */
+    public function dateBound(string $key): string
+    {
+        $value = $this->getValidation()[$key] ?? '';
+        if ($value !== 'today') {
+            return $value;
+        }
+        $zone = \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::timeZone($this->form);
+        return (new \DateTimeImmutable('now', new \DateTimeZone($zone)))->format('Y-m-d');
+    }
+
     public function getActions(): array
     {
         $decoded = json_decode((string)$this->actions_json, true);
@@ -2247,6 +2755,9 @@ class FormField extends ActiveRecord
             'option_items' => self::isChoiceType($this->type) ? $this->getChoicePairs() : [],
             'hidden' => $this->isHiddenFromRespondent() ? '1' : '',
             'pii' => $this->isContainsPii() ? '1' : '',
+            'straightline_exempt' => $this->isStraightlineExempt() ? '1' : '',
+            'reverse_keyed' => $this->isReverseKeyed() ? '1' : '',
+            'reverse_rows' => implode(',', $this->getReverseRows()),
             'default_value' => $this->getDefaultValue(),
             'meta_key' => $this->getRespondentMetaKey(),
             'panel_key' => $this->getPanelAttrKey(),
@@ -2281,6 +2792,9 @@ class FormField extends ActiveRecord
             'formula_places' => $this->getFormulaConfig()['places'],
             'number_min' => $this->getNumberMin(),
             'number_max' => $this->getNumberMax(),
+            'file_types' => implode(', ', $this->getFileRules()['types']),
+            'file_max_mb' => $this->getFileRules()['maxMb'] ?? '',
+            'validation' => array_filter($this->getValidation(), static fn ($v) => $v !== ''),
             'prefill_profile' => $this->getPrefillProfileAttribute() ?: '',
             'logic_formula' => $this->getLogic()['text'],
             'logic_action' => $this->getLogic()['action'],
@@ -2304,6 +2818,7 @@ class FormField extends ActiveRecord
         } elseif ($this->type === self::TYPE_PAGE_BREAK) {
             $cfg = $this->getPageBreakConfig();
             $row['page_key'] = $cfg['pageKey'];
+            $row['page_otherwise'] = $cfg['otherwise'];
             $row['page_title'] = $cfg['title'];
             $row['branches'] = $cfg['branches'];
         } elseif ($this->type === self::TYPE_RICH_TEXT) {
@@ -2331,6 +2846,7 @@ class FormField extends ActiveRecord
             $row['items'] = implode("\n", $items['items']);
             $row['maxdiff_set_size'] = $items['setSize'];
             $row['maxdiff_set_count'] = $items['setCount'];
+            $row['maxdiff_versions'] = $items['versions'];
         } elseif ($this->type === self::TYPE_DRILLDOWN) {
             $row['drilldown_tree'] = $this->getDrilldownTreeAsText();
         } elseif ($this->type === self::TYPE_IMAGE_AREA) {
@@ -2361,6 +2877,18 @@ class FormField extends ActiveRecord
         $row['logic'] = $this->getLogic();
         return $row;
     }
+
+    /**
+     * Settings that structure a form: loops, group and block randomisation, consent options.
+     * Import and library insert carry them through unchanged (V3-46).
+     */
+    public const STRUCTURE_KEYS = [
+        'block_key', 'randomise_enabled', 'randomise_method', 'randomise_show', 'randomise_pin_first', 'randomise_pin_last',
+        'loop_enabled', 'loop_source', 'loop_field_key', 'loop_label_field', 'loop_max', 'loop_min',
+        'loop_items', 'loop_randomise', 'loop_show',
+        'consent_must_read', 'consent_signature', 'consent_witness',
+        'straightline_exempt', 'reverse_keyed', 'reverse_rows',
+    ];
 
     /**
      * Normalize an export or post row into saveFieldsFromPost shape.
@@ -2417,6 +2945,8 @@ class FormField extends ActiveRecord
             'page_key' => $payload['page_key'] ?? '',
             'page_title' => $payload['page_title'] ?? '',
             'branches' => is_array($payload['branches'] ?? null) ? $payload['branches'] : [],
+            'page_otherwise' => (string)($payload['page_otherwise'] ?? ''),
+            'validation' => is_array($payload['validation'] ?? null) ? $payload['validation'] : [],
             'rich_content' => $payload['rich_content'] ?? '',
             'html_content' => $payload['html_content'] ?? '',
             'html_collect' => !empty($payload['html_collect']) ? '1' : '',
@@ -2432,6 +2962,7 @@ class FormField extends ActiveRecord
             'items' => is_array($payload['items'] ?? null) ? implode("\n", $payload['items']) : (string)($payload['items'] ?? $options),
             'maxdiff_set_size' => $payload['maxdiff_set_size'] ?? ($payload['setSize'] ?? 4),
             'maxdiff_set_count' => $payload['maxdiff_set_count'] ?? ($payload['setCount'] ?? ''),
+            'maxdiff_versions' => $payload['maxdiff_versions'] ?? ($payload['versions'] ?? null),
             'drilldown_tree' => is_array($payload['drilldown_tree'] ?? null)
                 ? json_encode($payload['drilldown_tree'])
                 : (string)($payload['drilldown_tree'] ?? ''),
@@ -2464,6 +2995,15 @@ class FormField extends ActiveRecord
         if (array_key_exists('pii', $payload)) {
             $row['pii'] = !empty($payload['pii']) ? '1' : '';
         }
+        foreach (self::STRUCTURE_KEYS as $key) {
+            if (array_key_exists($key, $payload) && is_scalar($payload[$key])) {
+                $row[$key] = (string)$payload[$key];
+            }
+        }
+        // A consent document id belongs to the source form; 0 uses this form's latest published sheet.
+        if ($type === self::TYPE_CONSENT) {
+            $row['consent_document_id'] = 0;
+        }
 
         return $row;
     }
@@ -2491,6 +3031,7 @@ class FormField extends ActiveRecord
                 'pageKey' => $row['page_key'] ?? '',
                 'title' => $row['page_title'] ?? '',
                 'branches' => is_array($row['branches'] ?? null) ? $row['branches'] : [],
+                'otherwise' => (string)($row['page_otherwise'] ?? ''),
             ]);
         } elseif ($field->type === self::TYPE_RICH_TEXT) {
             $field->setRichTextContent((string)($row['rich_content'] ?? ''));
@@ -2513,6 +3054,7 @@ class FormField extends ActiveRecord
                 'items' => $row['items'] ?? ($row['options'] ?? ''),
                 'setSize' => $row['maxdiff_set_size'] ?? 4,
                 'setCount' => $row['maxdiff_set_count'] ?? 0,
+                'versions' => $row['maxdiff_versions'] ?? null,
             ]);
         } elseif ($field->type === self::TYPE_DRILLDOWN) {
             $field->setDrilldownTree($row['drilldown_tree'] ?? '');
@@ -2573,6 +3115,8 @@ class FormField extends ActiveRecord
             $field->setCarryForward((string)($row['carry_from'] ?? ''), (string)($row['carry_mode'] ?? self::CARRY_SELECTED));
         } elseif ($field->type === self::TYPE_NUMBER) {
             $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
+        } elseif ($field->type === self::TYPE_FILE) {
+            $field->setFileRules($row['file_types'] ?? '', $row['file_max_mb'] ?? null);
         } elseif ($field->type === self::TYPE_CALCULATED) {
             $field->setFormulaConfig(
                 (string)($row['formula'] ?? ''),
@@ -2625,6 +3169,7 @@ class FormField extends ActiveRecord
             $field->options_json = json_encode($options, JSON_UNESCAPED_UNICODE);
         }
         $field->setActions($row['actions'] ?? []);
+        $field->setValidation($row['validation'] ?? []);
         $role = trim((string)($row['instrument_role'] ?? ''));
         if ($role !== '') {
             $field->setInstrumentRole($role);

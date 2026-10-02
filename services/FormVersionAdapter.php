@@ -49,7 +49,13 @@ class FormVersionAdapter implements VersionableAdapter
         if (!$form) {
             return false;
         }
-        return $this->snapshots->import($form, $snapshot, true);
+        if (!$this->snapshots->import($form, $snapshot, true)) {
+            return false;
+        }
+        // The restored definition becomes the latest revision, so publishing "the latest"
+        // publishes what was restored (DAT-19).
+        (new FormVersionService())->recordSave(CustomForm::findOne($ownerId) ?? $form);
+        return true;
     }
 
     public function canDeleteEdition(int $ownerId, int $editionId): bool

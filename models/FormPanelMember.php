@@ -158,13 +158,67 @@ class FormPanelMember extends ActiveRecord
         $this->demographics_json = $clean ? json_encode($clean, JSON_UNESCAPED_UNICODE) : null;
     }
 
-    public function markConsent(?int $recordId = null): void
+    /**
+     * The panel's "Consent recorded" date: the latest eConsent record agreed to (V3-43).
+     */
+    public function markConsent(?int $recordId = null, ?string $signedAt = null): void
     {
-        if ($recordId === null || $recordId < 1 || $this->consent_at) {
+        if ($recordId === null || $recordId < 1) {
             return;
         }
-        $this->consent_at = date('Y-m-d H:i:s');
+        $this->consent_at = $signedAt ?: date('Y-m-d H:i:s');
         $this->save(false, ['consent_at', 'updated_at']);
+    }
+
+    /** Days a panel link works after it is issued (SEC-16). */
+    public const SETTING_LINK_DAYS = 'panel_link_days';
+    public const DEFAULT_LINK_DAYS = 180;
+
+    /**
+     * The token for invite links (SEC-16): member id, expiry day and an HMAC keyed by this
+     * member's private token and a server secret. The stored token itself never leaves the
+     * server, and a link stops working when it expires or the member is deactivated.
+     */
+    public function linkToken(?int $days = null): string
+    {
+        $days = $days ?? self::linkDays();
+        $expires = intdiv(time(), 86400) + max(1, $days);
+        $exp = base_convert((string)$expires, 10, 36);
+        return (int)$this->id . '-' . $exp . '-' . self::linkMac((int)$this->id, $exp, (string)$this->token);
+    }
+
+    /** The active member a link token names, or null when it is forged, expired or unknown. */
+    public static function fromLinkToken(string $token): ?self
+    {
+        if (!preg_match('/^(\d{1,10})-([a-z0-9]{1,8})-([a-f0-9]{24})$/', trim($token), $m)) {
+            return null;
+        }
+        if ((int)base_convert($m[2], 36, 10) < intdiv(time(), 86400)) {
+            return null;
+        }
+        $member = static::findOne((int)$m[1]);
+        if (!$member || (string)$member->token === '') {
+            return null;
+        }
+        return hash_equals(self::linkMac((int)$member->id, $m[2], (string)$member->token), $m[3]) ? $member : null;
+    }
+
+    public static function linkDays(): int
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        $raw = $module ? $module->settings->get(self::SETTING_LINK_DAYS) : null;
+        return max(1, (int)($raw === null || $raw === '' ? self::DEFAULT_LINK_DAYS : $raw));
+    }
+
+    private static function linkMac(int $id, string $exp, string $memberToken): string
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        $secret = $module ? (string)$module->settings->get('panel_link_secret', '') : '';
+        if ($secret === '' && $module) {
+            $secret = bin2hex(random_bytes(32));
+            $module->settings->set('panel_link_secret', $secret);
+        }
+        return substr(hash_hmac('sha256', $id . '|' . $exp, $memberToken . '|' . $secret), 0, 24);
     }
 
     public static function generateToken(): string

@@ -224,6 +224,15 @@ class FormsDataProvider implements DataProviderInterface
             $display = '';
             if ($questionId) {
                 $display = (string)$answer->getFieldValue($questionId);
+                $repeats = $answer->loopCells($questionId);
+                if ($display === '' && $repeats !== []) {
+                    // A loop question: every repeat, not whichever row came first (V3-45).
+                    $parts = [];
+                    foreach ($repeats as $key => $cell) {
+                        $parts[] = $key . ': ' . (string)$cell->value;
+                    }
+                    $display = implode('; ', $parts);
+                }
             }
             $rows[] = [
                 'id' => (int)$answer->id,
@@ -246,11 +255,31 @@ class FormsDataProvider implements DataProviderInterface
     {
         $values = [];
         foreach ($answer->answerFields as $af) {
+            $key = (string)($af->instance_key ?? '');
+            if ($key !== '') {
+                // Loop repeats stay separate, keyed by repeat (V3-45).
+                if (!isset($values[(string)$af->field_id]) || !is_array($values[(string)$af->field_id])) {
+                    $values[(string)$af->field_id] = [];
+                }
+                $values[(string)$af->field_id][$key] = $af->value;
+                continue;
+            }
             $values[(string)$af->field_id] = $af->value;
         }
         $segments = [];
         if ($answer->wave_id) {
             $segments['wave_id'] = (string)$answer->wave_id;
+        }
+        // The q:<id> segments offered by listSegmentFields() now carry the answer (SCO-14).
+        $form = $answer->form;
+        foreach ($form ? $form->getAllFields()->all() : [] as $field) {
+            if (!in_array($field->type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_PANEL_ATTR], true)) {
+                continue;
+            }
+            $raw = $values[(string)$field->id] ?? null;
+            if (is_scalar($raw) && trim((string)$raw) !== '') {
+                $segments['q:' . $field->id] = trim((string)$raw);
+            }
         }
         return [
             'id' => (int)$answer->id,

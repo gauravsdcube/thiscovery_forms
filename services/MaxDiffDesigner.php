@@ -24,7 +24,19 @@ class MaxDiffDesigner
         $seen = [];
 
         for ($step = 1; $step < $n && count($sets) < $setCount; $step++) {
-            for ($start = 0; $start < $n && count($sets) < $setCount; $start++) {
+            // Spread the first sets' start positions over the list, so 10 items in 5 sets of 4
+            // cover items 9 and 10 too (V3-42, SCO-1): then the remaining starts in order.
+            $starts = [];
+            if ($step === 1) {
+                for ($k = 0; $k < $setCount; $k++) {
+                    $starts[] = (int)floor($k * $n / $setCount) % $n;
+                }
+            }
+            $starts = array_values(array_unique(array_merge($starts, range(0, $n - 1))));
+            foreach ($starts as $start) {
+                if (count($sets) >= $setCount) {
+                    break;
+                }
                 $set = [];
                 for ($j = 0; $j < $setSize; $j++) {
                     $set[] = $items[($start + ($j * $step)) % $n];

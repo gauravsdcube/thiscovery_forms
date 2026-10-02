@@ -46,20 +46,47 @@ foreach ($catalogue as $col) {
         </p>
     </div>
 
+    <?php $analysis = \humhub\modules\thiscoveryForms\services\ExportSettings::get($formModel); ?>
+    <details class="cf-set-acc" open>
+        <summary>
+            <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Ready for analysis') ?></span>
+            <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'How empty answers and multiple-choice options are coded.') ?></span>
+        </summary>
+        <div class="cf-set-acc__body">
+    <fieldset class="cf-field mt-3">
+        <legend class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Ready for analysis') ?></legend>
+        <?php foreach ([
+            'export_multi_columns' => [$analysis['multi_columns'], Yii::t('ThiscoveryFormsModule.base', 'One 0/1 column per multiple-choice option, as well as the joined answer')],
+            'export_missing_codes' => [$analysis['missing_codes'], Yii::t('ThiscoveryFormsModule.base', 'Codes for empty answers: -99 shown but not answered, -98 hidden by logic, -97 not reached')],
+            'export_include_in_progress' => [$analysis['include_in_progress'], Yii::t('ThiscoveryFormsModule.base', 'Include responses still in progress (off: complete responses only, as on the dashboard)')],
+        ] as $name => [$on, $label]): ?>
+            <div class="cf-switch">
+                <label>
+                    <?= Html::hiddenInput($name, '0') ?>
+                    <?= Html::checkbox($name, $on, ['value' => '1', 'uncheck' => null]) ?>
+                    <?= Html::encode($label) ?>
+                </label>
+            </div>
+        <?php endforeach; ?>
+    </fieldset>
+        </div>
+    </details>
+
     <p class="cf-hint text-muted mt-3<?= $scrub ? '' : ' d-none' ?>" data-cf-export-pii-note>
         <?= Yii::t('ThiscoveryFormsModule.base', 'Identity and PII-tagged columns are locked off while scrubbing is on. They will be omitted from the CSV even if you had included them.') ?>
     </p>
 
     <?php foreach ($groups as $groupKey => $groupTitle): ?>
         <?php $items = $byGroup[$groupKey] ?? []; ?>
-        <details class="cf-set-acc" data-cf-export-group="<?= Html::encode($groupKey) ?>"<?= $groupKey === ExportSettings::GROUP_META ? ' open' : '' ?>>
+        <details class="cf-set-acc"<?= $groupKey === \humhub\modules\thiscoveryForms\services\ExportSettings::GROUP_META ? ' open' : '' ?>>
             <summary>
                 <span class="cf-set-acc__title"><?= Html::encode($groupTitle) ?></span>
                 <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', '{n} columns', ['n' => count($items)]) ?></span>
             </summary>
             <div class="cf-set-acc__body">
-            <div class="cf-export-cols" data-cf-export-group="<?= Html::encode($groupKey) ?>">
+        <div class="cf-export-cols" data-cf-export-group="<?= Html::encode($groupKey) ?>">
             <div class="cf-export-cols__head">
+                <h5 class="cf-section__title mb-0"><?= Html::encode($groupTitle) ?></h5>
                 <div class="cf-export-cols__toolbar">
                     <button type="button" class="btn btn-link btn-sm" data-cf-export-all="<?= Html::encode($groupKey) ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Select all') ?>
@@ -102,7 +129,7 @@ foreach ($catalogue as $col) {
                     <?php endif; ?>
                 </label>
             <?php endforeach; ?>
-            </div>
+        </div>
             </div>
         </details>
     <?php endforeach; ?>

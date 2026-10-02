@@ -50,7 +50,8 @@ final class Value
             'empty' => false,
             'bool' => $this->data === true,
             'number' => Decimal::cmp((string)$this->data, '0') !== 0,
-            'text' => $this->data !== '' && $this->data !== '0',
+            // "0" is a real answer (V3-11); only empty text is false.
+            'text' => $this->data !== '',
             'list' => $this->data !== [],
             default => true,
         };

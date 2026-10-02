@@ -21,7 +21,8 @@ class AnswerAudit
         string $instanceKey,
         ?string $oldValue,
         ?string $newValue,
-        string $reason = 'edit'
+        string $reason = 'edit',
+        ?int $actorId = null
     ): void {
         if (!self::tableReady() || !$answer->id || $fieldId < 1) {
             return;
@@ -32,9 +33,11 @@ class AnswerAudit
         if ((string)$oldValue === (string)$newValue) {
             return;
         }
-        $actor = null;
+        // An explicit actor is a manager. Otherwise the editor is named only when the answer
+        // already carries their identity, so a respondent on an anonymous form stays unlinked.
+        $actor = $actorId;
         $userId = (int)Yii::$app->user->id;
-        if ($userId > 0 && $answer->created_by !== null) {
+        if ($actor === null && $userId > 0 && $answer->created_by !== null) {
             $actor = $userId;
         }
         $reason = trim($reason);

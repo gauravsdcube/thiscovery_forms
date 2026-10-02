@@ -73,7 +73,8 @@ class SubmitForm extends Model
     {
         return [
             [['values'], 'safe'],
-            [['values'], 'validateFields'],
+            // An empty page still has to enforce consent and other rules (skipOnEmpty would skip them).
+            [['values'], 'validateFields', 'skipOnEmpty' => false],
         ];
     }
 
@@ -84,18 +85,108 @@ class SubmitForm extends Model
         return $scenarios;
     }
 
+    /** Why a completed response is being changed; read from the posted change_reason when null. */
+    public ?string $changeReason = null;
+
+    /** Changes to a completed response are audited (V3-44); filling in a draft is not. */
+    private bool $auditing = false;
+
+    /** A manager changing someone else's completed response: attributed, and needs a reason. */
+    private bool $managerEdit = false;
+
     /**
-     * A loop answer is keyed by instance path. A choice list is a plain list.
-     *
-     * @param mixed $value
+     * A manager (not the respondent) is changing a completed response (V3-44).
      */
-    private function isInstancePost(FormField $field, $value): bool
+    public static function isManagerEdit(?CustomForm $form, ?FormAnswer $answer): bool
     {
-        return is_array($value)
-            && $value !== []
-            && !array_is_list($value)
-            && $this->form
-            && (new \humhub\modules\thiscoveryForms\services\LoopService())->isLoopField($this->form, $field);
+        if (!$form || !$answer || $answer->isNewRecord || !$answer->isComplete() || Yii::$app->user->isGuest) {
+            return false;
+        }
+        $userId = (int)Yii::$app->user->id;
+        return $form->canManage() && (int)$answer->created_by !== $userId;
+    }
+
+    private function changeReason(): string
+    {
+        $reason = $this->changeReason ?? (string)Yii::$app->request->post('change_reason', '');
+        return mb_substr(trim($reason), 0, 255);
+    }
+
+    /** @var array<int,true>|null loop member ids, memoised for this submit */
+    private ?array $loopIds = null;
+
+    /**
+     * A loop member's answer is always keyed by instance path. Key shape cannot decide
+     * this: repeat codes 0..n post as a PHP list (V3-15).
+     */
+    private function isLoopMember(FormField $field): bool
+    {
+        if (!$this->form) {
+            return false;
+        }
+        if ($this->loopIds === null) {
+            $this->loopIds = (new \humhub\modules\thiscoveryForms\services\LoopService())->loopFieldIds($this->form);
+        }
+        return isset($this->loopIds[(int)$field->id]);
+    }
+
+    /**
+     * One posted answer (or one loop repeat of it), cleaned for its type.
+     *
+     * @param mixed $raw
+     * @return mixed
+     */
+    private function parsePosted(FormField $field, $raw, string $instance)
+    {
+        switch ($field->type) {
+            case FormField::TYPE_FILE:
+                return $this->acceptFileGuid($field, is_string($raw) ? trim($raw) : '', $instance);
+            case FormField::TYPE_CHECKBOX:
+                return $this->sanitizeChoiceValue($field, is_array($raw) ? array_values($raw) : []);
+            case FormField::TYPE_RANKING:
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
+                }
+                return is_array($raw) ? array_values(array_map('strval', array_filter($raw, 'is_scalar'))) : [];
+            case FormField::TYPE_MAXDIFF:
+                $raw = $raw ?? [];
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $raw;
+                }
+                return $this->normaliseMaxDiff($field, $raw);
+            case FormField::TYPE_GRID_SINGLE:
+            case FormField::TYPE_GRID_MULTI:
+            case FormField::TYPE_BEST_WORST:
+            case FormField::TYPE_DRILLDOWN:
+            case FormField::TYPE_IMAGE_AREA:
+                $raw = $raw ?? [];
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $raw;
+                }
+                return $raw;
+            case FormField::TYPE_MAP:
+                $raw = $raw ?? [];
+                if (is_string($raw)) {
+                    $decoded = json_decode($raw, true);
+                    $raw = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $raw;
+                }
+                $clean = $field->sanitizeMapAnswer($raw);
+                return !empty($clean['features']) ? $clean : [];
+            case FormField::TYPE_HTML:
+                if (is_array($raw)) {
+                    return array_values(array_map('strval', array_filter($raw, 'is_scalar')));
+                }
+                return is_string($raw) ? trim($raw) : (string)$raw;
+            case FormField::TYPE_RADIO:
+            case FormField::TYPE_DROPDOWN:
+                return $this->sanitizeChoiceValue($field, $raw ?? '');
+            case FormField::TYPE_RATING:
+                return ($raw === '' || $raw === null || $raw === []) ? '' : $raw;
+        }
+        return $raw ?? '';
     }
 
     public function loadValuesFromRequest($post, $files = []): bool
@@ -111,92 +202,19 @@ class SubmitForm extends Model
             if (!$field->collectsAnswer()) {
                 continue;
             }
-            if ($field->type === FormField::TYPE_FILE) {
-                $guid = $fieldPost[$key] ?? '';
-                $this->values[$field->id] = $this->acceptFileGuid($field, is_string($guid) ? trim($guid) : '');
-                continue;
-            }
-            if ($field->type === FormField::TYPE_CHECKBOX) {
-                $val = $fieldPost[$key] ?? [];
-                if ($this->isInstancePost($field, $val)) {
-                    $clean = [];
-                    foreach ($val as $instance => $cell) {
-                        $clean[(string)$instance] = $this->sanitizeChoiceValue($field, is_array($cell) ? array_values($cell) : []);
+            $raw = $fieldPost[$key] ?? null;
+            if ($this->isLoopMember($field)) {
+                // Every type is parsed per repeat, including files and HTML (V3-17).
+                $clean = [];
+                if (is_array($raw)) {
+                    foreach ($raw as $instance => $cell) {
+                        $clean[(string)$instance] = $this->parsePosted($field, $cell, (string)$instance);
                     }
-                    $this->values[$field->id] = $clean;
-                    continue;
                 }
-                $this->values[$field->id] = $this->sanitizeChoiceValue($field, is_array($val) ? array_values($val) : []);
+                $this->values[$field->id] = $clean;
                 continue;
             }
-            if ($field->type === FormField::TYPE_RANKING) {
-                $val = $fieldPost[$key] ?? [];
-                if (is_string($val)) {
-                    $decoded = json_decode($val, true);
-                    $val = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : [];
-                }
-                if ($this->isInstancePost($field, $val)) {
-                    $clean = [];
-                    foreach ($val as $instance => $cell) {
-                        $clean[(string)$instance] = is_array($cell) ? array_values(array_map('strval', $cell)) : [];
-                    }
-                    $this->values[$field->id] = $clean;
-                    continue;
-                }
-                $this->values[$field->id] = is_array($val) ? array_values(array_map('strval', $val)) : [];
-                continue;
-            }
-            if (in_array($field->type, [
-                FormField::TYPE_GRID_SINGLE,
-                FormField::TYPE_GRID_MULTI,
-                FormField::TYPE_BEST_WORST,
-                FormField::TYPE_MAXDIFF,
-                FormField::TYPE_DRILLDOWN,
-                FormField::TYPE_IMAGE_AREA,
-            ], true)) {
-                $val = $fieldPost[$key] ?? [];
-                if (is_string($val)) {
-                    $decoded = json_decode($val, true);
-                    $val = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $val;
-                }
-                $this->values[$field->id] = $val;
-                continue;
-            }
-            if ($field->type === FormField::TYPE_MAP) {
-                $val = $fieldPost[$key] ?? [];
-                if (is_string($val)) {
-                    $decoded = json_decode($val, true);
-                    $val = (json_last_error() === JSON_ERROR_NONE) ? $decoded : $val;
-                }
-                $clean = $field->sanitizeMapAnswer($val);
-                $this->values[$field->id] = !empty($clean['features']) ? $clean : [];
-                continue;
-            }
-            if ($field->type === FormField::TYPE_HTML) {
-                $val = $fieldPost[$key] ?? '';
-                if (is_array($val)) {
-                    $this->values[$field->id] = array_values(array_map('strval', $val));
-                } else {
-                    $this->values[$field->id] = is_string($val) ? trim($val) : (string)$val;
-                }
-                continue;
-            }
-            $posted = isset($fieldPost[$key]) ? $fieldPost[$key] : '';
-            if (in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN], true)) {
-                if ($this->isInstancePost($field, $posted)) {
-                    $clean = [];
-                    foreach ($posted as $instance => $cell) {
-                        $clean[(string)$instance] = $this->sanitizeChoiceValue($field, $cell);
-                    }
-                    $this->values[$field->id] = $clean;
-                    continue;
-                }
-                $posted = $this->sanitizeChoiceValue($field, $posted);
-            }
-            if ($field->type === FormField::TYPE_RATING && ($posted === '' || $posted === null || $posted === [])) {
-                $posted = '';
-            }
-            $this->values[$field->id] = $posted;
+            $this->values[$field->id] = $this->parsePosted($field, $raw, '');
         }
 
         $this->applyHiddenDefaultsAndMeta();
@@ -218,7 +236,7 @@ class SubmitForm extends Model
         return true;
     }
 
-    private function acceptFileGuid(FormField $field, string $guid): string
+    private function acceptFileGuid(FormField $field, string $guid, string $instance = ''): string
     {
         if ($guid === '') {
             return '';
@@ -231,10 +249,14 @@ class SubmitForm extends Model
         }
         $answer = $this->editingAnswer;
         if ($answer instanceof FormAnswer) {
-            $stored = FormAnswerField::find()
+            $storedQuery = FormAnswerField::find()
                 ->select('value')
-                ->where(['answer_id' => (int)$answer->id, 'field_id' => (int)$field->id])
-                ->scalar();
+                ->where(['answer_id' => (int)$answer->id, 'field_id' => (int)$field->id]);
+            if (\humhub\modules\thiscoveryForms\services\LoopService::columnReady()) {
+                // A loop repeat's file is matched against that repeat's stored cell (V3-17).
+                $storedQuery->andWhere(['instance_key' => $instance]);
+            }
+            $stored = $storedQuery->scalar();
             $file = File::findOne(['guid' => $guid]);
             $attached = $file && UploadGrant::attachedTo($file, $answer);
             if ((string)$stored === $guid) {
@@ -268,7 +290,7 @@ class SubmitForm extends Model
                 continue;
             }
             if ($field->type === FormField::TYPE_RESPONDENT_META) {
-                $this->values[$id] = $meta->valueFor($field->getRespondentMetaKey(), $this->values[$id] ?? null);
+                $this->values[$id] = $meta->valueFor($field->getRespondentMetaKey(), $this->values[$id] ?? null, null, $this->form);
                 continue;
             }
             if ($field->type === FormField::TYPE_PANEL_ATTR) {
@@ -285,7 +307,8 @@ class SubmitForm extends Model
     }
 
     /**
-     * When "Other" is selected, store "Other: typed text" as the answer value.
+     * When "Other" is selected, store "Other: typed text" as the answer value. In a loop,
+     * each repeat has its own text, posted as other_text[field][repeat] (V3-45).
      */
     protected function applyOtherSpecify($post): void
     {
@@ -294,80 +317,69 @@ class SubmitForm extends Model
             return;
         }
 
+        $frozen = array_map('intval', $this->frozenFieldIds);
         foreach ($this->form->fields as $field) {
             if (!in_array($field->type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true)) {
                 continue;
             }
+            if (in_array((int)$field->id, $frozen, true)) {
+                // A frozen answer (Delphi consensus) is not changed by posted "specify" text (V3-50).
+                continue;
+            }
+            $current = $this->values[$field->id] ?? null;
+            $loop = $this->isLoopMember($field) && is_array($current);
             $otherLabel = $field->findOtherOption();
             if ($otherLabel === null) {
-                $current = $this->values[$field->id] ?? null;
-                $probe = is_array($current) ? $current : [$current];
-                foreach ($probe as $item) {
-                    if (!is_scalar($item) || $item === '') {
-                        continue;
-                    }
-                    if (FormField::isOtherOption((string)$item)) {
-                        $otherLabel = (string)$item;
-                        break;
+                $cells = $loop ? array_values($current) : [$current];
+                foreach ($cells as $cell) {
+                    foreach (is_array($cell) ? $cell : [$cell] as $item) {
+                        if (is_scalar($item) && $item !== '' && FormField::isOtherOption((string)$item)) {
+                            $otherLabel = (string)$item;
+                            break 2;
+                        }
                     }
                 }
             }
             if ($otherLabel === null) {
                 continue;
             }
-            $text = trim((string)($otherPost[(string)$field->id] ?? ''));
-            if ($text === '') {
-                continue;
-            }
-            $stored = FormField::otherSpecifyPrefix($otherLabel) . $text;
-            $current = $this->values[$field->id] ?? null;
-            if ($field->type === FormField::TYPE_CHECKBOX && $this->isInstancePost($field, $current)) {
-                $next = [];
-                $replaced = false;
+            $posted = $otherPost[(string)$field->id] ?? '';
+            if ($loop) {
+                $texts = is_array($posted) ? $posted : [];
                 foreach ($current as $instance => $cell) {
-                    $cellNext = [];
-                    foreach (is_array($cell) ? $cell : [] as $item) {
-                        if (!is_scalar($item)) {
-                            continue;
-                        }
-                        if ((string)$item === $otherLabel || str_starts_with((string)$item, FormField::otherSpecifyPrefix($otherLabel))) {
-                            $cellNext[] = $stored;
-                            $replaced = true;
-                        } else {
-                            $cellNext[] = $item;
-                        }
-                    }
-                    $next[(string)$instance] = $cellNext;
-                }
-                if ($replaced) {
-                    $this->values[$field->id] = $next;
-                }
-                continue;
-            }
-            if ($field->type === FormField::TYPE_CHECKBOX) {
-                $items = is_array($current) ? $current : [];
-                $next = [];
-                $replaced = false;
-                foreach ($items as $item) {
-                    if ((string)$item === $otherLabel || str_starts_with((string)$item, FormField::otherSpecifyPrefix($otherLabel))) {
-                        $next[] = $stored;
-                        $replaced = true;
-                    } else {
-                        $next[] = $item;
+                    $text = trim((string)(is_scalar($texts[(string)$instance] ?? null) ? $texts[(string)$instance] : ''));
+                    if ($text !== '') {
+                        $this->values[$field->id][(string)$instance] = $this->withOtherText($field, $otherLabel, $cell, $text);
                     }
                 }
-                if ($replaced) {
-                    $this->values[$field->id] = $next;
-                }
                 continue;
             }
-            if (is_array($current)) {
-                continue;
-            }
-            if ((string)$current === $otherLabel || str_starts_with((string)$current, FormField::otherSpecifyPrefix($otherLabel))) {
-                $this->values[$field->id] = $stored;
+            $text = trim((string)(is_scalar($posted) ? $posted : ''));
+            if ($text !== '') {
+                $this->values[$field->id] = $this->withOtherText($field, $otherLabel, $current, $text);
             }
         }
+    }
+
+    /**
+     * @param mixed $value one answer (a list for a checkbox)
+     * @return mixed
+     */
+    private function withOtherText(FormField $field, string $otherLabel, $value, string $text)
+    {
+        $stored = FormField::otherSpecifyPrefix($otherLabel) . $text;
+        $isOther = static fn($item): bool => is_scalar($item)
+            && ((string)$item === $otherLabel || str_starts_with((string)$item, FormField::otherSpecifyPrefix($otherLabel)));
+        if ($field->type === FormField::TYPE_CHECKBOX) {
+            if (!is_array($value)) {
+                return $value;
+            }
+            return array_map(static fn($item) => $isOther($item) ? $stored : $item, array_values($value));
+        }
+        if (is_array($value)) {
+            return $value;
+        }
+        return $isOther($value) ? $stored : $value;
     }
 
     public function loadFromAnswer(FormAnswer $answer): void
@@ -381,13 +393,80 @@ class SubmitForm extends Model
         }
     }
 
+    /**
+     * Load everything a formula may read, once, from the response rather than the current
+     * request (V3-9, V3-13): the frozen date, named formulas, stored action variables, and the
+     * declared URL parameters captured when the response started.
+     * Returns URL values that were read from this request and are not stored yet.
+     *
+     * @return array<string,string>
+     */
+    public function prepareFormulaValues(?FormAnswer $answer): array
+    {
+        $this->values['__today'] = \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::frozenToday($this->form, $answer);
+        $this->values['__named'] = \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::named($this->form);
+        $this->values['__loops'] = array_keys((new \humhub\modules\thiscoveryForms\services\LoopService())->loopFieldIds($this->form));
+        $stored = [];
+        if ($answer && !$answer->isNewRecord && $answer->hasAttribute('variables_json')) {
+            $decoded = json_decode((string)$answer->variables_json, true);
+            $stored = is_array($decoded) ? $decoded : [];
+        }
+        foreach ($stored as $name => $leaf) {
+            $value = is_array($leaf) ? (string)($leaf['v'] ?? '') : (string)$leaf;
+            if (str_starts_with((string)$name, 'url:')) {
+                $this->values[(string)$name] = $value;
+            } else {
+                $this->values['var:' . $name] = $value;
+            }
+        }
+        // Panel attributes for [panel:key], never on a fully anonymous form (ADR-004).
+        $anonymous = $this->form->hidesIdentityFromManagers() && \humhub\modules\thiscoveryForms\Module::identityEnforced();
+        $memberId = (int)($this->panelMemberId ?: ($answer->panel_member_id ?? 0));
+        if (!$anonymous && $memberId > 0) {
+            $member = FormPanelMember::findOne($memberId);
+            foreach ($member ? $member->getDemographics() : [] as $key => $value) {
+                if (is_scalar($value)) {
+                    $this->values['panel.' . $key] = (string)$value;
+                }
+            }
+        }
+        $fresh = [];
+        $probe = [];
+        $this->form->applyDeclaredUrlParams($probe, Yii::$app->request->get());
+        foreach ($probe as $key => $value) {
+            if (array_key_exists($key, $stored)) {
+                continue;
+            }
+            $this->values[$key] = $value;
+            if ($value !== '') {
+                $fresh[$key] = (string)$value;
+            }
+        }
+        return $fresh;
+    }
+
+    /** Store URL values captured on this request so resume and edits keep them (V3-13). */
+    private function persistUrlValues(FormAnswer $answer, array $fresh): void
+    {
+        if ($fresh === [] || $answer->isNewRecord || !$answer->hasAttribute('variables_json')) {
+            return;
+        }
+        $decoded = json_decode((string)$answer->variables_json, true);
+        $stored = is_array($decoded) ? $decoded : [];
+        foreach ($fresh as $key => $value) {
+            $stored[$key] = ['t' => 'text', 'v' => $value];
+        }
+        $answer->variables_json = json_encode($stored, JSON_UNESCAPED_UNICODE);
+        $answer->updateAttributes(['variables_json' => $answer->variables_json]);
+    }
+
     public function validateFields(): void
     {
-        $this->form->applyDeclaredUrlParams($this->values, Yii::$app->request->get());
+        $this->prepareFormulaValues($this->editingAnswer instanceof FormAnswer ? $this->editingAnswer : null);
         \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
             $this->values,
             array_values($this->form->fields),
-            \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::today($this->form)
+            (string)$this->values['__today']
         );
         (new \humhub\modules\thiscoveryForms\services\ConsentService())->validateSubmit($this);
         foreach ($this->form->fields as $field) {
@@ -400,39 +479,15 @@ class SubmitForm extends Model
             if (!$this->isOnAnswerPath($field)) {
                 continue;
             }
+            $value = $this->values[$field->id] ?? null;
+            if ($this->isLoopMember($field)) {
+                $this->validateLoopField($field, $value);
+                continue;
+            }
             if (!$field->isVisible($this->values, $this->form->fields)) {
                 continue;
             }
-
-            $value = $this->values[$field->id] ?? null;
-            $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
-            $loopCellsChecked = false;
-            if ($loops->isLoopField($this->form, $field)) {
-                $shown = $loops->shownPaths(array_values($this->form->fields), $field, $this->values);
-                $empty = false;
-                if ($shown === []) {
-                    $empty = false;
-                } else {
-                    foreach ($shown as $instance) {
-                        $cell = is_array($value) ? ($value[$instance['code']] ?? null) : null;
-                        if ($this->isEmptyValue($cell)) {
-                            $empty = true;
-                        }
-                    }
-                }
-                if (!$empty) {
-                    $loopCellsChecked = true;
-                    foreach ($shown as $instance) {
-                        $cell = is_array($value) ? ($value[$instance['code']] ?? null) : null;
-                        if ($this->isEmptyValue($cell)) {
-                            continue;
-                        }
-                        $this->validateFieldValue($field, $cell);
-                    }
-                }
-            } else {
-                $empty = $this->isEmptyValue($value);
-            }
+            $empty = $this->isEmptyValue($value);
 
             $required = $field->required;
             if ($field->type === FormField::TYPE_HTML) {
@@ -462,9 +517,8 @@ class SubmitForm extends Model
                 continue;
             }
 
-            if (!$loopCellsChecked) {
-                $this->validateFieldValue($field, $value);
-            }
+            $this->validateFieldValue($field, $value);
+            $this->validateAnswerCheck($field);
 
             $justMode = $field->getEffectiveJustification($this->form);
             if ($justMode === FormField::JUSTIFY_REQUIRED && $this->scenario !== self::SCENARIO_DRAFT) {
@@ -481,6 +535,100 @@ class SubmitForm extends Model
             if ($loops->rosterBelowMinimum($this->form, $this->editingAnswer, array_values($this->form->fields))) {
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Add the required rows before submitting.'));
             }
+        }
+    }
+
+    /**
+     * DAT-11: on a single-response form, a second completed response from the same person (in
+     * another tab, or a double submit) is refused. The form row is locked first, so two
+     * submits cannot both see "no response yet".
+     */
+    private function duplicateSingleResponse(FormAnswer $answer, bool $asDraft, bool $isTest, bool $anonymous): bool
+    {
+        if ($asDraft || $isTest || !$this->form || (int)$this->form->allow_multiple === 1) {
+            return false;
+        }
+        if (!$answer->isNewRecord && !$answer->isInProgress()) {
+            return false;
+        }
+        $who = [];
+        if ($answer->panel_member_id) {
+            $who['panel_member_id'] = (int)$answer->panel_member_id;
+        } elseif (!$anonymous && !Yii::$app->user->isGuest) {
+            $who['created_by'] = (int)Yii::$app->user->id;
+        } else {
+            return false;
+        }
+        Yii::$app->db->createCommand('SELECT id FROM ' . CustomForm::tableName() . ' WHERE id = :id FOR UPDATE', [
+            ':id' => (int)$this->form->id,
+        ])->queryScalar();
+        $query = FormAnswer::find()->where($who + [
+            'form_id' => (int)$this->form->id,
+            'status' => FormAnswer::STATUS_COMPLETE,
+            'is_test' => 0,
+            'wave_id' => $answer->wave_id ?: null,
+            'round_id' => $answer->round_id ?: null,
+        ]);
+        if (!$answer->isNewRecord) {
+            $query->andWhere(['<>', 'id', (int)$answer->id]);
+        }
+        return $query->exists();
+    }
+
+    private function isRequiredToRespondent(FormField $field): bool
+    {
+        if ($field->isHiddenFromRespondent() || $field->type === FormField::TYPE_RESPONDENT_META) {
+            return false;
+        }
+        if ($field->type === FormField::TYPE_HTML) {
+            return (bool)$field->getHtmlConfig()['required'];
+        }
+        return (bool)$field->required;
+    }
+
+    /** @var array<int, list<int>>|null */
+    private ?array $loopScopes = null;
+
+    /**
+     * The answers as one loop repeat sees them.
+     *
+     * @return array<int|string,mixed>
+     */
+    private function scopedValues(FormField $field, string $path): array
+    {
+        $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
+        if ($this->loopScopes === null) {
+            $this->loopScopes = $loops->loopScopes(array_values($this->form->fields));
+        }
+        return $loops->scopedValues($this->values, $this->loopScopes, (int)$field->id, $path);
+    }
+
+    /**
+     * Visibility and required are judged per repeat, with the other answers in the
+     * loop read from the same repeat (V3-18).
+     *
+     * @param mixed $value
+     */
+    private function validateLoopField(FormField $field, $value): void
+    {
+        $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
+        $required = $this->isRequiredToRespondent($field) && $this->scenario !== self::SCENARIO_DRAFT;
+        foreach ($loops->shownPaths(array_values($this->form->fields), $field, $this->values) as $instance) {
+            $code = (string)$instance['code'];
+            if (!$field->isVisible($this->scopedValues($field, $code), $this->form->fields)) {
+                continue;
+            }
+            $cell = is_array($value) ? ($value[$code] ?? null) : null;
+            if ($this->isEmptyValue($cell)) {
+                if ($required) {
+                    $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required for {repeat}.', [
+                        'label' => $field->label,
+                        'repeat' => (string)($instance['label'] ?? $code),
+                    ]));
+                }
+                continue;
+            }
+            $this->validateFieldValue($field, $cell);
         }
     }
 
@@ -508,7 +656,8 @@ class SubmitForm extends Model
                     }
                     break;
                 case FormField::TYPE_NUMBER:
-                    if (!is_numeric($value)) {
+                    // Plain decimals only: 1e5 passed is_numeric but was empty in formulas (V3-54).
+                    if (!is_numeric($value) || \humhub\modules\thiscoveryForms\services\formula\Decimal::canonical(trim((string)$value)) === null) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a number.', [
                             'label' => $field->label,
                         ]));
@@ -646,7 +795,78 @@ class SubmitForm extends Model
                 case FormField::TYPE_MAP:
                     $this->validateMap($field, $value);
                     break;
+                case FormField::TYPE_TEXT:
+                case FormField::TYPE_TEXTAREA:
+                    $this->validateTextRules($field, $value);
+                    break;
+                case FormField::TYPE_DATE:
+                    $this->validateDateRules($field, $value);
+                    break;
             }
+    }
+
+    /** Length and pattern (LOG-12). The hard cap applies even with no limit set. */
+    private function validateTextRules(FormField $field, $value): void
+    {
+        $text = is_array($value) ? '' : trim((string)$value);
+        $rules = $field->getValidation();
+        $length = mb_strlen($text);
+        $max = $field->maxTextLength();
+        if ($length > $max) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" can be at most {n} characters.', [
+                'label' => $field->label,
+                'n' => $max,
+            ]));
+            return;
+        }
+        if ($rules['min_length'] !== '' && $length < (int)$rules['min_length']) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be at least {n} characters.', [
+                'label' => $field->label,
+                'n' => (int)$rules['min_length'],
+            ]));
+            return;
+        }
+        if ($rules['pattern'] !== '' && !FormField::patternMatches($rules['pattern'], $text)) {
+            $this->addError('values', $rules['pattern_message'] !== ''
+                ? '"' . $field->label . '": ' . $rules['pattern_message']
+                : Yii::t('ThiscoveryFormsModule.base', '"{label}" is not in the expected format.', ['label' => $field->label]));
+        }
+    }
+
+    /** A real date, inside the question's earliest and latest dates (LOG-12). */
+    private function validateDateRules(FormField $field, $value): void
+    {
+        $text = is_array($value) ? '' : trim((string)$value);
+        if (!FormField::isRealDate($text)) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a date.', ['label' => $field->label]));
+            return;
+        }
+        $min = $field->dateBound('date_min');
+        $max = $field->dateBound('date_max');
+        if ($min !== '' && $text < $min) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be on or after {date}.', ['label' => $field->label, 'date' => $min]));
+        } elseif ($max !== '' && $text > $max) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be on or before {date}.', ['label' => $field->label, 'date' => $max]));
+        }
+    }
+
+    /**
+     * The question's answer check: a formula over this and other answers that must be true,
+     * for example [end] >= [start] or sum([a],[b],[c]) = 100 (LOG-12).
+     */
+    private function validateAnswerCheck(FormField $field): void
+    {
+        $tree = $field->getValidationCheck();
+        if ($tree === null || $this->scenario === self::SCENARIO_DRAFT) {
+            return;
+        }
+        if ((new \humhub\modules\thiscoveryForms\services\LogicEngine())->rulesMet(['when' => $tree], $this->values, $this->form->fields)) {
+            return;
+        }
+        $message = $field->getValidation()['check_message'];
+        $this->addError('values', $message !== ''
+            ? '"' . $field->label . '": ' . $message
+            : Yii::t('ThiscoveryFormsModule.base', '"{label}" does not fit with your other answers.', ['label' => $field->label]));
     }
 
     /**
@@ -691,6 +911,10 @@ class SubmitForm extends Model
             $this->scenario = self::SCENARIO_DRAFT;
         }
 
+        if ($isTest) {
+            // A test or preview submission never advances live rotation counters (V3-48).
+            \humhub\modules\thiscoveryForms\services\RandomisationService::$preview = true;
+        }
         if ($existing && !$existing->isNewRecord) {
             $existing->populateRelation('form', $this->form);
             \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $existing;
@@ -703,9 +927,25 @@ class SubmitForm extends Model
             return null;
         }
 
+        $this->auditing = $existing && !$existing->isNewRecord && $existing->isComplete();
+        $this->managerEdit = !$isTest && self::isManagerEdit($this->form, $existing);
+        if ($this->managerEdit && $this->changeReason() === '') {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Give a reason for changing this response.'));
+            return null;
+        }
+
         $pinnedEdition = $this->resolvePinnedEdition($isTest);
         if ($pinnedEdition === false) {
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form edition could not be confirmed. Please reload the page and try again.'));
+            return null;
+        }
+        // A new response is checked against the current edition. If the page was opened on an
+        // earlier one, it would be validated against one and stamped with the other: ask the
+        // respondent to check the updated form instead (V3-52). Drafts keep their own edition.
+        $isNewResponse = !$existing || $existing->isNewRecord || !(int)$existing->edition_id;
+        if (!$asDraft && $isNewResponse && is_int($pinnedEdition) && $pinnedEdition > 0
+            && $this->form && (int)$this->form->current_edition_id > 0 && $pinnedEdition !== (int)$this->form->current_edition_id) {
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'This form was updated while you were filling it in. Your answers are kept: please check them and submit again.'));
             return null;
         }
 
@@ -742,7 +982,10 @@ class SubmitForm extends Model
         if ($asDraft) {
             $answer->status = FormAnswer::STATUS_IN_PROGRESS;
             if (!$answer->resume_code) {
-                $answer->resume_code = (new \humhub\modules\thiscoveryForms\services\ResumeService())->generateCode();
+                // Only the keyed hash is stored; the plain code stays in this session (DAT-14).
+                $plainCode = (new \humhub\modules\thiscoveryForms\services\ResumeService())->generateCode();
+                $answer->resume_code = \humhub\modules\thiscoveryForms\services\ResumeService::hash($plainCode);
+                \humhub\modules\thiscoveryForms\services\ResumeService::rememberPlain((int)$this->form->id, $plainCode);
             }
         } else {
             if ($answer->isNewRecord || $answer->isInProgress()) {
@@ -770,11 +1013,34 @@ class SubmitForm extends Model
             }
         }
 
+        // DAT-11: a double click or a resubmitted page posts the same token; the response it
+        // already created is returned instead of a second one.
+        $submitToken = '';
+        try {
+            $submitToken = (string)Yii::$app->request->post('submit_token', '');
+        } catch (\Throwable $e) {
+            $submitToken = '';
+        }
+        $tokenKey = preg_match('/^[a-f0-9]{32}$/', $submitToken) ? 'cf-submit-' . (int)$this->form->id . '-' . $submitToken : null;
+        if ($tokenKey && !$asDraft && !$isTest) {
+            $previousId = (int)Yii::$app->cache->get($tokenKey);
+            $previous = $previousId > 0 ? FormAnswer::findOne(['id' => $previousId, 'form_id' => (int)$this->form->id]) : null;
+            if ($previous && $previous->isComplete()) {
+                return $previous;
+            }
+        }
+
         $fileGuids = [];
         $db = Yii::$app->db;
         FormAnswerField::$deferFileDeletes = true;
         $transaction = $db->beginTransaction();
         try {
+            if ($this->duplicateSingleResponse($answer, $asDraft, $isTest, (bool)$anonymous)) {
+                $transaction->rollBack();
+                FormAnswerField::discardDeferredFiles();
+                $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'You have already submitted this form.'));
+                return null;
+            }
             if (!$answer->save()) {
                 $transaction->rollBack();
                 FormAnswerField::discardDeferredFiles();
@@ -782,6 +1048,15 @@ class SubmitForm extends Model
                 return null;
             }
             $answer->populateRelation('form', $this->form);
+            // Formula inputs and calculated values first, so stratification, consent and quota
+            // cells can read calculated questions, variables and URL values (V3-21).
+            $freshUrl = $this->prepareFormulaValues($answer);
+            $this->persistUrlValues($answer, $freshUrl);
+            \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
+                $this->values,
+                array_values($this->form->fields),
+                (string)$this->values['__today']
+            );
             \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $answer;
             $rand = new \humhub\modules\thiscoveryForms\services\RandomisationService();
             $rand->materialise($answer);
@@ -825,12 +1100,6 @@ class SubmitForm extends Model
             $liveFieldIds = array_flip($liveQuery->column());
             $editionFill = (int)$answer->edition_id > 0;
 
-            $this->form->applyDeclaredUrlParams($this->values, Yii::$app->request->get());
-            \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::fill(
-                $this->values,
-                array_values($this->form->fields),
-                \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::today($this->form)
-            );
             foreach ($this->form->fields as $field) {
                 if (!$field->collectsAnswer()) {
                     continue;
@@ -864,12 +1133,13 @@ class SubmitForm extends Model
                     continue;
                 }
                 $loops = new \humhub\modules\thiscoveryForms\services\LoopService();
-                if ($instanceColumn && $loops->isLoopField($this->form, $field)) {
+                if ($instanceColumn && $this->isLoopMember($field)) {
                     $shown = $loops->shownPaths(array_values($this->form->fields), $field, $this->values);
                     $posted = $this->values[$fieldId] ?? [];
                     if (!is_array($posted)) {
                         $posted = [];
                     }
+                    $onPath = $this->isOnAnswerPath($field);
                     foreach ($shown as $instance) {
                         $code = (string)$instance['code'];
                         $slot = $fieldId . ':' . $code;
@@ -877,6 +1147,14 @@ class SubmitForm extends Model
                             continue;
                         }
                         $cell = $posted[$code];
+                        // A question hidden in this repeat stores nothing, as outside a loop (V3-18);
+                        // a draft keeps it until the final submit (DAT-12).
+                        if (!$onPath || !$field->isVisible($this->scopedValues($field, $code), $this->form->fields)) {
+                            if ($asDraft) {
+                                continue;
+                            }
+                            $cell = null;
+                        }
                         if ($this->isEmptyValue($cell)) {
                             if (isset($existingFields[$slot])) {
                                 $this->auditCell($answer, $existingFields[$slot], null);
@@ -885,7 +1163,8 @@ class SubmitForm extends Model
                             continue;
                         }
                         $af = $existingFields[$slot] ?? new FormAnswerField();
-                        $previous = $af->isNewRecord ? null : (string)$af->value;
+                        // A blank filled in on a completed response is a change too (V3-44).
+                        $previous = $af->isNewRecord ? ($this->auditing ? '' : null) : (string)$af->value;
                         $af->answer_id = $answer->id;
                         $af->field_id = $fieldId;
                         $af->instance_key = $code;
@@ -905,6 +1184,11 @@ class SubmitForm extends Model
                     continue;
                 }
                 $visible = $this->isOnAnswerPath($field) && $field->isVisible($this->values, $this->form->fields);
+                if (!$visible && $asDraft) {
+                    // A draft keeps an answer that logic now hides: changing an earlier answer
+                    // back shows it again with the answer intact. Only the final submit drops it (DAT-12).
+                    continue;
+                }
                 $value = $visible ? ($this->values[$fieldId] ?? null) : null;
 
                 if (!$visible || $this->isEmptyValue($value)) {
@@ -920,7 +1204,8 @@ class SubmitForm extends Model
                 }
 
                 $af = $existingFields[$fieldId . ':'] ?? new FormAnswerField();
-                $previous = $af->isNewRecord ? null : (string)$af->value;
+                // A blank filled in on a completed response is a change too (V3-44).
+                $previous = $af->isNewRecord ? ($this->auditing ? '' : null) : (string)$af->value;
                 $af->answer_id = $answer->id;
                 $af->field_id = $fieldId;
                 if ($instanceColumn) {
@@ -952,7 +1237,13 @@ class SubmitForm extends Model
                 $answer->status = FormAnswer::STATUS_IN_PROGRESS;
                 $answer->current_page = $this->quotaPage;
                 $answer->outcome = '';
-                $answer->save(false, ['status', 'outcome', 'current_page', 'updated_at']);
+                $pageCols = ['status', 'outcome', 'current_page', 'updated_at'];
+                if ($answer->hasAttribute('current_page_key')) {
+                    // The quota sets the page by position; an older saved key must not override it (DAT-16).
+                    $answer->current_page_key = null;
+                    $pageCols[] = 'current_page_key';
+                }
+                $answer->save(false, $pageCols);
             } elseif (in_array($this->quotaHalt, ['end', 'redirect'], true)) {
                 $answer->status = FormAnswer::STATUS_COMPLETE;
                 $answer->resume_code = null;
@@ -961,7 +1252,10 @@ class SubmitForm extends Model
                     $answer->resume_email = null;
                 }
                 $answer->outcome = FormAnswer::OUTCOME_OVER_QUOTA;
-                $answer->save(false, ['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
+                if ($answer->hasAttribute('current_page_key')) {
+                    $answer->current_page_key = null;
+                }
+                $answer->save(false, array_merge(['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at'], $answer->hasAttribute('current_page_key') ? ['current_page_key'] : []));
             } elseif (!$asDraft) {
                 $answer->status = FormAnswer::STATUS_COMPLETE;
                 $answer->resume_code = null;
@@ -970,7 +1264,10 @@ class SubmitForm extends Model
                     $answer->resume_email = null;
                 }
                 $answer->outcome = $this->terminalOutcome($answer);
-                $answer->save(false, ['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at']);
+                if ($answer->hasAttribute('current_page_key')) {
+                    $answer->current_page_key = null;
+                }
+                $answer->save(false, array_merge(['status', 'outcome', 'resume_code', 'resume_email', 'current_page', 'updated_at'], $answer->hasAttribute('current_page_key') ? ['current_page_key'] : []));
             }
 
             \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $answer;
@@ -983,6 +1280,9 @@ class SubmitForm extends Model
             }
 
             $transaction->commit();
+            if ($tokenKey && !$asDraft && !$isTest && $answer->isComplete()) {
+                Yii::$app->cache->set($tokenKey, (int)$answer->id, 86400);
+            }
             FormField::storeOptionOrder($this->form, $answer);
         } catch (\Throwable $e) {
             $transaction->rollBack();
@@ -1042,7 +1342,9 @@ class SubmitForm extends Model
                     return true;
                 }
             }
-            return FormField::isOtherOption($item);
+            // A value that is not one of this question's options is not stored, even if it
+            // looks like "Other" (SCO-15).
+            return false;
         };
 
         if ($field->type === FormField::TYPE_CHECKBOX) {
@@ -1206,13 +1508,43 @@ class SubmitForm extends Model
         }
     }
 
+    /**
+     * A MaxDiff answer is stored with the version shown and, per set, the items that set held,
+     * taken from the server's design, so scoring uses exactly what this person saw (SCO-1).
+     *
+     * @param mixed $raw
+     * @return mixed
+     */
+    private function normaliseMaxDiff(FormField $field, $raw)
+    {
+        if (!is_array($raw)) {
+            return $raw;
+        }
+        $version = $field->maxDiffVersionFor($raw);
+        $answers = $raw['sets'] ?? $raw;
+        if (!is_array($answers)) {
+            return $raw;
+        }
+        $out = [];
+        foreach ($field->maxDiffSets($version) as $i => $set) {
+            $pair = is_array($answers[$i] ?? null) ? $answers[$i] : [];
+            $out[$i] = [
+                'best' => (string)($pair['best'] ?? ''),
+                'worst' => (string)($pair['worst'] ?? ''),
+                'items' => array_values(array_map('strval', (array)$set)),
+            ];
+        }
+        $filled = array_filter($out, static fn ($p) => $p['best'] !== '' || $p['worst'] !== '');
+        return $filled ? ['version' => $version, 'sets' => $out] : [];
+    }
+
     private function validateMaxDiff(FormField $field, $value): void
     {
         if (!is_array($value)) {
             $this->invalid($field);
             return;
         }
-        $sets = $field->getItemsConfig()['sets'];
+        $sets = $field->maxDiffSets($field->maxDiffVersionFor($value));
         $answers = $value['sets'] ?? $value;
         if (!is_array($answers)) {
             $this->invalid($field);
@@ -1318,9 +1650,6 @@ class SubmitForm extends Model
         if ((string)$answer->outcome === FormAnswer::OUTCOME_OVER_QUOTA) {
             return FormAnswer::OUTCOME_OVER_QUOTA;
         }
-        if (!\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
-            return (string)$answer->outcome !== '' ? (string)$answer->outcome : FormAnswer::OUTCOME_COMPLETE;
-        }
         $engine = new \humhub\modules\thiscoveryForms\services\LogicEngine();
         foreach ($this->form->fields as $field) {
             $logic = $field->getLogic();
@@ -1341,14 +1670,19 @@ class SubmitForm extends Model
 
     private function auditCell(FormAnswer $answer, FormAnswerField $cell, ?string $newValue, ?string $oldValue = null): void
     {
-        $reason = trim((string)Yii::$app->request->post('change_reason', 'edit'));
+        if (!$this->auditing) {
+            return;
+        }
+        $reason = $this->changeReason();
         \humhub\modules\thiscoveryForms\services\AnswerAudit::record(
             $answer,
             (int)$cell->field_id,
             (string)($cell->instance_key ?? ''),
             $oldValue ?? (string)$cell->value,
             $newValue,
-            $reason !== '' ? $reason : 'edit'
+            $reason !== '' ? $reason : 'edit',
+            // The manager is named even on anonymous forms; that identifies the editor, not the respondent.
+            $this->managerEdit ? (int)Yii::$app->user->id : null
         );
     }
 

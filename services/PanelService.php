@@ -6,6 +6,7 @@ use humhub\modules\thiscoveryForms\helpers\FormEmailLayout;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
+use humhub\modules\thiscoveryForms\models\FormEmailSend;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormPanel;
 use humhub\modules\thiscoveryForms\models\FormPanelActivity;
@@ -81,12 +82,14 @@ class PanelService
         if ($token === '') {
             return null;
         }
+        // Links carry a signed, expiring token, not the stored one (SEC-16).
+        $member = FormPanelMember::fromLinkToken($token);
+        if (!$member || (string)$member->status !== FormPanelMember::STATUS_ACTIVE) {
+            return null;
+        }
         foreach ($this->panelsForForm($form) as $panel) {
-            $found = FormPanelMember::find()
-                ->where(['panel_id' => $panel->id, 'token' => $token, 'status' => FormPanelMember::STATUS_ACTIVE])
-                ->one();
-            if ($found) {
-                return $found;
+            if ((int)$panel->id === (int)$member->panel_id) {
+                return $member;
             }
         }
         return null;
@@ -195,7 +198,8 @@ class PanelService
         return $out;
     }
 
-    public function addUserMember(FormPanel $panel, User $user, float $weight = 1): FormPanelMember
+    /** A null weight keeps an existing member's weight (1 for a new member) (SCO-6). */
+    public function addUserMember(FormPanel $panel, User $user, ?float $weight = null): FormPanelMember
     {
         $first = trim((string)($user->profile->firstname ?? ''));
         $last = trim((string)($user->profile->lastname ?? ''));
@@ -208,7 +212,7 @@ class PanelService
         ]);
     }
 
-    public function addEmailMember(FormPanel $panel, string $email, ?string $displayName = null, float $weight = 1): FormPanelMember
+    public function addEmailMember(FormPanel $panel, string $email, ?string $displayName = null, ?float $weight = null): FormPanelMember
     {
         $first = '';
         $last = '';
@@ -567,6 +571,13 @@ class PanelService
             }
         }
         if ($anonymous) {
+            // A stored weight can identify the member, so an anonymous answer does not keep one.
+            if ((float)$answer->weight !== 0.0) {
+                $answer->weight = 0;
+                if (!$answer->isNewRecord) {
+                    $answer->updateAttributes(['weight' => 0]);
+                }
+            }
             $this->recordAnonymousCompletion($form, $answer, $knownMember);
             $this->enrolWithoutAnswer($form, $knownMember);
             (new EmailTemplateService())->sendCompletionEmail($form, $answer, $knownMember);
@@ -746,7 +757,7 @@ class PanelService
             return false;
         }
 
-        $url = Url::toPanelInvite($form, $member->token);
+        $url = Url::toPanelInvite($form, $member->linkToken());
         if ($wave) {
             $subject = Yii::t('ThiscoveryFormsModule.base', '{wave} of “{title}” is open', [
                 'wave' => $wave->getDisplayTitle(),
@@ -801,9 +812,27 @@ class PanelService
         if (!$panel) {
             return ['sent' => 0, 'failed' => 0];
         }
+        // Each member is invited once per form and wave: a re-run (overlapping cron, a retry
+        // after a crash or a failure) skips everyone already sent to (SCO-13).
+        $kind = $wave && (int)$wave->wave_number >= 2 ? FormEmailSend::KIND_WAVE : FormEmailSend::KIND_INVITE;
+        $emails = new EmailTemplateService();
         foreach ($panel->getActiveMembers()->all() as $member) {
+            $where = ['form_id' => (int)$form->id, 'member_id' => (int)$member->id, 'wave_id' => $wave->id ?? null];
+            if ($emails->hasSent($kind, $where)) {
+                continue;
+            }
             if ($this->sendInvite($form, $member, $wave)) {
                 $sent++;
+                if (!$emails->hasSent($kind, $where)) {
+                    // The default (template-less) invite does not log itself.
+                    $row = new FormEmailSend();
+                    $row->form_id = (int)$form->id;
+                    $row->member_id = (int)$member->id;
+                    $row->wave_id = $wave->id ?? null;
+                    $row->kind = $kind;
+                    $row->created_at = date('Y-m-d H:i:s');
+                    $row->save(false);
+                }
             } else {
                 $failed++;
             }

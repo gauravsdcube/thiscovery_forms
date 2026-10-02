@@ -138,10 +138,11 @@ foreach ($formModel->getAllFields()->all() as $field) {
                     continue;
                 }
                 if (!empty($loopCells[(int)$field->id])) {
+                    $repeatLabels = (new \humhub\modules\thiscoveryForms\services\LoopService())->instanceLabels($answer, $field);
                     foreach ($loopCells[(int)$field->id] as $instanceKey => $cell) {
                         ?>
                         <div class="cf-answer-field">
-                            <div class="cf-answer-field__label"><?= Html::encode($field->displayLabel()) ?> — <?= Html::encode((string)$instanceKey) ?></div>
+                            <div class="cf-answer-field__label"><?= Html::encode($field->displayLabel()) ?> — <?= Html::encode($repeatLabels[(string)$instanceKey] ?? (string)$instanceKey) ?></div>
                             <div class="cf-answer-field__value"><div class="tt-response-original"><?= $cell->getAnswerHtml() ?></div></div>
                         </div>
                         <?php
@@ -221,10 +222,40 @@ foreach ($formModel->getAllFields()->all() as $field) {
         </div>
     <?php endif; ?>
 
+    <?= $this->render('_arm_override', ['formModel' => $formModel, 'answer' => $answer]) ?>
+
+    <?= $this->render('_answer_audit', ['formModel' => $formModel, 'answer' => $answer]) ?>
+
     <?= $this->render('_integrity_review', [
         'formModel' => $formModel,
         'answer' => $answer,
         'canManage' => $canManage,
         'canDecideAnalysis' => $canDecideAnalysis,
     ]) ?>
+
+    <?php if ($canManage): ?>
+        <?php $eraseId = 'cf-erase-' . (int)$answer->id; ?>
+        <details class="cf-answer-erase mt-3">
+            <summary><?= Yii::t('ThiscoveryFormsModule.base', 'Erase this response') ?></summary>
+            <?= Html::beginForm(Url::toAnswerErase($formModel, (int)$answer->id), 'post', ['class' => 'mt-2']) ?>
+                <fieldset>
+                    <legend class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'How') ?></legend>
+                    <div class="form-check">
+                        <?= Html::radio('mode', true, ['value' => 'pseudonymise', 'id' => $eraseId . '-keep', 'class' => 'form-check-input']) ?>
+                        <label class="form-check-label" for="<?= $eraseId ?>-keep"><?= Yii::t('ThiscoveryFormsModule.base', 'Keep the answers for research and remove who gave them (name, email, account, files, consent signature)') ?></label>
+                    </div>
+                    <div class="form-check">
+                        <?= Html::radio('mode', false, ['value' => 'delete', 'id' => $eraseId . '-delete', 'class' => 'form-check-input']) ?>
+                        <label class="form-check-label" for="<?= $eraseId ?>-delete"><?= Yii::t('ThiscoveryFormsModule.base', 'Delete the whole response. This cannot be undone.') ?></label>
+                    </div>
+                </fieldset>
+                <label class="cf-label mt-2" for="<?= $eraseId ?>-reason"><?= Yii::t('ThiscoveryFormsModule.base', 'Reason (kept in the erasure log)') ?></label>
+                <?= Html::textInput('reason', '', ['class' => 'form-control', 'id' => $eraseId . '-reason', 'required' => true, 'maxlength' => 255]) ?>
+                <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Erase'), [
+                    'class' => 'btn btn-danger btn-sm mt-2',
+                    'data-confirm' => Yii::t('ThiscoveryFormsModule.base', 'Erase this response as chosen? This cannot be undone.'),
+                ]) ?>
+            <?= Html::endForm() ?>
+        </details>
+    <?php endif; ?>
 </div>

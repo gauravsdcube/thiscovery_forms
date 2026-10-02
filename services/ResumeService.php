@@ -14,7 +14,16 @@ use Yii;
 class ResumeService
 {
     public const CODE_LENGTH = 12;
+    /** A code stops working this many days after the draft was last saved (DAT-14). */
+    public const SETTING_CODE_DAYS = 'resume_code_days';
+    public const DEFAULT_CODE_DAYS = 60;
+    /** Failed code lookups allowed per session and network in ten minutes. */
+    public const LOOKUP_LIMIT = 10;
 
+    /**
+     * A new plain code. Only its keyed hash is stored (DAT-14); the plain code lives in the
+     * respondent's session for display and email, and is never written to the database.
+     */
     public function generateCode(): string
     {
         $alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -25,9 +34,70 @@ class ResumeService
                 $raw .= $alphabet[random_int(0, $max)];
             }
             $code = substr($raw, 0, 4) . '-' . substr($raw, 4, 4) . '-' . substr($raw, 8, 4);
-        } while (FormAnswer::find()->where(['resume_code' => $code])->exists());
+        } while (FormAnswer::find()->where(['resume_code' => self::hash($code)])->exists());
 
         return $code;
+    }
+
+    /** Keyed hash of a (normalised) code, 32 hex characters, as stored in resume_code. */
+    public static function hash(string $code): string
+    {
+        return substr(hash_hmac('sha256', 'resume|' . $code, self::secret()), 0, 32);
+    }
+
+    private static function secret(): string
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        $secret = $module ? (string)$module->settings->get('resume_secret', '') : '';
+        if ($secret === '' && $module) {
+            $secret = bin2hex(random_bytes(32));
+            $module->settings->set('resume_secret', $secret);
+        }
+        return $secret;
+    }
+
+    /** Keep the plain code for this form in the respondent's session. */
+    public static function rememberPlain(int $formId, string $plain): void
+    {
+        if (Yii::$app->has('session')) {
+            Yii::$app->session->set('cf-resume-plain-' . $formId, $plain);
+        }
+    }
+
+    /** The plain code for this draft, if this session created or entered it. */
+    public static function plainFor(?FormAnswer $answer): string
+    {
+        if (!$answer || !$answer->resume_code || !Yii::$app->has('session')) {
+            return '';
+        }
+        $plain = (string)Yii::$app->session->get('cf-resume-plain-' . (int)$answer->form_id, '');
+        return $plain !== '' && hash_equals((string)$answer->resume_code, self::hash($plain)) ? $plain : '';
+    }
+
+    /** True when a posted code belongs to this draft. */
+    public function matches(FormAnswer $answer, string $code): bool
+    {
+        $code = $this->normalizeCode($code);
+        return $code !== '' && $answer->resume_code !== null && hash_equals((string)$answer->resume_code, self::hash($code));
+    }
+
+    public static function codeDays(): int
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        $raw = $module ? $module->settings->get(self::SETTING_CODE_DAYS) : null;
+        return max(0, (int)($raw === null || $raw === '' ? self::DEFAULT_CODE_DAYS : $raw));
+    }
+
+    private static function lookupKey(): string
+    {
+        $session = Yii::$app->has('session') ? (string)Yii::$app->session->id : '';
+        $ip = (string)(Yii::$app->request->userIP ?? '');
+        return 'cf-resume-fail-' . hash('sha256', $session . '|' . FormActionService::networkOf($ip));
+    }
+
+    public static function lookupsBlocked(): bool
+    {
+        return (int)Yii::$app->cache->get(self::lookupKey()) >= self::LOOKUP_LIMIT;
     }
 
     public function normalizeCode(string $code): string
@@ -43,17 +113,27 @@ class ResumeService
     public function findDraftByCode(CustomForm $form, string $code): ?FormAnswer
     {
         $code = $this->normalizeCode($code);
-        if ($code === '') {
+        if ($code === '' || self::lookupsBlocked()) {
             return null;
         }
-
-        return FormAnswer::find()
+        $query = FormAnswer::find()
             ->where([
                 'form_id' => $form->id,
-                'resume_code' => $code,
+                'resume_code' => self::hash($code),
                 'status' => FormAnswer::STATUS_IN_PROGRESS,
-            ])
-            ->one();
+            ]);
+        $days = self::codeDays();
+        if ($days > 0) {
+            $query->andWhere(['>=', 'updated_at', date('Y-m-d H:i:s', time() - $days * 86400)]);
+        }
+        $draft = $query->one();
+        if (!$draft) {
+            $key = self::lookupKey();
+            Yii::$app->cache->set($key, (int)Yii::$app->cache->get($key) + 1, 600);
+            return null;
+        }
+        self::rememberPlain((int)$form->id, $code);
+        return $draft;
     }
 
     /**
@@ -86,6 +166,11 @@ class ResumeService
         if ($currentPage !== null) {
             $answer->current_page = max(0, $currentPage);
             $dirty[] = 'current_page';
+            if ($answer->hasAttribute('current_page_key')) {
+                $key = trim((string)Yii::$app->request->post('current_page_key', ''));
+                $answer->current_page_key = $key !== '' ? substr($key, 0, 64) : null;
+                $dirty[] = 'current_page_key';
+            }
         }
         $instance = Yii::$app->request->post('current_instance_key', null);
         if (!empty($submit->rosterChanged)) {
@@ -202,17 +287,22 @@ class ResumeService
         return $deleted;
     }
 
-    public function sendResumeEmail(CustomForm $form, FormAnswer $answer, string $email): bool
+    public function sendResumeEmail(CustomForm $form, FormAnswer $answer, string $email, string $plain = ''): bool
     {
         $email = trim($email);
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !$answer->resume_code) {
+        $plain = $plain !== '' ? $this->normalizeCode($plain) : self::plainFor($answer);
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || !$answer->resume_code || !$this->matches($answer, $plain)) {
+            return false;
+        }
+        // Not a way to send mail to arbitrary addresses: the same caps as action emails (DAT-14).
+        if (!FormActionService::emailAllowed((int)$form->id, $email, (string)(Yii::$app->request->userIP ?? ''))) {
             return false;
         }
 
         $answer->resume_email = $email;
         $answer->save(false, ['resume_email', 'updated_at']);
 
-        $resumeUrl = Url::toResume($form, $answer->resume_code, true);
+        $resumeUrl = Url::toResume($form, $plain, true);
         $subject = Yii::t('ThiscoveryFormsModule.base', 'Your saved response code for "{title}"', [
             'title' => $form->title,
         ]);
@@ -221,7 +311,7 @@ class ResumeService
             "You saved your progress on the form \"{title}\".\n\nYour resume code is:\n{code}\n\nOpen this link to continue:\n{url}\n\nKeep this code private. Anyone with it can continue your response.",
             [
                 'title' => $form->title,
-                'code' => $answer->resume_code,
+                'code' => $plain,
                 'url' => $resumeUrl,
             ]
         );

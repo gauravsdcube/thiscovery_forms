@@ -16,6 +16,7 @@ use yii\db\ActiveQuery;
  * @property string|null $resume_code
  * @property string|null $resume_email
  * @property int|null $current_page
+ * @property string|null $current_page_key the saved page's key; resume prefers it to the position (DAT-16)
  * @property string|null $vars_json
  * @property string $created_at
  * @property int|null $created_by
@@ -182,7 +183,8 @@ class FormAnswer extends ActiveRecord
                     }
                     $value = '';
                     foreach ($this->answerFields as $af) {
-                        if ((int)$af->field_id === (int)$field->id) {
+                        // A loop repeat (or roster name) is never the record title (V3-45).
+                        if ((int)$af->field_id === (int)$field->id && (string)($af->instance_key ?? '') === '') {
                             $value = trim((string)$af->getDisplayValue());
                             break;
                         }
@@ -301,14 +303,35 @@ class FormAnswer extends ActiveRecord
         return $this->hasOne(FormIntegrityMeta::class, ['answer_id' => 'id']);
     }
 
-    public function getFieldValue(int $fieldId): ?string
+    /**
+     * One stored answer. A loop question's repeats are separate: pass the repeat's key, or
+     * use loopCells() for all of them; the default never returns an arbitrary repeat (V3-45).
+     */
+    public function getFieldValue(int $fieldId, string $instanceKey = ''): ?string
     {
         foreach ($this->answerFields as $af) {
-            if ((int)$af->field_id === $fieldId) {
+            if ((int)$af->field_id === $fieldId && (string)($af->instance_key ?? '') === $instanceKey) {
                 return $af->value;
             }
         }
         return null;
+    }
+
+    /**
+     * A loop question's stored repeats, keyed by instance path.
+     *
+     * @return array<string, FormAnswerField>
+     */
+    public function loopCells(int $fieldId): array
+    {
+        $out = [];
+        foreach ($this->answerFields as $af) {
+            $key = (string)($af->instance_key ?? '');
+            if ((int)$af->field_id === $fieldId && $key !== '') {
+                $out[$key] = $af;
+            }
+        }
+        return $out;
     }
 
     /**
@@ -356,7 +379,9 @@ class FormAnswer extends ActiveRecord
         }
         $keyed = \humhub\modules\thiscoveryForms\services\LoopService::columnReady();
         $map = [];
-        foreach ($this->getAnswerFields()->all() as $af) {
+        // The relation property uses eager-loaded rows (with('answerFields')); calling
+        // getAnswerFields()->all() queried again for every answer (V3-20).
+        foreach ($this->answerFields as $af) {
             $decoded = json_decode((string)$af->value, true);
             $value = (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) ? $decoded : $af->value;
             $instance = $keyed ? (string)($af->instance_key ?? '') : '';

@@ -26,7 +26,11 @@ class ExportAudit
     public static function record(CustomForm $form, string $csv): void
     {
         $lines = preg_split('/\r\n|\r|\n/', trim($csv)) ?: [];
-        $rows = max(0, count($lines) - 1);
+        self::recordRows($form, max(0, count($lines) - 1));
+    }
+
+    public static function recordRows(CustomForm $form, int $rows): void
+    {
         $log = new FormExportLog();
         $log->form_id = (int)$form->id;
         $log->user_id = Yii::$app->user->id ?: null;

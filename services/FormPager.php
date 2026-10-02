@@ -11,6 +11,26 @@ use Yii;
 class FormPager
 {
     /**
+     * The pages a respondent actually sees: built, put in this response's block order, and
+     * with loop repeats expanded. Page indexes posted by the browser are into this list, so
+     * anything comparing against them (quotas, resume) must use it too (V3-45).
+     *
+     * @param array<int|string,mixed> $values
+     * @return array{pages:array,pageKeyIndex:array}
+     */
+    public static function fillPages(\humhub\modules\thiscoveryForms\models\CustomForm $form, ?\humhub\modules\thiscoveryForms\models\FormAnswer $answer, array $values): array
+    {
+        $built = (new self())->buildPages($form->fields);
+        if ($answer) {
+            $built = (new RandomisationService())->applyPageOrder($built, $answer);
+        }
+        if (LoopService::active($form)) {
+            $built = (new LoopService())->expandPages($built, $form, $form->fields, $values);
+        }
+        return $built;
+    }
+
+    /**
      * @param FormField[] $fields
      * @return array{pages: array<int, array{index:int,pageKey:?string,title:string,break:?FormField,items:FormField[]}>, pageKeyIndex: array<string,int>}
      */
@@ -172,6 +192,40 @@ class FormPager
      * @param array $pageKeyIndex
      * @param array $values fieldId => value
      */
+    /**
+     * The page a saved draft reopens on. The saved key wins over the saved position, which
+     * moves if the page list is different now; among pages sharing the key (loop repeats) the
+     * saved position is kept when it is one of them. A position that no longer exists starts
+     * at the first page (DAT-16).
+     *
+     * @param array<int, array{index:int,pageKey?:?string}> $pages
+     */
+    public static function resumeIndex(array $pages, int $saved, string $savedKey): int
+    {
+        $savedKey = trim($savedKey);
+        if ($savedKey !== '') {
+            $byKey = null;
+            foreach ($pages as $page) {
+                if ((string)($page['pageKey'] ?? '') !== $savedKey) {
+                    continue;
+                }
+                if ((int)$page['index'] === $saved) {
+                    return $saved;
+                }
+                $byKey = $byKey ?? (int)$page['index'];
+            }
+            if ($byKey !== null) {
+                return $byKey;
+            }
+        }
+        foreach ($pages as $page) {
+            if ((int)$page['index'] === $saved) {
+                return $saved;
+            }
+        }
+        return 0;
+    }
+
     public function resolveNextPage(array $pages, array $pageKeyIndex, int $fromIndex, array $values, array $allFields = []): ?int
     {
         if (!isset($pages[$fromIndex])) {
@@ -243,6 +297,13 @@ class FormPager
                     }
                 }
             }
+            // No rule matched: the page's "otherwise" target, if it has one (LOG-10).
+            $otherwise = trim((string)($cfg['otherwise'] ?? ''));
+            if ($otherwise !== '') {
+                return isset($pageKeyIndex[$otherwise])
+                    ? ['end' => false, 'explicit' => true, 'index' => (int)$pageKeyIndex[$otherwise]]
+                    : ['end' => true, 'explicit' => true, 'index' => null];
+            }
         }
 
         $next = $fromIndex + 1;
@@ -267,7 +328,7 @@ class FormPager
             if (!$field instanceof FormField || !$this->fieldHasAnswer($values, (int)$field->id)) {
                 continue;
             }
-            $goto = $this->gotoFromActions($field->getActions(), $pageKeyIndex);
+            $goto = $this->gotoFromActions($field->getActions(), $pageKeyIndex, $values, $field);
             if ($goto !== null) {
                 $chosen = $goto;
             }
@@ -277,7 +338,7 @@ class FormPager
         }
         $break = $page['break'] ?? null;
         if ($break instanceof FormField) {
-            return $this->gotoFromActions($break->getActions(), $pageKeyIndex);
+            return $this->gotoFromActions($break->getActions(), $pageKeyIndex, $values, $break);
         }
         return null;
     }
@@ -286,11 +347,16 @@ class FormPager
      * @param array<int, array<string, mixed>> $actions
      * @return array{end:bool,explicit:bool,index:?int}|null
      */
-    private function gotoFromActions(array $actions, array $pageKeyIndex): ?array
+    private function gotoFromActions(array $actions, array $pageKeyIndex, array $values = [], ?FormField $owner = null): ?array
     {
         $chosen = null;
+        $form = $owner ? $owner->form : null;
         foreach ($actions as $action) {
             $fn = (string)($action['fn'] ?? '');
+            // A go-to action with a condition only applies when it holds (LOG-11).
+            if ($form && !FormActionService::conditionMet($form, $action, $values)) {
+                continue;
+            }
             if ($fn === FormActionService::FN_GOTO_END) {
                 $chosen = ['end' => true, 'explicit' => true, 'index' => null];
                 continue;
@@ -405,9 +471,10 @@ class FormPager
                     $ordered[] = $byKey[(string)$key];
                 }
             }
-            if (count($ordered) !== count($positions)) {
+            if ($ordered === [] || count($ordered) !== count($keys)) {
                 continue;
             }
+            // A block that shows N of its pages leaves the others out (V3-56).
             array_splice($pages, $start, count($positions), $ordered);
         }
         $pageKeyIndex = [];

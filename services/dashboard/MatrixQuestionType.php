@@ -46,7 +46,9 @@ class MatrixQuestionType extends BaseQuestionType
             if (is_array($col)) {
                 $list = array_is_list($col);
                 foreach ($col as $colKey => $on) {
-                    if ($on === '' || $on === null || $on === false || $on === 0 || $on === '0') {
+                    // A list holds the ticked column codes, where "0" is a real code (SCO-4); a
+                    // map holds column => ticked flag, where 0 means not ticked.
+                    if ($on === '' || $on === null || $on === false || (!$list && ($on === 0 || $on === '0'))) {
                         continue;
                     }
                     $ck = $list ? (string)$on : (string)$colKey;

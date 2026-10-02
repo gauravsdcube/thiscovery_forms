@@ -29,7 +29,21 @@ use yii\helpers\Json;
 $savedDraft = $savedDraft ?? null;
 $fillContext = $fillContext ?? null;
 if ($formModel instanceof CustomForm && $submit instanceof SubmitForm) {
-    $formModel->applyDeclaredUrlParams($submit->values, Yii::$app->request->get());
+    $formulaAnswer = ($existing ?? null) instanceof FormAnswer ? $existing : ((($savedDraft ?? null) instanceof FormAnswer) ? $savedDraft : null);
+    $submit->prepareFormulaValues($formulaAnswer);
+    // The browser evaluator uses the same frozen date and named formulas as the server (V3-9, V3-13).
+    $this->registerJs(
+        'window.thiscoveryFormulaConfig = ' . Json::encode([
+            'today' => (string)$submit->values['__today'],
+            'named' => (object)$submit->values['__named'],
+            'loops' => array_values((array)($submit->values['__loops'] ?? [])),
+            // field id => enclosing loop group ids, so the browser scopes answers per repeat (V3-18).
+            // Calculated questions in a cycle stay empty in the browser too, as on the server (V3-38).
+            'calcCyclic' => \humhub\modules\thiscoveryForms\services\formula\FormulaRuntime::cyclicIds($formModel),
+            'loopScopes' => (object)(new \humhub\modules\thiscoveryForms\services\LoopService())->loopScopes(array_values($formModel->fields)),
+        ]) . ';',
+        \yii\web\View::POS_HEAD
+    );
 }
 $panelToken = $panelToken ?? (string)Yii::$app->request->get('token', '');
 $ownDraft = $ownDraft ?? null;
@@ -47,6 +61,18 @@ $accessToken = $accessToken ?? '';
 ThiscoveryFormsAsset::register($this);
 
 $randService = new \humhub\modules\thiscoveryForms\services\RandomisationService();
+// Preview never advances live rotation counters (V3-48).
+\humhub\modules\thiscoveryForms\services\RandomisationService::$preview = !empty($isPreview);
+$orderAnswer = $existing instanceof FormAnswer ? $existing : null;
+if (!$orderAnswer && \humhub\modules\thiscoveryForms\services\RandomisationService::active($formModel)) {
+    // A new respondent: draw the orders now from a session seed, so the first save stores
+    // exactly the orders this page shows (V3-22).
+    $orderAnswer = new FormAnswer();
+    $orderAnswer->form_id = (int)$formModel->id;
+    $orderAnswer->populateRelation('form', $formModel);
+    \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $orderAnswer;
+    $randService->materialise($orderAnswer);
+}
 if ($existing instanceof FormAnswer) {
     $existing->populateRelation('form', $formModel);
     \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $existing;
@@ -55,18 +81,7 @@ if ($existing instanceof FormAnswer) {
     }
     $randService->materialise($existing);
 }
-$builtPages = (new FormPager())->buildPages($formModel->fields);
-if ($existing instanceof FormAnswer) {
-    $builtPages = $randService->applyPageOrder($builtPages, $existing);
-}
-if (\humhub\modules\thiscoveryForms\services\LoopService::active($formModel)) {
-    $builtPages = (new \humhub\modules\thiscoveryForms\services\LoopService())->expandPages(
-        $builtPages,
-        $formModel,
-        $formModel->fields,
-        $submit->values
-    );
-}
+$builtPages = FormPager::fillPages($formModel, $orderAnswer instanceof FormAnswer ? $orderAnswer : null, $submit->values);
 $pages = $builtPages['pages'];
 $pageKeyIndex = $builtPages['pageKeyIndex'];
 $armAssignment = ($existing instanceof FormAnswer) ? $randService->assignment($existing) : null;
@@ -99,14 +114,15 @@ $rewriteFileUrls = static function (string $html) use ($formFileBase): string {
 };
 $user = Yii::$app->user->identity;
 $previousBreak = null;
-$routingAligned = \humhub\modules\thiscoveryForms\Module::routingAligned();
 foreach ($pages as $page) {
     $branches = [];
+    $otherwise = '';
     if ($page['break'] instanceof FormField) {
         $branches = $page['break']->getPageBreakConfig()['branches'];
+        $otherwise = $page['break']->getPageBreakConfig()['otherwise'];
     }
     $fieldLogic = [];
-    $logicFields = $routingAligned ? $page['items'] : \humhub\modules\thiscoveryForms\services\FormPager::navigationFields($page);
+    $logicFields = $page['items'];
     foreach ($logicFields as $item) {
         $logic = $item->getLogic();
         if (!empty($logic['when'])) {
@@ -116,7 +132,7 @@ foreach ($pages as $page) {
             ];
         }
     }
-    if ($routingAligned && $page['break'] instanceof FormField) {
+    if ($page['break'] instanceof FormField) {
         $breakLogic = $page['break']->getLogic();
         if (!empty($breakLogic['when']) && ($breakLogic['action'] ?? '') !== 'skip_page') {
             $fieldLogic[] = [
@@ -126,7 +142,7 @@ foreach ($pages as $page) {
         }
     }
     $skipLogic = null;
-    if ($routingAligned && $previousBreak instanceof FormField) {
+    if ($previousBreak instanceof FormField) {
         $introLogic = $previousBreak->getLogic();
         if (($introLogic['action'] ?? '') === 'skip_page' && !empty($introLogic['when'])) {
             $skipLogic = $introLogic;
@@ -142,6 +158,7 @@ foreach ($pages as $page) {
                 'fieldId' => (int)$item->id,
                 'fn' => $action['fn'],
                 'pageKey' => (string)$action['page_key'],
+                'when' => $action['when'] ?? null,
             ];
         }
     }
@@ -154,6 +171,7 @@ foreach ($pages as $page) {
             $breakActions[] = [
                 'fn' => $action['fn'],
                 'pageKey' => (string)$action['page_key'],
+                'when' => $action['when'] ?? null,
             ];
         }
     }
@@ -162,6 +180,7 @@ foreach ($pages as $page) {
         'pageKey' => $page['pageKey'],
         'title' => $page['title'],
         'branches' => $branches,
+        'otherwise' => $otherwise,
         'fieldLogic' => $fieldLogic,
         'skipLogic' => $skipLogic,
         'actionGotos' => $actionGotos,
@@ -173,7 +192,6 @@ foreach ($pages as $page) {
 
 $this->registerJsConfig('thiscoveryForms', [
     'pages' => $pagePayload,
-    'routingAligned' => \humhub\modules\thiscoveryForms\Module::routingAligned(),
     'pageKeyIndex' => $pageKeyIndex,
     'pageLabel' => Yii::t('ThiscoveryFormsModule.base', 'Page {current} of {total}'),
     'nextLabel' => Yii::t('ThiscoveryFormsModule.base', 'Next'),
@@ -182,10 +200,22 @@ $this->registerJsConfig('thiscoveryForms', [
     'finishLabel' => Yii::t('ThiscoveryFormsModule.base', 'Finish'),
     'requiredPage' => Yii::t('ThiscoveryFormsModule.base', 'Please complete the required fields on this page.'),
     'fixPageErrors' => Yii::t('ThiscoveryFormsModule.base', 'Please fix the highlighted questions, then try again.'),
+    // Spoken and shown text for script-built controls, translated (A11Y-7, A11Y-8).
+    'pleaseSelect' => Yii::t('ThiscoveryFormsModule.base', 'Please select'),
+    'drillLevelLabel' => Yii::t('ThiscoveryFormsModule.base', '{question}, level {n}'),
+    'vasValueText' => Yii::t('ThiscoveryFormsModule.base', '{n} out of {max}'),
+    'vasNoValue' => Yii::t('ThiscoveryFormsModule.base', 'No answer yet'),
+    'rankHandleLabel' => Yii::t('ThiscoveryFormsModule.base', '{item}, position {n} of {count}. Use the up and down arrow keys to move it.'),
+    'rankMovedLabel' => Yii::t('ThiscoveryFormsModule.base', '{item} moved to position {n} of {count}.'),
     'requiredField' => Yii::t('ThiscoveryFormsModule.base', 'This question is required.'),
     'checkboxMin' => Yii::t('ThiscoveryFormsModule.base', 'Select the required number of options.'),
     'checkboxMax' => Yii::t('ThiscoveryFormsModule.base', 'Select at most {max} options.'),
     'numberMin' => Yii::t('ThiscoveryFormsModule.base', 'Enter a number of at least {min}.'),
+    'textMin' => Yii::t('ThiscoveryFormsModule.base', 'Enter at least {n} characters.'),
+    'textPattern' => Yii::t('ThiscoveryFormsModule.base', 'This answer is not in the expected format.'),
+    'dateMin' => Yii::t('ThiscoveryFormsModule.base', 'Enter a date on or after {date}.'),
+    'dateMax' => Yii::t('ThiscoveryFormsModule.base', 'Enter a date on or before {date}.'),
+    'answerCheck' => Yii::t('ThiscoveryFormsModule.base', 'This answer does not fit with your other answers.'),
     'numberMax' => Yii::t('ThiscoveryFormsModule.base', 'Enter a number of at most {max}.'),
     'invalidEmail' => Yii::t('ThiscoveryFormsModule.base', 'Enter a valid email address, for example name@example.com.'),
     'specifyLabel' => Yii::t('ThiscoveryFormsModule.base', 'Please specify'),
@@ -199,12 +229,29 @@ $this->registerJsConfig('thiscoveryForms', [
         $start = ($existing && $existing->isInProgress() && $existing->current_page !== null)
             ? (int)$existing->current_page
             : 0;
+        $savedKey = ($existing && $existing->isInProgress() && $existing->hasAttribute('current_page_key'))
+            ? (string)$existing->current_page_key
+            : '';
+        $start = \humhub\modules\thiscoveryForms\services\FormPager::resumeIndex($pages, $start, $savedKey);
         $instance = $existing ? trim((string)$existing->current_instance_key) : '';
         if ($existing && $existing->isInProgress() && $instance !== '') {
+            // Two loops can share repeat codes, so the saved page wins when it is that repeat;
+            // otherwise the nearest page for the repeat (V3-45).
+            $best = null;
             foreach ($pages as $page) {
-                if ((string)($page['instanceKey'] ?? '') === $instance) {
-                    return (int)$page['index'];
+                if ((string)($page['instanceKey'] ?? '') !== $instance) {
+                    continue;
                 }
+                $index = (int)$page['index'];
+                if ($index === $start) {
+                    return $start;
+                }
+                if ($best === null || abs($index - $start) < abs($best - $start)) {
+                    $best = $index;
+                }
+            }
+            if ($best !== null) {
+                return $best;
             }
         }
         return $start;
@@ -250,7 +297,11 @@ $alreadyAnsweredAnon = !$isPreview && $formModel->allowsAnonymous()
     && $formModel->hasGuestAnswered($fillContext?->wave?->id, $fillContext?->round?->id)
     && !$isDraft;
 $showToolbar = $formModel->canManage() || $formModel->canViewAnswers();
-$resumeCode = ($resumeEnabled && $existing && $existing->isInProgress()) ? (string)$existing->resume_code : '';
+// Only the hash is stored; the plain code is shown from this session (DAT-14).
+$resumeCode = ($resumeEnabled && $existing && $existing->isInProgress()) ? \humhub\modules\thiscoveryForms\services\ResumeService::plainFor($existing) : '';
+$savedDraftCode = ($savedDraft ?? null) instanceof FormAnswer ? \humhub\modules\thiscoveryForms\services\ResumeService::plainFor($savedDraft) : '';
+// A resume code can be in this page's address: never send it on to another site (DAT-14).
+$this->registerMetaTag(['name' => 'referrer', 'content' => 'no-referrer']);
 $hasResumeIntent = $isDraft && (
     (string)Yii::$app->request->get('resume', '') !== ''
     || (string)Yii::$app->request->get('continue', '') === '1'
@@ -309,7 +360,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 <div class="cf-fill-toolbar__danger">
                     <?= Html::beginForm(Url::toDelete($formModel), 'post', ['class' => 'cf-fill-toolbar__delete']) ?>
                     <?= Button::danger(Yii::t('ThiscoveryFormsModule.base', 'Delete form'))
-                        ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Delete this form and all submissions?'))
+                        ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Move this form to the trash? Its answers are kept and it can be restored.'))
                         ->submit()
                         ->sm() ?>
                     <?= Html::endForm() ?>
@@ -413,7 +464,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
             </div>
         <?php endif; ?>
 
-        <?php if ($resumeEnabled && $savedDraft && $savedDraft->resume_code): ?>
+        <?php if ($resumeEnabled && $savedDraft && $savedDraftCode !== ''): ?>
             <div class="cf-resume-saved" data-cf-resume-saved>
                 <div class="cf-resume-saved__title">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Your progress is saved') ?>
@@ -422,13 +473,13 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Use this code to continue later. Anyone with the code can open your saved response.') ?>
                 </p>
                 <div class="cf-resume-code-row">
-                    <code class="cf-resume-code" data-cf-resume-code><?= Html::encode($savedDraft->resume_code) ?></code>
+                    <code class="cf-resume-code" data-cf-resume-code><?= Html::encode($savedDraftCode) ?></code>
                     <button type="button" class="btn btn-light btn-sm" data-cf-copy-code>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Copy code') ?>
                     </button>
                 </div>
                 <?= Html::beginForm(Url::toEmailResume($formModel), 'post', ['class' => 'cf-resume-email-form']) ?>
-                    <?= Html::hiddenInput('resume_code', $savedDraft->resume_code) ?>
+                    <?= Html::hiddenInput('resume_code', $savedDraftCode) ?>
                     <label class="cf-label" for="cf-resume-email">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Email me this code') ?>
                     </label>
@@ -498,7 +549,10 @@ $fillRtl = TranslationService::isRtl($fillLang);
             <?php endif; ?>
             <div class="visually-hidden" data-cf-page-live aria-live="polite" aria-atomic="true"></div>
             <?= Html::hiddenInput('current_page', '0', ['data-cf-current-page' => true]) ?>
+            <?= Html::hiddenInput('current_page_key', '', ['data-cf-current-page-key' => true]) ?>
             <?= Html::hiddenInput('current_instance_key', $existing ? (string)$existing->current_instance_key : '', ['data-cf-current-instance' => true]) ?>
+            <?php // One token per page load: a double click or a resubmitted page cannot create a second response (DAT-11). ?>
+            <?= Html::hiddenInput('submit_token', bin2hex(random_bytes(16))) ?>
             <?= Html::hiddenInput('roster_add', '') ?>
             <?= Html::hiddenInput('roster_parent', '') ?>
             <?= Html::hiddenInput('roster_remove', '') ?>
@@ -533,13 +587,29 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 }
                 $loopHeading = trim((string)($page['instanceHeading'] ?? ''));
                 if ($loopHeading === '' && !empty($page['instanceKey'])) {
-                    $loopHeading = (string)($page['instanceLabel'] ?? '') . ', ' . (int)($page['instanceIndex'] ?? 1) . ' of ' . (int)($page['instanceCount'] ?? 1);
+                    $loopHeading = Yii::t('ThiscoveryFormsModule.base', '{label}, {index} of {count}', [
+                        'label' => (string)($page['instanceLabel'] ?? ''),
+                        'index' => (int)($page['instanceIndex'] ?? 1),
+                        'count' => (int)($page['instanceCount'] ?? 1),
+                    ]);
                 }
                 ?>
                 <div class="cf-form-page<?= $page['index'] === 0 ? ' is-active' : '' ?>"
                      data-cf-page="<?= (int)$page['index'] ?>"
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
-                     <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '" role="region" aria-labelledby="cf-loop-heading-' . (int)$page['index'] . '"' : '' ?>
+                     <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '"'
+                        . ' data-cf-instance-code="' . Html::encode((string)(explode('/', (string)$page['instanceKey'])[substr_count((string)$page['instanceKey'], '/')])) . '"'
+                        . ' data-cf-instance-label="' . Html::encode((string)($page['instanceLabel'] ?? '')) . '"'
+                        . ' data-cf-instance-index="' . (int)($page['instanceIndex'] ?? 0) . '"'
+                        . ' data-cf-instance-count="' . (int)($page['instanceCount'] ?? 0) . '"'
+                        . (!empty($page['instanceParent']) && is_array($page['instanceParent'])
+                            ? ' data-cf-instance-parent-label="' . Html::encode((string)($page['instanceParent']['label'] ?? '')) . '"'
+                                . ' data-cf-instance-parent-index="' . (int)($page['instanceParent']['index'] ?? 0) . '"'
+                                . ' data-cf-instance-parent-count="' . (int)($page['instanceParent']['count'] ?? 0) . '"'
+                            : '')
+                        . ' role="region" aria-labelledby="cf-loop-heading-' . (int)$page['index'] . '"'
+                        // A page that receives focus is named, so a screen reader says where it is (V3-49).
+                        : 'role="region" aria-label="' . Html::encode(trim(Yii::t('ThiscoveryFormsModule.base', 'Page {n} of {count}', ['n' => (int)$page['index'] + 1, 'count' => count($pages)]) . (trim(strip_tags((string)$page['title'])) !== '' ? ': ' . trim(strip_tags((string)$page['title'])) : ''))) . '"' ?>
                      data-cf-page-break-id="<?= $page['break'] ? (int)$page['break']->id : '' ?>"
                      data-cf-branches="<?= Html::encode(Json::encode($page['break'] ? $page['break']->getPageBreakConfig()['branches'] : [])) ?>">
                     <?php if (!empty($page['instanceKey'])): ?>
@@ -648,6 +718,12 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         if (!empty($logic['when'])) {
                             $attrs['data-cf-logic'] = Json::encode($logic);
                         }
+                        $answerCheck = $field->getValidationCheck();
+                        if ($answerCheck !== null) {
+                            // The answer check runs in the browser too, so the respondent hears on this page (LOG-12).
+                            $attrs['data-cf-check'] = Json::encode($answerCheck);
+                            $attrs['data-cf-check-message'] = $field->getValidation()['check_message'];
+                        }
                         $frozen = $fillContext && in_array((int)$field->id, $fillContext->frozenFieldIds, true);
                         if ($frozen) {
                             $attrs['data-cf-frozen'] = '1';
@@ -718,6 +794,13 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                     ?>
                                 </div>
                             <?php endif; ?>
+                        <?php endif; ?>
+                        <?php if ($editingAnswer && SubmitForm::isManagerEdit($formModel, $existing)): ?>
+                            <div class="form-group cf-change-reason">
+                                <label for="cf-change-reason"><?= Yii::t('ThiscoveryFormsModule.base', 'Reason for changing this response') ?> <span class="text-danger" aria-hidden="true">*</span></label>
+                                <textarea id="cf-change-reason" name="change_reason" class="form-control" rows="2" maxlength="255" required aria-required="true"><?= Html::encode((string)Yii::$app->request->post('change_reason', '')) ?></textarea>
+                                <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'Kept in the response\'s change history with your name.') ?></p>
+                            </div>
                         <?php endif; ?>
                         <?= Button::save($existing && !$isDraft
                             ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')

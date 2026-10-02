@@ -16,6 +16,35 @@ final class FormulaPolicy
     public const META_ALLOWED = ['language', 'device_type'];
 
     /** @return string[] */
+    /**
+     * Question names a formula reads that are not on the form (variable, id or idN).
+     *
+     * @param array<string,mixed> $tree
+     * @return list<string>
+     */
+    public static function unknownQuestions(CustomForm $form, array $tree): array
+    {
+        $known = [];
+        foreach ($form->fields as $field) {
+            if (!$field instanceof FormField) {
+                continue;
+            }
+            $known[strtolower(trim((string)$field->variable))] = true;
+            $known[(string)(int)$field->id] = true;
+            $known['id' . (int)$field->id] = true;
+        }
+        $unknown = [];
+        foreach (FormulaDeps::names($tree) as $name) {
+            if ($name === 'arm' || str_contains($name, ':')) {
+                continue;
+            }
+            if (!isset($known[strtolower($name)])) {
+                $unknown[] = $name;
+            }
+        }
+        return $unknown;
+    }
+
     public static function authoringErrors(CustomForm $form): array
     {
         $errors = [];
@@ -39,7 +68,15 @@ final class FormulaPolicy
             }
             foreach ($texts as $text) {
                 try {
-                    self::walk($parser->parse($text), $anonymous, (string)$field->label, $errors);
+                    $tree = $parser->parse($text);
+                    self::walk($tree, $anonymous, (string)$field->label, $errors);
+                    foreach (self::unknownQuestions($form, $tree) as $name) {
+                        // A reference to no question is a typo or a rename: refused at publish (V3-54).
+                        $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” uses [{name}], which is not a question on this form.', [
+                            'label' => (string)$field->label,
+                            'name' => $name,
+                        ]);
+                    }
                 } catch (FormulaException $e) {
                     continue;
                 }
@@ -47,6 +84,8 @@ final class FormulaPolicy
         }
         $calcByKey = [];
         $calcDeps = [];
+        // Named formulas are followed, so a cycle through fn:name is caught too (V3-38).
+        $named = FormulaRuntime::named($form);
         foreach ($form->fields as $field) {
             if (!$field instanceof FormField || $field->type !== FormField::TYPE_CALCULATED) {
                 continue;
@@ -59,7 +98,7 @@ final class FormulaPolicy
                 continue;
             }
             try {
-                $calcDeps[$key] = FormulaDeps::names($parser->parse($formula));
+                $calcDeps[$key] = FormulaDeps::names($parser->parse($formula), $named);
             } catch (FormulaException $e) {
                 continue;
             }

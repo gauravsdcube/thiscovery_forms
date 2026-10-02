@@ -66,7 +66,7 @@ class FormVersionService
         }
         $quotaErrors = (new QuotaService())->authoringErrors($form);
         $formulaErrors = \humhub\modules\thiscoveryForms\services\formula\FormulaPolicy::authoringErrors($form);
-        $blocked = array_merge($quotaErrors, $formulaErrors);
+        $blocked = array_merge($quotaErrors, $formulaErrors, LogicAudit::errors($form), (new Eq5dService())->authoringErrors($form));
         if ($blocked) {
             Yii::$app->session->setFlash('error', implode(' ', $blocked));
             return null;

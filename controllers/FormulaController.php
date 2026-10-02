@@ -41,7 +41,7 @@ class FormulaController extends Controller
         $formId = (int)Yii::$app->request->get('id', Yii::$app->request->post('form_id', 0));
         if ($formId > 0) {
             $form = CustomForm::findOne($formId);
-            if (!$form || !$form->canManage()) {
+            if (!$form || $form->isTrashed() || !$form->canManage()) {
                 throw new ForbiddenHttpException();
             }
         }

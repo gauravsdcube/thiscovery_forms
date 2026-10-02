@@ -51,6 +51,9 @@ $navItem = static function (string $section, string $title, string $icon, string
             <?= $navItem('email', Yii::t('ThiscoveryFormsModule.base', 'Email templates'), 'fa-envelope-o', Yii::t('ThiscoveryFormsModule.base', 'Invite, wave, reminder, completion')) ?>
             <?= $navItem('languages', Yii::t('ThiscoveryFormsModule.base', 'Languages'), 'fa-globe', Yii::t('ThiscoveryFormsModule.base', 'Source language and translations')) ?>
             <?= $navItem('actions', Yii::t('ThiscoveryFormsModule.base', 'Actions and functions'), 'fa-bolt', Yii::t('ThiscoveryFormsModule.base', 'On submit, custom functions')) ?>
+            <?php if (!$isNew): ?>
+                <?= $navItem('route', Yii::t('ThiscoveryFormsModule.base', 'Route map'), 'fa-code-fork', Yii::t('ThiscoveryFormsModule.base', 'Pages, jumps and logic problems')) ?>
+            <?php endif; ?>
             <?php if ($formModel->isConsensus()): ?>
                 <?= $navItem('consensus', Yii::t('ThiscoveryFormsModule.base', 'Consensus'), 'fa-balance-scale', Yii::t('ThiscoveryFormsModule.base', 'Identity, threshold, freeze')) ?>
             <?php endif; ?>

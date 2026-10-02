@@ -81,6 +81,16 @@ class Url
         return $form->content->container->createUrl('/thiscovery-forms/form/save-progress', ['id' => $form->id]);
     }
 
+    /** The closing page after a quota ended or redirected a response mid-way (V3-47). */
+    public static function toQuotaClosed(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/quota-closed', 'id' => $form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/quota-closed', ['id' => $form->id]);
+    }
+
     public static function toFillUpload(CustomForm $form, ?int $fieldId = null): string
     {
         $params = ['id' => $form->id];
@@ -244,7 +254,7 @@ class Url
         return $container->createUrl('/thiscovery-forms/form/folder-edit', $params);
     }
 
-    public static function toFolderDelete($container = null, int $folderId): string
+    public static function toFolderDelete(int $folderId, $container = null): string
     {
         $params = ['id' => $folderId];
         if ($container === null) {
@@ -274,6 +284,16 @@ class Url
         }
 
         return $form->content->container->createUrl('/thiscovery-forms/form/answers', $params);
+    }
+
+    public static function toAnswerErase(CustomForm $form, $answerId): string
+    {
+        $params = ['id' => $form->id, 'answerId' => (int)$answerId];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/answer-erase'], $params));
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/answer-erase', $params);
     }
 
     public static function toAnswerDetail(CustomForm $form, $answerId): string
@@ -354,6 +374,30 @@ class Url
         return $form->content->container->createUrl('/thiscovery-forms/form/answer-archive', $params);
     }
 
+    public static function toTrash($container = null): string
+    {
+        if ($container === null) {
+            return BaseUrl::to(['/thiscovery-forms/global/trash']);
+        }
+        return $container->createUrl('/thiscovery-forms/form/trash');
+    }
+
+    public static function toRestoreForm(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/restore-form', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/restore-form', ['id' => $form->id]);
+    }
+
+    public static function toPurgeForm(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/purge-form', 'id' => $form->id]);
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/purge-form', ['id' => $form->id]);
+    }
+
     public static function toDelete(CustomForm $form): string
     {
         if ($form->isGlobal()) {
@@ -413,6 +457,15 @@ class Url
             return BaseUrl::to(['/thiscovery-forms/global/integrity', 'id' => $form->id]);
         }
         return $form->content->container->createUrl('/thiscovery-forms/form/integrity', ['id' => $form->id]);
+    }
+
+    public static function toArmOverride(CustomForm $form, int $answerId): string
+    {
+        $params = ['id' => $form->id, 'answerId' => $answerId];
+        if ($form->isGlobal()) {
+            return BaseUrl::to(array_merge(['/thiscovery-forms/global/arm-override'], $params));
+        }
+        return $form->content->container->createUrl('/thiscovery-forms/form/arm-override', $params);
     }
 
     public static function toIntegrityStatus(CustomForm $form, int $answerId): string

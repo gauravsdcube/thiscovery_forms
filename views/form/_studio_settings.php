@@ -337,7 +337,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Email when a quota fills') ?></label>
-                        <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.test']) ?>
+                        <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.org']) ?>
                     </div>
                     <?php if (empty($isNew)): ?>
                     <div class="col-md-12">

@@ -24,7 +24,7 @@ class FillContextService
             $this->resolveConsensus($ctx, $panel, $token);
         } else {
             $ctx->member = $panel->resolveMember($form, $token !== '' ? $token : null);
-            $ctx->tokenAccess = $ctx->member && $token !== '' && $ctx->member->token === $token;
+            $ctx->tokenAccess = $ctx->member && $token !== '' && (int)(\humhub\modules\thiscoveryForms\models\FormPanelMember::fromLinkToken($token)->id ?? 0) === (int)$ctx->member->id;
         }
 
         return $ctx;
@@ -53,7 +53,7 @@ class FillContextService
         }
 
         $ctx->member = $panel->resolveMember($form, $token ?: null);
-        $ctx->tokenAccess = $ctx->member && $token !== '' && $ctx->member->token === $token;
+        $ctx->tokenAccess = $ctx->member && $token !== '' && (int)(\humhub\modules\thiscoveryForms\models\FormPanelMember::fromLinkToken($token)->id ?? 0) === (int)$ctx->member->id;
 
         if ($ctx->member) {
             return;
@@ -82,14 +82,15 @@ class FillContextService
         }
 
         $ctx->member = $panel->resolveMember($form, $token ?: null);
-        $ctx->tokenAccess = $ctx->member && $token !== '' && $ctx->member->token === $token;
+        $ctx->tokenAccess = $ctx->member && $token !== '' && (int)(\humhub\modules\thiscoveryForms\models\FormPanelMember::fromLinkToken($token)->id ?? 0) === (int)$ctx->member->id;
 
         $previous = $rounds->previousRound($ctx->round);
         if ($previous) {
             if ($previous->hasPublishedSummary()) {
                 $ctx->roundSummaryHtml = (string)$previous->summary_html;
             }
-            $ctx->frozenFieldIds = $previous->getFrozenFieldIds();
+            // Frozen items do not wait for the summary to be published (SCO-9).
+            $ctx->frozenFieldIds = $rounds->frozenFor($form, $previous);
             $ctx->previousRoundAnswer = $this->findScopedAnswer($form, $ctx, $previous->id, 'round_id');
         }
     }

@@ -1,0 +1,108 @@
+# Checks for the thiscovery-forms module (NEW-22).
+#
+# "static" needs nothing but PHP and Node: lint, JS syntax, and the standalone suite, which
+# includes the PHP/JS formula parity test run in Node.
+#
+# "humhub" installs HumHub, seeds the test personas and runs the database-backed suite with
+# Mailpit for mail. This module also needs the Thiscovery versioning, dashboard and editor
+# modules, which live in other repositories, so the job runs only when the repository
+# variable HUMHUB_CI is "true" and THISCOVERY_MODULES_REPO names a repository holding them
+# (one folder per module id). The token THISCOVERY_MODULES_TOKEN must be able to read it.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  static:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: intl, mbstring, fileinfo, bcmath
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: PHP lint
+        run: find . -name '*.php' -not -path './vendor/*' -print0 | xargs -0 -n1 -P4 php -l > /dev/null
+      - name: JavaScript syntax
+        run: |
+          for f in resources/js/*.js; do
+            case "$f" in *.min.js) continue ;; esac
+            node --check "$f"
+          done
+      - name: Standalone tests
+        run: php tests/standalone/run.php
+
+  humhub:
+    if: ${{ vars.HUMHUB_CI == 'true' }}
+    needs: static
+    runs-on: ubuntu-latest
+    env:
+      HUMHUB_VERSION: ${{ vars.HUMHUB_VERSION || '1.17.3' }}
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: humhub
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -proot" --health-interval=5s --health-timeout=5s --health-retries=20
+      mailpit:
+        image: axllent/mailpit
+        ports: ['1025:1025', '8025:8025']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: module
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.THISCOVERY_MODULES_REPO }}
+          token: ${{ secrets.THISCOVERY_MODULES_TOKEN }}
+          path: siblings
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: intl, gd, pdo_mysql, zip, exif, fileinfo, mbstring, bcmath, curl
+          coverage: none
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Download HumHub
+        run: |
+          curl -fsSL "https://download.humhub.com/downloads/install/humhub-${HUMHUB_VERSION}.tar.gz" | tar xz
+          mv "humhub-${HUMHUB_VERSION}" humhub
+      - name: Add modules
+        run: |
+          mkdir -p humhub/protected/modules
+          cp -R module humhub/protected/modules/thiscovery-forms
+          for dir in siblings/*/; do cp -R "$dir" "humhub/protected/modules/$(basename "$dir")"; done
+      - name: Install HumHub
+        working-directory: humhub/protected
+        env:
+          HUMHUB_CONFIG__COMPONENTS__MAILER__TRANSPORT__DSN: smtp://127.0.0.1:1025
+        run: |
+          php yii installer/write-db-config 127.0.0.1 humhub root root
+          php yii installer/install-db
+          php yii installer/write-site-config "CI" "ci@example.test"
+          php yii installer/create-admin-account
+          for m in thiscovery-versioning thiscovery-dashboard thiscovery-editor thiscovery-forms; do
+            php yii module/enable "$m" || true
+          done
+          php yii migrate/up --includeModuleMigrations=1 --interactive=0
+      - name: Seed test personas
+        working-directory: humhub/protected
+        env:
+          THISCOVERY_FORMS_TEST_DB: '1'
+        run: php modules/thiscovery-forms/tests/support/seed.php
+      - name: Module tests
+        working-directory: humhub/protected
+        env:
+          THISCOVERY_FORMS_TEST_DB: '1'
+          HUMHUB_CONFIG__COMPONENTS__MAILER__TRANSPORT__DSN: smtp://127.0.0.1:1025
+        run: php modules/thiscovery-forms/tests/run.php

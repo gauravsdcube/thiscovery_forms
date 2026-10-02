@@ -154,6 +154,17 @@ class Events
         } catch (\Throwable $e) {
             Yii::error('Thiscovery Forms reminder cron failed: ' . $e->getMessage(), 'thiscovery-forms');
         }
+        try {
+            // Retention: email logs, abandoned drafts and integrity hashes (GOV-8), once a day.
+            (new \humhub\modules\thiscoveryForms\services\RetentionService())->runDaily();
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms retention job failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
+        try {
+            (new \humhub\modules\thiscoveryForms\services\IdentityRepair())->purgeExpired();
+        } catch (\Throwable $e) {
+            Yii::error('Thiscovery Forms identity-repair purge failed: ' . $e->getMessage(), 'thiscovery-forms');
+        }
     }
 
     public static function onIntegrityCheck($event): void

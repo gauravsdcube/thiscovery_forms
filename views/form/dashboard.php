@@ -81,6 +81,15 @@ JS
                     'showIcon' => false,
                     'label' => Yii::t('ThiscoveryFormsModule.base', 'Allocation log'),
                 ]) ?>
+                <?php if (\humhub\modules\thiscoveryForms\services\LoopService::active($formModel)): ?>
+                    <?= $this->render('_export_csv_button', [
+                        'formModel' => $formModel,
+                        'exportParams' => ['long' => 1],
+                        'style' => 'info',
+                        'showIcon' => false,
+                        'label' => Yii::t('ThiscoveryFormsModule.base', 'Loops and rosters (one row per repeat)'),
+                    ]) ?>
+                <?php endif; ?>
             <?php else: ?>
                 <span class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Shared dashboard') ?></span>
             <?php endif; ?>
@@ -150,7 +159,7 @@ JS
         </div>
     <?php endif; ?>
 
-    <?php if (!empty($stats['loops']['questions'])): ?>
+    <?php if (empty($isPublic) && !empty($stats['loops']['questions'])): ?>
         <div class="cf-dash-panel" data-cf-loop-split>
             <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Repeats') ?></h3>
             <p class="text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'All repeats are added together. Choose one repeat to see only that label.') ?></p>
@@ -324,6 +333,9 @@ JS
                         <div class="cf-chart-card__meta">
                             <?= Html::encode(ucfirst($chart['type'])) ?> · <?= (int)$chart['total'] ?>
                             <?= Yii::t('ThiscoveryFormsModule.base', 'responses') ?>
+                            <?php if (!empty($chart['multi'])): ?>
+                                · <?= Yii::t('ThiscoveryFormsModule.base', 'people could choose more than one, so percentages can add up to more than 100%') ?>
+                            <?php endif; ?>
                         </div>
                         <div class="cf-chart-wrap cf-chart-wrap--pie">
                             <canvas data-cf-chart="structured"></canvas>
@@ -339,6 +351,33 @@ JS
     <?php else: ?>
         <div class="cf-dash-panel">
             <p class="text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'No submissions yet.') ?></p>
+        </div>
+    <?php endif; ?>
+    <?php if (!empty($stats['numeric'])): ?>
+        <div class="cf-dash-panel">
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Number questions') ?></h3>
+            <table class="table table-condensed">
+                <thead><tr>
+                    <th scope="col"><?= Yii::t('ThiscoveryFormsModule.base', 'Question') ?></th>
+                    <th scope="col">n</th>
+                    <th scope="col"><?= Yii::t('ThiscoveryFormsModule.base', 'Mean') ?></th>
+                    <th scope="col"><?= Yii::t('ThiscoveryFormsModule.base', 'Median') ?></th>
+                    <th scope="col"><?= Yii::t('ThiscoveryFormsModule.base', 'Quartiles') ?></th>
+                    <th scope="col"><?= Yii::t('ThiscoveryFormsModule.base', 'Range') ?></th>
+                </tr></thead>
+                <tbody>
+                <?php foreach ($stats['numeric'] as $row): ?>
+                    <tr>
+                        <th scope="row"><?= Html::encode((string)$row['label']) ?></th>
+                        <td><?= (int)$row['n'] ?></td>
+                        <td><?= Html::encode((string)$row['mean']) ?></td>
+                        <td><?= Html::encode((string)$row['median']) ?></td>
+                        <td><?= Html::encode($row['p25'] . ' – ' . $row['p75']) ?></td>
+                        <td><?= Html::encode($row['min'] . ' – ' . $row['max']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
         </div>
     <?php endif; ?>
 </div>

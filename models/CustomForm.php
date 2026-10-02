@@ -2,6 +2,7 @@
 
 namespace humhub\modules\thiscoveryForms\models;
 
+use humhub\modules\thiscoveryForms\services\formula\FormulaRefs;
 use humhub\modules\content\components\ContentActiveRecord;
 use humhub\modules\content\models\Content;
 use humhub\modules\thiscoveryForms\helpers\Url;
@@ -240,6 +241,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['completion_button_label', 'already_submitted_button_label'], 'string', 'max' => 120],
             [['completion_button_url', 'completion_redirect_url', 'already_submitted_button_url'], 'string', 'max' => 2000],
             [['completion_redirect_url'], 'validateCompletionRedirectUrl'],
+            [['submit_actions'], 'validateSubmitActions', 'skipOnEmpty' => false],
             [['allow_edit'], 'default', 'value' => 1],
             [['allow_resume'], 'default', 'value' => 0],
             [['is_template'], 'default', 'value' => 0],
@@ -562,6 +564,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $folderContainer = $folder && $folder->contentcontainer_id ? (int)$folder->contentcontainer_id : null;
             if (!$folder || $folderContainer !== $this->containerId()) {
                 $this->addError('folder_id', Yii::t('ThiscoveryFormsModule.base', 'That folder is not in this space.'));
+            } elseif ($this->isAttributeChanged('folder_id') && Yii::$app->has('user', true) && !Yii::$app->user->isGuest
+                && !\humhub\modules\thiscoveryForms\services\FolderService::canCreateIn($folder)) {
+                // Moving a form into a folder needs that folder's create or manage access; a posted
+                // folder_id on a studio save no longer bypasses the folder ACL (V3-50).
+                $this->addError('folder_id', Yii::t('ThiscoveryFormsModule.base', 'You cannot put forms in that folder.'));
             }
         }
         if ((int)$this->enrol_panel_id > 0) {
@@ -1318,11 +1325,130 @@ class CustomForm extends ContentActiveRecord implements Searchable
         );
     }
 
+    /** In the trash: the content is in HumHub's deleted state (GOV-7). */
+    public function isTrashed(): bool
+    {
+        return $this->content && (int)$this->content->state === Content::STATE_DELETED;
+    }
+
+    /**
+     * "Delete" moves the form to the trash: it closes, disappears from lists, fill links and
+     * scheduled sends, and keeps every answer. It can be restored, and only a separate
+     * permanent delete removes it (GOV-7).
+     */
+    public function moveToTrash(?string $reason = null): bool
+    {
+        if (!$this->content || $this->isTrashed()) {
+            return false;
+        }
+        $previous = (int)$this->content->state;
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            Content::updateAll(['state' => Content::STATE_DELETED], ['id' => (int)$this->content->id]);
+            $this->content->state = Content::STATE_DELETED;
+            if ((int)$this->status === self::STATUS_OPEN) {
+                $this->status = self::STATUS_CLOSED;
+                $this->save(false, ['status']);
+            }
+            $this->logLifecycle('trash', $previous, $reason);
+            $tx->commit();
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            throw $e;
+        }
+        return true;
+    }
+
+    public function restoreFromTrash(): bool
+    {
+        if (!$this->isTrashed()) {
+            return false;
+        }
+        $last = self::lifecycleLog((int)$this->id)[0] ?? null;
+        $state = $last && $last['action'] === 'trash' && $last['previous_state'] !== null
+            ? (int)$last['previous_state']
+            : Content::STATE_PUBLISHED;
+        Content::updateAll(['state' => $state], ['id' => (int)$this->content->id]);
+        $this->content->state = $state;
+        // It comes back closed; the manager reopens it when ready.
+        $this->logLifecycle('restore', Content::STATE_DELETED, null);
+        return true;
+    }
+
+    /** Permanent delete from the trash only; refused while consent evidence exists. */
+    public function purge(?string $reason = null): bool
+    {
+        if (!$this->isTrashed()) {
+            $this->addError('id', Yii::t('ThiscoveryFormsModule.base', 'Move the form to the trash before deleting it permanently.'));
+            return false;
+        }
+        $title = (string)$this->title;
+        $id = (int)$this->id;
+        $answers = (int)FormAnswer::find()->where(['form_id' => $id, 'is_test' => 0])->count();
+        if (!$this->hardDelete()) {
+            return false;
+        }
+        self::writeLifecycle($id, $title, 'purge', Content::STATE_DELETED, $answers, $reason);
+        return true;
+    }
+
+    /**
+     * @return array<int, array<string,mixed>> newest first
+     */
+    public static function lifecycleLog(int $formId): array
+    {
+        if (Yii::$app->db->schema->getTableSchema('{{%custom_form_lifecycle_log}}', true) === null) {
+            return [];
+        }
+        return (new \yii\db\Query())->from('{{%custom_form_lifecycle_log}}')->where(['form_id' => $formId])->orderBy(['id' => SORT_DESC])->all();
+    }
+
+    private function logLifecycle(string $action, ?int $previous, ?string $reason): void
+    {
+        $answers = (int)FormAnswer::find()->where(['form_id' => (int)$this->id, 'is_test' => 0])->count();
+        self::writeLifecycle((int)$this->id, (string)$this->title, $action, $previous, $answers, $reason);
+    }
+
+    private static function writeLifecycle(int $formId, string $title, string $action, ?int $previous, int $answers, ?string $reason): void
+    {
+        if (Yii::$app->db->schema->getTableSchema('{{%custom_form_lifecycle_log}}', true) === null) {
+            return;
+        }
+        Yii::$app->db->createCommand()->insert('{{%custom_form_lifecycle_log}}', [
+            'form_id' => $formId,
+            'title' => mb_substr($title, 0, 255),
+            'action' => $action,
+            'previous_state' => $previous,
+            'answers' => $answers,
+            'actor_id' => Yii::$app->has('user', true) && !Yii::$app->user->isGuest ? (int)Yii::$app->user->id : null,
+            'reason' => $reason !== null && trim($reason) !== '' ? mb_substr(trim($reason), 0, 255) : null,
+            'created_at' => gmdate('Y-m-d H:i:s'),
+        ])->execute();
+    }
+
+    /**
+     * Throws 404 for a form in the trash, so fill links, the studio and every manager screen
+     * treat it as gone until it is restored (GOV-7).
+     */
+    public static function assertNotTrashed(?CustomForm $form): void
+    {
+        if ($form && $form->isTrashed()) {
+            throw new \yii\web\NotFoundHttpException();
+        }
+    }
+
     public function beforeDelete()
     {
         if (!parent::beforeDelete()) {
             return false;
         }
+        // Consent records are evidence that someone agreed; deleting the form must not destroy
+        // them (V3-57). Such a form is closed or archived instead.
+        if ($this->hasConsentEvidence()) {
+            $this->addError('id', Yii::t('ThiscoveryFormsModule.base', 'This form holds consent records, which must be kept. Close or archive the form instead of deleting it.'));
+            return false;
+        }
+        $this->deleteDependentRows();
 
         foreach (FormAnswer::find()->where(['form_id' => $this->id])->all() as $answer) {
             $answer->delete();
@@ -1341,6 +1467,85 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         return true;
+    }
+
+    private function hasConsentEvidence(): bool
+    {
+        if (Yii::$app->db->schema->getTableSchema('{{%custom_form_consent_record}}', true) === null) {
+            return false;
+        }
+        return (new \yii\db\Query())->from(['r' => '{{%custom_form_consent_record}}'])
+            ->leftJoin(['a' => FormAnswer::tableName()], 'a.id = r.answer_id')
+            ->where(['r.form_id' => (int)$this->id])
+            ->andWhere(['or', ['r.answer_id' => null], ['a.is_test' => 0]])
+            ->andWhere(['<>', 'r.signature_method', 'legacy'])
+            ->exists();
+    }
+
+    /**
+     * A hard delete removes the rows that only make sense with this form, so nothing is left
+     * orphaned: quotas, allocation, orders, integrity, audit and erasure rows, tokens, consent
+     * documents and test consent (V3-57). Tables a migration has not created yet are skipped.
+     */
+    private function deleteDependentRows(): void
+    {
+        $db = Yii::$app->db;
+        $has = static fn(string $table): bool => $db->schema->getTableSchema($table, true) !== null;
+        $formId = (int)$this->id;
+        $answerIds = array_map('intval', FormAnswer::find()->select('id')->where(['form_id' => $formId])->column());
+        $byAnswer = [
+            '{{%custom_form_arm_assignment}}', '{{%custom_form_arm_override}}', '{{%custom_form_presentation}}',
+            '{{%custom_form_answer_audit}}', 'custom_form_integrity_meta', 'custom_form_identity_repair_log',
+        ];
+        if ($answerIds) {
+            foreach ($byAnswer as $table) {
+                if ($has($table)) {
+                    $db->createCommand()->delete($table, ['answer_id' => $answerIds])->execute();
+                }
+            }
+        }
+        if ($has('{{%custom_form_quota}}')) {
+            $quotaIds = (new \yii\db\Query())->select('id')->from('{{%custom_form_quota}}')->where(['form_id' => $formId])->column();
+            if ($quotaIds) {
+                foreach (['{{%custom_form_quota_counter}}', '{{%custom_form_quota_accept}}', '{{%custom_form_quota_audit}}', '{{%custom_form_quota_reservation}}', '{{%custom_form_quota_i18n}}'] as $table) {
+                    if ($has($table)) {
+                        $db->createCommand()->delete($table, ['quota_id' => $quotaIds])->execute();
+                    }
+                }
+                $db->createCommand()->delete('{{%custom_form_quota}}', ['id' => $quotaIds])->execute();
+            }
+        }
+        if ($has('{{%custom_form_consent_document}}')) {
+            $docIds = (new \yii\db\Query())->select('id')->from('{{%custom_form_consent_document}}')->where(['form_id' => $formId])->column();
+            $recordIds = $has('{{%custom_form_consent_record}}')
+                ? (new \yii\db\Query())->select('id')->from('{{%custom_form_consent_record}}')->where(['form_id' => $formId])->column()
+                : [];
+            if ($recordIds) {
+                foreach (['{{%custom_form_consent_withdrawal}}', '{{%custom_form_consent_audit}}'] as $table) {
+                    if ($has($table)) {
+                        $db->createCommand()->delete($table, ['record_id' => $recordIds])->execute();
+                    }
+                }
+                $db->createCommand()->delete('{{%custom_form_consent_record}}', ['id' => $recordIds])->execute();
+            }
+            if ($docIds) {
+                foreach (['{{%custom_form_consent_item}}', '{{%custom_form_consent_i18n}}', '{{%custom_form_consent_file}}'] as $table) {
+                    if ($has($table)) {
+                        $db->createCommand()->delete($table, ['document_id' => $docIds])->execute();
+                    }
+                }
+                $db->createCommand()->delete('{{%custom_form_consent_document}}', ['id' => $docIds])->execute();
+            }
+        }
+        foreach ([
+            '{{%custom_form_consent_requirement}}', '{{%custom_form_quota_allowhost}}', '{{%custom_form_arm_allocation}}',
+            '{{%custom_form_rotate_seq}}', '{{%custom_form_erasure}}', 'custom_form_access_token', 'custom_form_integrity_audit',
+            '{{%custom_form_admin_task}}', '{{%form_email_send}}',
+        ] as $table) {
+            if ($has($table) && isset($db->schema->getTableSchema($table)->columns['form_id'])) {
+                $db->createCommand()->delete($table, ['form_id' => $formId])->execute();
+            }
+        }
     }
 
     protected function syncContentState(): void
@@ -1815,6 +2020,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->setSetting('already_submitted_button_url', trim((string)$this->already_submitted_button_url));
     }
 
+    /**
+     * Submit actions arrive as a top-level POST array and are stored in beforeSave, so their
+     * conditions are checked here, where an error still stops the save (LOG-11).
+     */
+    public function validateSubmitActions($attribute): void
+    {
+        $request = Yii::$app->request;
+        $list = ($request instanceof \yii\web\Request && $request->isPost && $request->post('submit_actions') !== null)
+            ? $request->post('submit_actions')
+            : $this->submit_actions;
+        foreach (\humhub\modules\thiscoveryForms\services\FormActionService::conditionErrors($list) as $message) {
+            $this->addError($attribute, $message);
+        }
+    }
+
     public function validateCompletionRedirectUrl($attribute): void
     {
         if ($this->completion_mode !== self::COMPLETION_REDIRECT) {
@@ -2191,9 +2411,118 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     /**
      * Save field definitions from posted field rows.
+     *
+     * All or nothing (V3-37, DAT-3): the rows are written in a transaction and the design
+     * checks (go-tos, loops, quotas, consent, formula policy, legacy rules) run against the
+     * written structure; any failure rolls every write back, so an invalid design is never
+     * stored. Inside an outer transaction this is a savepoint. Reasons are on getErrors('title')
+     * or in the error flash.
+     *
      * @param array $rows
      */
     public function saveFieldsFromPost(array $rows): bool
+    {
+        $tx = Yii::$app->db->beginTransaction();
+        try {
+            $ok = $this->writeFields($rows);
+        } catch (\yii\db\IntegrityException $e) {
+            // The one-live-name index (DAT-10), e.g. two questions swapping names in one save.
+            $tx->rollBack();
+            unset($this->fields);
+            $this->addError('title', Yii::t('ThiscoveryFormsModule.base', 'Two questions would share a variable name. Give each its own name, or rename in two saves.'));
+            return false;
+        } catch (\Throwable $e) {
+            $tx->rollBack();
+            unset($this->fields);
+            throw $e;
+        }
+        if ($ok) {
+            $tx->commit();
+            return true;
+        }
+        $tx->rollBack();
+        unset($this->fields);
+        return false;
+    }
+
+    /**
+     * A renamed variable is followed by the form's named formulas and quota rules, so no
+     * [old] reference is left dangling (V3-52).
+     *
+     * @param array<string,string> $renames
+     */
+    private function applyVariableRenames(array $renames): void
+    {
+        $functions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeFunctions($this->custom_functions ?? $this->getSetting('custom_functions', []));
+        $changed = false;
+        foreach ($functions as $i => $fn) {
+            $next = FormulaRefs::renameText((string)$fn['value'], $renames);
+            if ($next !== (string)$fn['value']) {
+                $functions[$i]['value'] = $next;
+                $changed = true;
+            }
+        }
+        // Submit actions' values and conditions follow the rename too (LOG-11).
+        $submitActions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeList($this->getSetting('submit_actions', []));
+        $actionsChanged = false;
+        foreach ($submitActions as $i => $action) {
+            foreach (['value', 'condition'] as $key) {
+                $next = FormulaRefs::renameText((string)$action[$key], $renames);
+                if ($next !== (string)$action[$key]) {
+                    $submitActions[$i][$key] = $next;
+                    $actionsChanged = true;
+                }
+            }
+        }
+        if ($actionsChanged) {
+            $submitActions = \humhub\modules\thiscoveryForms\services\FormActionService::normalizeList($submitActions);
+            $this->submit_actions = $submitActions;
+            $this->setSetting('submit_actions', $submitActions);
+            $changed = true;
+        }
+        if ($changed) {
+            $this->custom_functions = $functions;
+            $this->setSetting('custom_functions', $functions);
+            $this->save(false, ['settings_json']);
+        }
+        if (\humhub\modules\thiscoveryForms\services\QuotaService::tablesReady()) {
+            $rows = (new \yii\db\Query())->select(['id', 'rules_json'])->from('{{%custom_form_quota}}')->where(['form_id' => (int)$this->id])->all();
+            foreach ($rows as $row) {
+                $rule = json_decode((string)$row['rules_json'], true);
+                if (!is_array($rule)) {
+                    continue;
+                }
+                $next = FormulaRefs::renameRule($rule, $renames);
+                if ($next !== $rule) {
+                    Yii::$app->db->createCommand()->update('{{%custom_form_quota}}', [
+                        'rules_json' => json_encode($next, JSON_UNESCAPED_UNICODE),
+                    ], ['id' => (int)$row['id']])->execute();
+                }
+            }
+        }
+    }
+
+    /**
+     * Why saveFieldsFromPost() refused the design: its checks and any error flash it set.
+     */
+    public function designRefusalMessage(): string
+    {
+        $reasons = array_values(array_map('strval', $this->getErrors('title')));
+        $flash = Yii::$app->session->getFlash('error', null, true);
+        foreach (is_array($flash) ? $flash : [$flash] as $message) {
+            $message = trim((string)$message);
+            if ($message !== '' && !in_array($message, $reasons, true)) {
+                $reasons[] = $message;
+            }
+        }
+        $intro = Yii::t('ThiscoveryFormsModule.base', 'The question changes were not saved; the questions are as they were before this save.');
+        return $reasons ? $intro . ' ' . implode(' ', $reasons) : $intro;
+    }
+
+    /**
+     * The write half of saveFieldsFromPost(); only ever called inside its transaction.
+     */
+    private function writeFields(array $rows): bool
     {
         $existing = [];
         foreach ($this->getAllFields()->all() as $field) {
@@ -2251,9 +2580,22 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $orderedRows = $this->closeUnclosedQuestionGroups($orderedRows);
 
         $usedVariables = [];
+        /** @var array<string,string> $usedBy variable => label of the question that has it */
+        $usedBy = [];
+        /** @var array<string,string> $renames old variable => new variable */
+        $renames = [];
+        $postedIds = [];
+        foreach ($orderedRows as $item) {
+            if (isset($item['row']['id']) && $item['row']['id'] !== '') {
+                $postedIds[(int)$item['row']['id']] = true;
+            }
+        }
         foreach ($existing as $field) {
-            if ($field->isRemoved() && trim((string)$field->variable) !== '') {
+            // A removed question keeps its name reserved, unless this save brings it back. So
+            // does one this save removes (it is not posted).
+            if (trim((string)$field->variable) !== '' && !isset($postedIds[(int)$field->id])) {
                 $usedVariables[strtolower((string)$field->variable)] = true;
+                $usedBy[strtolower((string)$field->variable)] = Yii::t('ThiscoveryFormsModule.base', 'a removed question');
             }
         }
         foreach ($orderedRows as $item) {
@@ -2291,6 +2633,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $id = isset($row['id']) && $row['id'] !== '' ? (int)$row['id'] : null;
             $field = ($id && isset($existing[$id])) ? $existing[$id] : new FormField();
             $field->form_id = $this->id;
+            $oldVariable = $field->isNewRecord ? '' : trim((string)$field->variable);
             $field->label = $label;
             $field->type = $type;
             $field->variable = trim((string)($row['variable'] ?? ''));
@@ -2306,8 +2649,26 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field->sort_order = $sort++;
 
             if ($type !== FormField::TYPE_GROUP_END) {
+                if ($field->variable !== '') {
+                    // A name the author chose is never silently suffixed: two questions with
+                    // one name would swap columns when reordered (DAT-10).
+                    $chosen = strtolower($field->ensureVariable());
+                    if (isset($usedVariables[$chosen])) {
+                        $this->addError('title', Yii::t('ThiscoveryFormsModule.base', '“{label}” uses the variable name “{name}”, which {other} already has. Each question needs its own name.', [
+                            'label' => $label,
+                            'name' => (string)$field->variable,
+                            'other' => $usedBy[$chosen] ?? Yii::t('ThiscoveryFormsModule.base', 'another question'),
+                        ]));
+                        return false;
+                    }
+                }
                 $field->ensureVariable($usedVariables);
                 $usedVariables[strtolower((string)$field->variable)] = true;
+                $usedBy[strtolower((string)$field->variable)] = '“' . $label . '”';
+                if ($oldVariable !== '' && strcasecmp($oldVariable, (string)$field->variable) !== 0) {
+                    // Renamed: every [old] reference is rewritten below (V3-52).
+                    $renames[$oldVariable] = (string)$field->variable;
+                }
             }
 
             try {
@@ -2343,14 +2704,18 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'pageKey' => $row['page_key'] ?? '',
                     'title' => $row['page_title'] ?? '',
                     'branches' => $branches,
+                    'otherwise' => $row['page_otherwise'] ?? '',
                 ]);
                 $field->required = false;
             } elseif ($type === FormField::TYPE_RAND_BLOCK) {
+                $blockShow = trim((string)($row['randomise_show'] ?? ''));
                 $field->options_json = json_encode([
                     'blockKey' => trim((string)($row['block_key'] ?? $row['page_key'] ?? '')),
                     'randomise' => [
                         'enabled' => true,
                         'method' => (($row['randomise_method'] ?? '') === 'rotate') ? 'rotate' : 'shuffle',
+                        // Show N of the block's pages (V3-56).
+                        'show' => $blockShow === '' ? null : max(1, (int)$blockShow),
                     ],
                 ], JSON_UNESCAPED_UNICODE);
                 $field->required = false;
@@ -2444,6 +2809,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'items' => $row['items'] ?? ($row['options'] ?? ''),
                     'setSize' => $row['maxdiff_set_size'] ?? 4,
                     'setCount' => $row['maxdiff_set_count'] ?? 0,
+                    'versions' => $row['maxdiff_versions'] ?? null,
                 ]);
             } elseif ($type === FormField::TYPE_DRILLDOWN) {
                 $tree = $row['drilldown_tree'] ?? '';
@@ -2514,6 +2880,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 }
             } elseif ($type === FormField::TYPE_NUMBER) {
                 $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
+            } elseif ($type === FormField::TYPE_FILE) {
+                $field->setFileRules($row['file_types'] ?? '', $row['file_max_mb'] ?? null);
             } elseif ($type === FormField::TYPE_CALCULATED) {
                 $field->setFormulaConfig(
                     (string)($row['formula'] ?? ''),
@@ -2537,6 +2905,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field->setHiddenFromRespondent(!empty($row['hidden']) || $type === FormField::TYPE_RESPONDENT_META);
             if ($field->collectsAnswer()) {
                 $field->setAttentionCheck(!empty($row['attention_check']), (string)($row['attention_expected'] ?? ''));
+                $field->setStraightlineConfig(!empty($row['straightline_exempt']), !empty($row['reverse_keyed']), (string)($row['reverse_rows'] ?? ''));
             }
             $field->setDefaultValue((string)($row['default_value'] ?? ''));
             if ($type === FormField::TYPE_RESPONDENT_META) {
@@ -2614,6 +2983,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 return false;
             }
             $goto = (string)($row['logic_goto'] ?? '');
+            $formula = FormulaRefs::renameText($formula, $renames);
             if ($formula !== '' || array_key_exists('logic_formula', $row)) {
                 try {
                     $rewritten = \humhub\modules\thiscoveryForms\services\formula\FormulaChoiceCodes::rewrite($formula, $choiceFields);
@@ -2627,6 +2997,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
             if ($field->type === FormField::TYPE_CALCULATED) {
                 $calc = $field->getFormulaConfig();
+                $calc['formula'] = FormulaRefs::renameText((string)$calc['formula'], $renames);
+                $field->setFormulaConfig($calc['formula'], $calc['result'], $calc['display'], $calc['places']);
                 try {
                     $rewritten = \humhub\modules\thiscoveryForms\services\formula\FormulaChoiceCodes::rewrite($calc['formula'], $choiceFields);
                     $choiceNotices = array_merge($choiceNotices, $rewritten['notices']);
@@ -2636,6 +3008,29 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
                     Yii::$app->session->setFlash('error', $e->getMessage());
                     return false;
+                }
+            }
+
+            if ($field->type === FormField::TYPE_QUESTION_GROUP) {
+                // An imported loop names its source by the file's key (for example f12); point it
+                // at the question that key became (V3-46).
+                $groupOptions = json_decode((string)$field->options_json, true);
+                if (is_array($groupOptions) && is_array($groupOptions['loop'] ?? null)) {
+                    $known = [];
+                    foreach ($choiceFields as $candidate) {
+                        $known[strtolower(trim((string)$candidate->variable))] = true;
+                        $known[(string)(int)$candidate->id] = true;
+                    }
+                    foreach (['field_key', 'label_field'] as $loopKey) {
+                        $ref = trim((string)($groupOptions['loop'][$loopKey] ?? ''));
+                        if ($ref !== '' && !isset($known[strtolower($ref)]) && isset($createdMap[$ref])) {
+                            $target = FormField::findOne((int)$createdMap[$ref]);
+                            $groupOptions['loop'][$loopKey] = $target && trim((string)$target->variable) !== ''
+                                ? (string)$target->variable
+                                : (string)(int)$createdMap[$ref];
+                            $field->options_json = json_encode($groupOptions, JSON_UNESCAPED_UNICODE);
+                        }
+                    }
                 }
             }
 
@@ -2659,16 +3054,52 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     if (isset($createdMap[$fk])) {
                         $branch['fieldKey'] = (string)$createdMap[$fk];
                     }
+                    if (isset($branch['formula']) && is_string($branch['formula'])) {
+                        $branch['formula'] = FormulaRefs::renameText($branch['formula'], $renames);
+                    }
                     $resolved[] = $branch;
                 }
                 $field->setPageBreakConfig([
                     'pageKey' => $cfg['pageKey'],
                     'title' => $cfg['title'],
                     'branches' => $resolved,
+                    'otherwise' => $cfg['otherwise'],
                 ]);
             }
 
-            $field->setActions($row['actions'] ?? []);
+            $postedActions = is_array($row['actions'] ?? null) ? $row['actions'] : [];
+            if ($renames) {
+                foreach ($postedActions as $i => $action) {
+                    foreach (['value', 'condition'] as $key) {
+                        if (is_array($action) && isset($action[$key]) && is_string($action[$key])) {
+                            $postedActions[$i][$key] = FormulaRefs::renameText($action[$key], $renames);
+                        }
+                    }
+                }
+                // Piped text follows the rename too.
+                $field->label = FormulaRefs::renameText((string)$field->label, $renames);
+                $field->help_text = $field->help_text === null ? null : FormulaRefs::renameText((string)$field->help_text, $renames);
+                if ($field->type === FormField::TYPE_RICH_TEXT) {
+                    $field->setRichTextContent(FormulaRefs::renameText($field->getRichTextContent(), $renames));
+                }
+            }
+            $actionErrors = \humhub\modules\thiscoveryForms\services\FormActionService::conditionErrors($postedActions);
+            if ($actionErrors) {
+                Yii::$app->session->setFlash('error', implode(' ', $actionErrors));
+                return false;
+            }
+            $field->setActions($postedActions);
+            // Answer rules (LOG-12): refused here if they can't work, so nothing half-valid is stored.
+            $postedValidation = is_array($row['validation'] ?? null) ? $row['validation'] : [];
+            if ($renames && isset($postedValidation['check']) && is_string($postedValidation['check'])) {
+                $postedValidation['check'] = FormulaRefs::renameText($postedValidation['check'], $renames);
+            }
+            $validationErrors = FormField::validationErrors($postedValidation, (string)$field->type, (string)$field->label);
+            if ($validationErrors) {
+                Yii::$app->session->setFlash('error', implode(' ', $validationErrors));
+                return false;
+            }
+            $field->setValidation($postedValidation);
             if (FormField::supportsSoftDelete()) {
                 $field->deleted_at = null;
             }
@@ -2677,6 +3108,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
         if ($choiceNotices) {
             Yii::$app->session->addFlash('info', implode(' ', array_values(array_unique($choiceNotices))));
+        }
+        if ($renames) {
+            $this->applyVariableRenames($renames);
         }
 
         $idMap = \humhub\modules\thiscoveryForms\services\FieldRefRewriter::mapFromCreated($createdMap);
@@ -2692,6 +3126,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
             \humhub\modules\thiscoveryForms\services\FieldRefRewriter::rewriteForm($this, $idMap);
         }
 
+        // Once any edition has been published, a removed question may still be shown by that
+        // edition to people filling it in. Deleting its row would make their answer insert fail
+        // the RESTRICT foreign key and roll back the whole submission, so keep it (V3-36).
+        $published = (new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($this);
         foreach ($existing as $id => $field) {
             if (in_array($id, $keptIds, true) || $field->isRemoved()) {
                 continue;
@@ -2700,7 +3138,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 ->from('custom_form_answer_field')
                 ->where(['field_id' => (int)$id])
                 ->exists();
-            if ($hasAnswers) {
+            if ($hasAnswers || $published) {
                 $field->softDelete();
             } else {
                 $field->delete();
@@ -2740,17 +3178,17 @@ class CustomForm extends ContentActiveRecord implements Searchable
             ]));
             return false;
         }
+        foreach (\humhub\modules\thiscoveryForms\services\LogicAudit::errors($this) as $message) {
+            $this->addError('title', $message);
+        }
         foreach ((new \humhub\modules\thiscoveryForms\services\LoopService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);
-            $ok = false;
         }
         foreach ((new \humhub\modules\thiscoveryForms\services\QuotaService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);
-            $ok = false;
         }
         foreach ((new \humhub\modules\thiscoveryForms\services\ConsentService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);
-            $ok = false;
         }
         foreach ((new \humhub\modules\thiscoveryForms\services\RandomisationService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);
@@ -2800,6 +3238,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
                             return (string)$field->label;
                         }
                     }
+                    if ($pointsBack($from, (string)$field->getPageBreakConfig()['otherwise'])) {
+                        return (string)$field->label;
+                    }
                 }
             }
         }
@@ -2844,7 +3285,25 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 $out[] = $this->syntheticGroupEndRow($auto++);
             }
         }
-        return $out;
+        // A group end with no open group (its group was deleted or moved) is dropped. It holds
+        // no answers, and left in place it would close an outer group early (DAT-18).
+        $kept = [];
+        $depth = 0;
+        foreach ($out as $item) {
+            $type = (string)($item['row']['type'] ?? '');
+            if ($type === FormField::TYPE_PAGE_BREAK) {
+                $depth = 0;
+            } elseif ($type === FormField::TYPE_QUESTION_GROUP) {
+                $depth++;
+            } elseif ($type === FormField::TYPE_GROUP_END) {
+                if ($depth === 0) {
+                    continue;
+                }
+                $depth--;
+            }
+            $kept[] = $item;
+        }
+        return $kept;
     }
 
     /**

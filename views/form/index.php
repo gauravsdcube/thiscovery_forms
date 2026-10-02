@@ -142,6 +142,12 @@ $folderLink = static function (array $params, bool $active, string $icon, string
                     ->icon('envelope')
                     ->loader(false) ?>
             <?php endif; ?>
+            <?php if ($canCreate && !$showTemplates): ?>
+                <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Trash'))
+                    ->link(Url::toTrash($contentContainer))
+                    ->icon('trash')
+                    ->loader(false) ?>
+            <?php endif; ?>
             <?php if (!empty($folderBrowse['canCreateFolder']) && !$showTemplates): ?>
                 <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'New folder'))
                     ->link(Url::toFolderEdit($contentContainer, null, $currentFolder ? ['parent' => (int) $currentFolder->id] : []))
@@ -251,7 +257,7 @@ $folderLink = static function (array $params, bool $active, string $icon, string
                                 ->sm()
                                 ->icon('cog')
                                 ->loader(false) ?>
-                            <?= Html::beginForm(Url::toFolderDelete($contentContainer, (int) $currentFolder->id), 'post', ['class' => 'cf-folder-toolbar__delete']) ?>
+                            <?= Html::beginForm(Url::toFolderDelete((int) $currentFolder->id, $contentContainer), 'post', ['class' => 'cf-folder-toolbar__delete']) ?>
                             <?= Button::danger(Yii::t('ThiscoveryFormsModule.base', 'Delete folder'))
                                 ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Delete this folder and its subfolders? Forms inside will be moved to Unfiled.'))
                                 ->submit()
@@ -491,7 +497,7 @@ $folderLink = static function (array $params, bool $active, string $icon, string
                                                     'data-pjax-prevent' => true,
                                                 ]) ?>
                                                 <?= Button::danger()
-                                                    ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Delete this form and all submissions?'))
+                                                    ->confirm(Yii::t('ThiscoveryFormsModule.base', 'Move this form to the trash? Its answers are kept and it can be restored.'))
                                                     ->submit()
                                                     ->sm()
                                                     ->icon('trash')

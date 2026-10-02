@@ -26,6 +26,12 @@ use yii\db\Query;
 class IdentityRepair
 {
     /**
+     * The log keeps the removed identities only so a mistaken run can be reversed. After
+     * this many days they are purged, so the log stops being a map back to people (V3-30).
+     */
+    public const REVERSAL_DAYS = 14;
+
+    /**
      * @return CustomForm[]
      */
     public function candidateForms(): array
@@ -94,25 +100,65 @@ class IdentityRepair
     {
         $runId = Yii::$app->security->generateRandomString(24);
         $now = date('Y-m-d H:i:s');
-        foreach ($answers as $answer) {
-            if ((int)$answer->status !== FormAnswer::STATUS_COMPLETE) {
-                continue;
+        $db = Yii::$app->db;
+        $tx = $db->getTransaction() ? null : $db->beginTransaction();
+        try {
+            foreach ($answers as $answer) {
+                if ((int)$answer->status !== FormAnswer::STATUS_COMPLETE) {
+                    continue;
+                }
+                $this->unlinkActivity($answer, $runId, $now, $ranBy);
+                foreach (['created_by', 'updated_by', 'panel_member_id', 'resume_email'] as $column) {
+                    $this->clearAnswerColumn($answer, $column, $runId, $now, $ranBy);
+                }
+                $meta = FormIntegrityMeta::findOne(['answer_id' => (int)$answer->id]);
+                if ($meta) {
+                    // Client hashes join this answer to the same person's other answers.
+                    foreach (['access_token_hash', 'ip_hash', 'ip_network_hash', 'session_hash', 'user_agent_hash'] as $column) {
+                        $this->clearRowColumn(FormIntegrityMeta::tableName(), (int)$meta->id, $column, $meta->$column, (int)$answer->id, $runId, $now, $ranBy);
+                    }
+                }
+                foreach ($this->linkedRows('{{%form_email_send}}', (int)$answer->id) as $row) {
+                    $this->clearRowColumn('{{%form_email_send}}', (int)$row['id'], 'answer_id', $row['answer_id'], (int)$answer->id, $runId, $now, $ranBy);
+                    $this->dateOnly('{{%form_email_send}}', $row, 'created_at', (int)$answer->id, $runId, $now, $ranBy);
+                }
+                foreach ($this->linkedRows('{{%custom_form_consent_record}}', (int)$answer->id) as $row) {
+                    $this->clearRowColumn('{{%custom_form_consent_record}}', (int)$row['id'], 'answer_id', $row['answer_id'], (int)$answer->id, $runId, $now, $ranBy);
+                    $this->dateOnly('{{%custom_form_consent_record}}', $row, 'signed_at', (int)$answer->id, $runId, $now, $ranBy);
+                }
             }
-            $this->unlinkActivity($answer, $runId, $now, $ranBy);
-            foreach (['created_by', 'updated_by', 'panel_member_id', 'resume_email'] as $column) {
-                $this->clearAnswerColumn($answer, $column, $runId, $now, $ranBy);
+            if ($tx) {
+                $tx->commit();
             }
-            $meta = FormIntegrityMeta::findOne(['answer_id' => (int)$answer->id]);
-            if ($meta && $meta->access_token_hash !== null && $meta->access_token_hash !== '') {
-                $this->writeLog($runId, $now, $ranBy, (int)$answer->id, FormIntegrityMeta::tableName(), (int)$meta->id, 'access_token_hash', (string)$meta->access_token_hash, false);
-                $meta->updateAttributes(['access_token_hash' => null]);
+        } catch (\Throwable $e) {
+            if ($tx) {
+                $tx->rollBack();
             }
+            throw $e;
         }
         return $runId;
     }
 
+    /** Drop logged identities older than the reversal window. */
+    public function purgeExpired(): int
+    {
+        if (Yii::$app->db->schema->getTableSchema('custom_form_identity_repair_log', true) === null) {
+            return 0;
+        }
+        return Yii::$app->db->createCommand()->delete('custom_form_identity_repair_log', [
+            '<', 'ran_at', date('Y-m-d H:i:s', time() - self::REVERSAL_DAYS * 86400),
+        ])->execute();
+    }
+
+    /** Confirm a run: its logged identities are deleted and it can no longer be reversed. */
+    public function finalise(string $runId): int
+    {
+        return Yii::$app->db->createCommand()->delete('custom_form_identity_repair_log', ['run_id' => $runId])->execute();
+    }
+
     public function reverse(string $runId): int
     {
+        $this->purgeExpired();
         $rows = (new Query())
             ->from('custom_form_identity_repair_log')
             ->where(['run_id' => $runId])
@@ -161,6 +207,39 @@ class IdentityRepair
         $answer->$column = null;
     }
 
+    /**
+     * @return array<int,array<string,mixed>>
+     */
+    private function linkedRows(string $table, int $answerId): array
+    {
+        if (Yii::$app->db->schema->getTableSchema($table, true) === null) {
+            return [];
+        }
+        return (new Query())->from($table)->where(['answer_id' => $answerId])->all();
+    }
+
+    private function clearRowColumn(string $table, int $rowId, string $column, $value, int $answerId, string $runId, string $now, ?int $ranBy): void
+    {
+        if ($value === null || $value === '') {
+            return;
+        }
+        $this->writeLog($runId, $now, $ranBy, $answerId, $table, $rowId, $column, (string)$value, false);
+        Yii::$app->db->createCommand()->update($table, [$column => null], ['id' => $rowId])->execute();
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     */
+    private function dateOnly(string $table, array $row, string $column, int $answerId, string $runId, string $now, ?int $ranBy): void
+    {
+        $value = (string)($row[$column] ?? '');
+        if (strlen($value) < 19 || str_ends_with($value, '00:00:00')) {
+            return;
+        }
+        $this->writeLog($runId, $now, $ranBy, $answerId, $table, (int)$row['id'], $column, $value, false);
+        Yii::$app->db->createCommand()->update($table, [$column => substr($value, 0, 10) . ' 00:00:00'], ['id' => (int)$row['id']])->execute();
+    }
+
     private function writeLog(string $runId, string $now, ?int $ranBy, int $answerId, string $table, int $rowId, string $column, ?string $old, bool $wasNull): void
     {
         Yii::$app->db->createCommand()->insert('custom_form_identity_repair_log', [
@@ -194,7 +273,9 @@ class IdentityRepair
         $allowed = [
             FormAnswer::tableName() => ['created_by', 'updated_by', 'panel_member_id', 'resume_email'],
             FormPanelActivity::tableName() => ['answer_id', 'wave_id', 'round_id'],
-            FormIntegrityMeta::tableName() => ['access_token_hash'],
+            FormIntegrityMeta::tableName() => ['access_token_hash', 'ip_hash', 'ip_network_hash', 'session_hash', 'user_agent_hash'],
+            '{{%form_email_send}}' => ['answer_id', 'created_at'],
+            '{{%custom_form_consent_record}}' => ['answer_id', 'signed_at'],
         ];
         return isset($allowed[$table]) && in_array($column, $allowed[$table], true);
     }

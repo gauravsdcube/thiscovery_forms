@@ -47,8 +47,10 @@ final class Evaluator
         return match ($op) {
             'add', 'sub', 'mul', 'div', 'mod', 'pow', 'neg' => $this->arithmetic($op, $values),
             'eq', 'ne', 'gt', 'gte', 'lt', 'lte' => Value::bool($this->compare($op, $values[0] ?? Value::empty(), $values[1] ?? Value::empty())),
-            'and' => Value::bool(($values[0] ?? Value::empty())->truth() && ($values[1] ?? Value::empty())->truth()),
-            'or' => Value::bool(($values[0] ?? Value::empty())->truth() || ($values[1] ?? Value::empty())->truth()),
+            // Any number of arguments (V3-12): and() is true only when every argument is true,
+            // or() when at least one is.
+            'and' => Value::bool($values !== [] && !in_array(false, array_map(static fn (Value $v) => $v->truth(), $values), true)),
+            'or' => Value::bool(in_array(true, array_map(static fn (Value $v) => $v->truth(), $values), true)),
             'not' => Value::bool(!($values[0] ?? Value::empty())->truth()),
             'in' => Value::bool($this->inList($values[0] ?? Value::empty(), $values[1] ?? Value::empty(), false)),
             'not_in' => Value::bool($this->inList($values[0] ?? Value::empty(), $values[1] ?? Value::empty(), true)),
@@ -70,6 +72,8 @@ final class Evaluator
             'is_empty' => Value::bool(($values[0] ?? Value::empty())->isEmpty()),
             'is_answered' => Value::bool($this->answered($values[0] ?? Value::empty())),
             'selected' => Value::bool($this->selected($values)),
+            'selected_all' => Value::bool($this->selectedSet($values, false)),
+            'selected_only' => Value::bool($this->selectedSet($values, true)),
             'code_of' => $this->codeOf($values[0] ?? Value::empty()),
             'score_of' => $this->scoreOf($tree, $values),
             default => Value::empty(),
@@ -170,11 +174,13 @@ final class Evaluator
         if ($quotient === null) {
             return null;
         }
+        // Floored division (V3-12): the quotient is the largest whole number not above left/right,
+        // so 8 % 3 = 2, -7 % 3 = 2 and 7.5 % 2 = 1.5.
         $whole = Decimal::round($quotient, 0);
         if ($whole === null) {
             return null;
         }
-        if (Decimal::cmp($quotient, '0') < 0 && Decimal::cmp($quotient, $whole) !== 0) {
+        if (Decimal::cmp($whole, $quotient) > 0) {
             $whole = Decimal::sub($whole, '1');
         }
         $product = $whole === null ? null : Decimal::mul($whole, $right);
@@ -205,6 +211,12 @@ final class Evaluator
         if ($left->isEmpty() || $right->isEmpty()) {
             return $op === 'ne';
         }
+        if ($right->type === 'list' && $left->type !== 'list') {
+            // A list on the right is read as "any answer in the list": 1 = [q[*]] is the same as
+            // [q[*]] = 1, and ordering is mirrored. It never falls through to text comparison.
+            $mirror = ['eq' => 'eq', 'ne' => 'ne', 'gt' => 'lt', 'gte' => 'lte', 'lt' => 'gt', 'lte' => 'gte'];
+            return $this->compare($mirror[$op] ?? $op, $right, $left);
+        }
         if ($left->type === 'list') {
             $any = false;
             foreach ($left->data as $item) {
@@ -214,6 +226,16 @@ final class Evaluator
                 }
             }
             return $op === 'ne' ? !$any : $any;
+        }
+        if ($op === 'gt' || $op === 'gte' || $op === 'lt' || $op === 'lte') {
+            // Ordering compares numbers. A numeric choice code such as "2" is ordered as 2,
+            // so PHQ-style rules like [phq1] >= 2 work. Equality still compares codes as text.
+            $l = self::orderable($left);
+            $r = self::orderable($right);
+            if ($l !== null && $r !== null) {
+                $left = Value::number($l);
+                $right = Value::number($r);
+            }
         }
         if ($left->type === 'number' && $right->type === 'number') {
             $order = Decimal::cmp((string)$left->data, (string)$right->data);
@@ -244,6 +266,30 @@ final class Evaluator
         }
         $same = $this->sameText($left, $right);
         return $op === 'ne' ? !$same : $same;
+    }
+
+    private static function orderable(Value $value): ?string
+    {
+        if ($value->type === 'number') {
+            return (string)$value->data;
+        }
+        if ($value->type === 'text') {
+            return Decimal::canonical((string)$value->data);
+        }
+        return null;
+    }
+
+    /** Strict ISO calendar date, or null (2024-02-30 is not a date). */
+    private static function isoDate(Value $value): ?\DateTimeImmutable
+    {
+        if ($value->type !== 'date' || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', (string)$value->data, $m)) {
+            return null;
+        }
+        if (!checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+            return null;
+        }
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', (string)$value->data, new \DateTimeZone('UTC'));
+        return $date ?: null;
     }
 
     private function sameText(Value $left, Value $right): bool
@@ -394,14 +440,19 @@ final class Evaluator
             if (Decimal::cmp($text, '0') < 0) {
                 return Value::empty();
             }
-            $guess = '1';
-            for ($i = 0; $i < 20; $i++) {
+            if (Decimal::cmp($text, '0') === 0) {
+                return Value::number('0');
+            }
+            // Newton's method from a starting point at or above the root (10^ceil(whole digits / 2),
+            // or 1 below one), stopping when the decimal value stops falling. It needs no floating
+            // point, so the browser gets the same digits (V3-12).
+            $whole = explode('.', ltrim($text, '-'))[0];
+            $guess = Decimal::cmp($text, '1') < 0 ? '1' : '1' . str_repeat('0', intdiv(strlen($whole) + 1, 2));
+            for ($i = 0; $i < 200; $i++) {
                 $div = Decimal::div($text, $guess);
-                if ($div === null) {
-                    return Value::empty();
-                }
-                $next = Decimal::div(Decimal::add($guess, $div) ?? $guess, '2');
-                if ($next === null || $next === $guess) {
+                $sum = $div === null ? null : Decimal::add($guess, $div);
+                $next = $sum === null ? null : Decimal::div($sum, '2');
+                if ($next === null || Decimal::cmp($next, $guess) >= 0) {
                     break;
                 }
                 $guess = $next;
@@ -463,12 +514,14 @@ final class Evaluator
                 $text .= (string)$value->data;
             }
         }
-        return Value::text(substr($text, 0, Limits::RESULT_TEXT));
+        // By character, not byte, so a long result never splits a UTF-8 character (V3-54).
+        return Value::text(mb_substr($text, 0, Limits::RESULT_TEXT));
     }
 
     private function textOp(string $op, Value $value): Value
     {
-        if ($value->isEmpty()) {
+        // A list is not text: lower/upper/length of several answers is empty, not "Array".
+        if ($value->isEmpty() || $value->type === 'list') {
             return Value::empty();
         }
         $text = (string)$value->data;
@@ -482,12 +535,14 @@ final class Evaluator
 
     private function containsText(Value $haystack, Value $needle): bool
     {
-        if ($needle->isEmpty() || (string)$needle->data === '' || $haystack->isEmpty()) {
+        if ($needle->isEmpty() || $needle->type === 'list' || (string)$needle->data === '' || $haystack->isEmpty()) {
             return false;
         }
         if ($haystack->type === 'list') {
+            // On a list (ticked options, repeats) it means "one of the items is", not "one of
+            // the items contains": contains_text([q], "ma") no longer matches "mammal" (V3-54).
             foreach ($haystack->data as $item) {
-                if ($item instanceof Value && !$item->isEmpty() && mb_stripos((string)$item->data, (string)$needle->data) !== false) {
+                if ($item instanceof Value && !$item->isEmpty() && $item->type !== 'list' && mb_strtolower((string)$item->data) === mb_strtolower((string)$needle->data)) {
                     return true;
                 }
             }
@@ -502,11 +557,8 @@ final class Evaluator
         $start = $values[0] ?? Value::empty();
         $end = $values[1] ?? Value::empty();
         $unit = strtolower((string)(($values[2] ?? Value::empty())->data ?? ''));
-        if ($start->type !== 'date' || $end->type !== 'date') {
-            return Value::empty();
-        }
-        $a = date_create_immutable((string)$start->data);
-        $b = date_create_immutable((string)$end->data);
+        $a = self::isoDate($start);
+        $b = self::isoDate($end);
         if (!$a || !$b) {
             return Value::empty();
         }
@@ -538,14 +590,15 @@ final class Evaluator
     {
         $date = $values[0] ?? Value::empty();
         $amount = $values[1] ?? Value::empty();
-        if ($date->type !== 'date' || $amount->type !== 'number') {
-            return Value::empty();
-        }
-        $base = date_create_immutable((string)$date->data);
-        if (!$base) {
+        $base = self::isoDate($date);
+        if (!$base || $amount->type !== 'number' || str_contains((string)$amount->data, '.')) {
             return Value::empty();
         }
         $steps = (int)$amount->data;
+        // Keep results inside four-digit years, the same limit as the browser.
+        if (($op === 'add_days' && abs($steps) > 36500) || ($op === 'add_months' && abs($steps) > 1200)) {
+            return Value::empty();
+        }
         if ($op === 'add_days') {
             $next = $base->modify(($steps >= 0 ? '+' : '') . $steps . ' days');
             return $next ? Value::date($next->format('Y-m-d')) : Value::empty();
@@ -562,14 +615,11 @@ final class Evaluator
 
     private function datePart(string $op, Value $value): Value
     {
-        if ($value->type !== 'date') {
-            return Value::empty();
-        }
-        $date = date_create_immutable((string)$value->data);
+        $date = self::isoDate($value);
         if (!$date) {
             return Value::empty();
         }
-        return Value::number($op === 'year' ? $date->format('Y') : $date->format('n'));
+        return Value::number($op === 'year' ? (string)(int)$date->format('Y') : $date->format('n'));
     }
 
     /** @param list<Value> $values */
@@ -597,6 +647,42 @@ final class Evaluator
         return $op === 'all_eq' && $seen;
     }
 
+    /**
+     * selected_all([q], "a", "b"): every listed code is ticked. selected_only: exactly those are
+     * ticked, nothing else (LOG-10).
+     *
+     * @param list<Value> $values
+     */
+    private function selectedSet(array $values, bool $exact): bool
+    {
+        $chosen = array_values(array_filter($this->flatten([$values[0] ?? Value::empty()]), static fn (Value $v) => !$v->isEmpty()));
+        $wanted = array_values(array_filter($this->flatten(array_slice($values, 1)), static fn (Value $v) => !$v->isEmpty()));
+        if ($chosen === [] || $wanted === []) {
+            return false;
+        }
+        $within = function (Value $item, array $pool): bool {
+            foreach ($pool as $other) {
+                if ($this->compare('eq', $item, $other)) {
+                    return true;
+                }
+            }
+            return false;
+        };
+        foreach ($wanted as $code) {
+            if (!$within($code, $chosen)) {
+                return false;
+            }
+        }
+        if ($exact) {
+            foreach ($chosen as $code) {
+                if (!$within($code, $wanted)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
     /** @param list<Value> $values */
     private function between(array $values): bool
     {
@@ -617,9 +703,8 @@ final class Evaluator
         if ($value->isEmpty()) {
             return false;
         }
-        if ($value->type === 'text' && $value->data === '0') {
-            return false;
-        }
+        // A choice answer coded "0" (PHQ-9 "Not at all", the 0 of a 0-10 scale) is an answer (V3-11).
+        // An unticked single checkbox is already empty by the time it gets here (Context::leaf).
         if ($value->type === 'list') {
             return $value->data !== [];
         }
@@ -662,6 +747,11 @@ final class Evaluator
         $code = (string)$value->data;
         if (isset($this->context->scores[$name][$code])) {
             return Value::number($this->context->scores[$name][$code]);
+        }
+        // A scored question's unscored option ("prefer not to say", coded 9) scores nothing; it
+        // never adds its code (V3-42). Only an unscored question falls back to a numeric code.
+        if (!empty($this->context->scores[$name])) {
+            return Value::empty();
         }
         $number = Decimal::canonical($code);
         return $number === null ? Value::empty() : Value::number($number);

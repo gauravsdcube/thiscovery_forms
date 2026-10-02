@@ -17,12 +17,16 @@ $check = static function (bool $ok, string $message) use (&$failures): void {
     }
 };
 
-foreach (['=1+1', '+1', '-1', '@cmd', "\tcmd", "\rcmd"] as $raw) {
+foreach (['=1+1', '-1+2', '+A1', '-A1', '@cmd', "\tcmd", "\rcmd"] as $raw) {
     $safe = CsvCell::neutralise($raw);
     $check($safe !== $raw && $safe[0] === "'", 'cell was not neutralised: ' . json_encode($raw));
     $check(CsvCell::restore($safe) === $raw, 'cell did not round-trip: ' . json_encode($raw));
 }
 $check(CsvCell::neutralise('hello') === 'hello', 'a plain cell was changed');
+// V3-41: plain numbers stay numbers for R, Stata and SPSS.
+foreach (['-3', '-0.5', '+2', '-.25', '42'] as $number) {
+    $check(CsvCell::neutralise($number) === $number, 'a number was exported as text: ' . $number);
+}
 
 ReviewLib::asUser(review_user('review_netadmin'));
 $form = ReviewLib::form(review_space(), 'EV HB5 csv', [

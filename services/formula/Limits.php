@@ -33,9 +33,13 @@ final class Limits
             throw new FormulaException('A formula can be at most ' . self::DEPTH . ' levels deep.', 1, 1);
         }
         $nodes = 1;
+        $op = (string)($tree['op'] ?? '');
         foreach ($tree['args'] ?? [] as $arg) {
             if (is_array($arg)) {
-                $nodes += self::measure($arg, $depth + 1);
+                // A chain of the same operator (a + b + c ..., x and y and z ...) is one level,
+                // not one level per term (V3-54); the node limit still bounds its length.
+                $same = in_array($op, ['add', 'mul', 'and', 'or', 'sub'], true) && (string)($arg['op'] ?? '') === $op;
+                $nodes += self::measure($arg, $same ? $depth : $depth + 1);
             }
         }
         if (($tree['op'] ?? '') === 'fn' && is_array($tree['body'] ?? null)) {

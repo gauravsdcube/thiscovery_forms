@@ -129,13 +129,16 @@ Yii::$app->session->remove('cf-consent-withdraw');
 $agreed = $submitAs($form, (int)$member->id);
 $check($agreed instanceof FormAnswer && $agreed->countsAsComplete(), 'agreeing did not count as complete');
 $token = (string)Yii::$app->session->get('cf-consent-withdraw');
+$member->refresh();
+$check((string)$member->consent_at !== '' && (string)$member->consent_at !== '2020-01-01 00:00:00', 'agreeing did not stamp the panel consent date (V3-43)');
 $record = (new Query())->from('custom_form_consent_record')->where(['answer_id' => (int)$agreed->id])->one();
 $check($record && (string)$record['signature_method'] === 'typed', 'the agreed record was not stored');
 $decoded = json_decode((string)($record['items_json'] ?? ''), true);
 $check(is_array($decoded) && ($decoded['take_part'] ?? '') === 'yes' && ($decoded['linkage'] ?? '') === 'no', 'optional refusal was not stored as no');
 $agreedDoc = (new Query())->from('custom_form_consent_document')->where(['id' => (int)$record['document_id']])->one();
 $html = $svc->certificateHtml(ReviewLib::reload($form), $record);
-$check($agreedDoc && str_contains($html, 'version ' . (int)$agreedDoc['version']) && str_contains($html, (string)$record['content_hash']) && str_contains($html, 'take_part'), 'the certificate missed version, hash, or items');
+$check($agreedDoc && str_contains($html, '<td>' . (int)$agreedDoc['version'] . '</td>') && str_contains($html, (string)$record['content_hash']) && str_contains($html, 'I agree to take part') && str_contains($html, 'Ada Lovelace'), 'the certificate missed version, hash, item labels or the signer');
+$check(!str_contains($html, '>take_part<'), 'the certificate showed an item code instead of its label');
 $check(!str_contains($html, 'ip_hash') && !str_contains(strtolower($html), 'user-agent'), 'the certificate included a client hash');
 
 $v2 = $svc->newVersion(ReviewLib::reload($form), (int)$draft['id']);
@@ -153,7 +156,8 @@ $req = (new Query())->from('custom_form_consent_requirement')->where([
 ])->orderBy(['id' => SORT_DESC])->one();
 $check($second && $req && (int)$req['satisfied_record_id'] > 0, 'the requirement was not updated');
 
-$check($svc->withdrawByToken($token, 'delete_requested', 'changed my mind'), 'the withdrawal token did not work');
+$check(!$svc->withdrawByToken($token, 'stop_contact', 'wrong form', (int)$form->id + 100000), 'a token withdrew consent on another form');
+$check($svc->withdrawByToken($token, 'delete_requested', 'changed my mind', (int)$form->id), 'the withdrawal token did not work');
 $check(!$svc->withdrawByToken($token, 'stop_contact', 'again'), 'the withdrawal token worked twice');
 $member->refresh();
 $check((string)$member->status === FormPanelMember::STATUS_INACTIVE, 'withdrawal did not stop contact');
@@ -200,8 +204,11 @@ if ($anonAnswer) {
     $check($anonRecord && $anonRecord['answer_id'] === null && $anonRecord['user_id'] === null && $anonRecord['panel_member_id'] === null, 'anonymous consent was linked to the answer');
 }
 
-$sourceVersion = (int)$agreedDoc['version'];
-$svc->saveTranslation($form, $sourceVersion, 'body', 'cy', '<p>Taflen</p>');
+// V3-27: a published version's translations are locked; the next draft takes them.
+$check(!$svc->saveTranslation($form, (int)$agreedDoc['version'], 'body', 'cy', '<p>Newid</p>'), 'a published translation could still be edited');
+$v3 = $svc->newVersion(ReviewLib::reload($form), (int)$v2);
+$sourceVersion = (int)(new Query())->select('version')->from('custom_form_consent_document')->where(['id' => (int)$v3])->scalar();
+$check($svc->saveTranslation($form, $sourceVersion, 'body', 'cy', '<p>Taflen</p>'), 'a draft translation was refused');
 $svc->saveTranslation($form, $sourceVersion, 'take_part', 'cy', 'Rwyf yn cytuno');
 $exported = (new TranslationImportExportService())->exportJson(ReviewLib::reload($form));
 $keys = array_column($exported['strings'], 'key');

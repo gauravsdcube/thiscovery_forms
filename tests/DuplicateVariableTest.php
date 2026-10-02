@@ -1,7 +1,9 @@
 <?php
 /**
- * NEW-10. A removed question keeps its variable name, and export does not
- * collapse two questions that share that name into one column.
+ * NEW-10 / DAT-10. A removed question keeps its variable name, and export does not
+ * collapse two questions that share that name into one column. Only one live question may
+ * have a name: the database refuses a second, and the studio refuses a chosen name that is
+ * taken instead of silently adding _2.
  */
 require __DIR__ . '/support/bootstrap.php';
 
@@ -23,6 +25,17 @@ $removed = ReviewLib::field($form, FormField::TYPE_NUMBER, 'Age', [
     'required' => 0,
     'sort_order' => 1,
 ]);
+$second = null;
+try {
+    $second = ReviewLib::field($form, FormField::TYPE_NUMBER, 'Age twin', ['variable' => 'age', 'sort_order' => 3]);
+} catch (\Throwable $e) {
+    $second = null;
+}
+if ($second !== null) {
+    $failures[] = 'the database accepted two live questions named age';
+    $second->delete();
+}
+$removed->softDelete();
 $live = ReviewLib::field($form, FormField::TYPE_NUMBER, 'Age', [
     'variable' => 'age',
     'required' => 0,
@@ -46,7 +59,6 @@ $db->createCommand()->insert('custom_form_answer_field', [
     'field_id' => (int)$live->id,
     'value' => '30',
 ])->execute();
-$removed->softDelete();
 
 $csv = (new ExportService())->toCsv(ReviewLib::reload($form), ['header_mode' => ExportService::HEADER_VARIABLE]);
 $rows = array_map('str_getcsv', preg_split('/\r\n|\r|\n/', trim($csv)) ?: []);
@@ -95,12 +107,21 @@ $saved = $form->saveFieldsFromPost([
         'sort_order' => 2,
     ],
 ]);
-if (!$saved) {
-    $failures[] = 'field save failed';
+if ($saved) {
+    $failures[] = 'a chosen variable name already in use was saved (silently suffixed?)';
+} elseif (!str_contains(implode(' ', $form->getErrors('title')), '“age”')) {
+    $failures[] = 'the refusal does not name the variable: ' . json_encode($form->getErrors('title'));
 }
-$fresh = FormField::find()->where(['form_id' => (int)$form->id, 'label' => 'Age again'])->one();
-if (!$fresh || strtolower((string)$fresh->variable) === 'age') {
-    $failures[] = 'new question reused the removed variable ' . ($fresh->variable ?? 'missing');
+
+// With no name chosen, the generated one steps past both the live and the removed "age".
+$form = ReviewLib::reload($form);
+$saved = $form->saveFieldsFromPost([
+    (int)$live->id => ['id' => (int)$live->id, 'type' => FormField::TYPE_NUMBER, 'label' => 'Age', 'variable' => 'age', 'sort_order' => 1],
+    'new' => ['type' => FormField::TYPE_NUMBER, 'label' => 'Age', 'variable' => '', 'sort_order' => 2],
+]);
+$fresh = FormField::find()->where(['form_id' => (int)$form->id, 'label' => 'Age'])->andWhere(['<>', 'id', (int)$live->id])->andWhere(['deleted_at' => null])->one();
+if (!$saved || !$fresh || strtolower((string)$fresh->variable) === 'age') {
+    $failures[] = 'a generated name reused "age": ' . ($fresh->variable ?? 'missing');
 }
 
 if ($failures) {

@@ -117,7 +117,7 @@ class ConsentController extends ContentContainerController
             $scope = (string)Yii::$app->request->post('scope', 'stop_contact');
             $reason = trim((string)Yii::$app->request->post('reason', ''));
             if ($token !== '') {
-                $done = $svc->withdrawByToken($token, $scope, $reason);
+                $done = $svc->withdrawByToken($token, $scope, $reason, (int)$form->id);
             } elseif ($recordId > 0 && $form->canManage() && $this->canViewRecords($form)) {
                 foreach ($svc->records((int)$form->id) as $row) {
                     if ((int)$row['id'] === $recordId) {
@@ -144,6 +144,7 @@ class ConsentController extends ContentContainerController
         if (!$form) {
             throw new NotFoundHttpException();
         }
+        CustomForm::assertNotTrashed($form);
         return $form;
     }
 

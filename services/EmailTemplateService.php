@@ -116,7 +116,7 @@ class EmailTemplateService
         $panel = $panel ?: ($member ? $member->panel : null);
         $formUrl = $form ? Url::toView($form, true) : '';
         if ($form && $member && $member->token) {
-            $formUrl = Url::toPanelInvite($form, $member->token, true);
+            $formUrl = Url::toPanelInvite($form, $member->linkToken(), true);
         }
         $vars = [
             'firstName' => $first,
@@ -226,6 +226,10 @@ class EmailTemplateService
             return false;
         }
         if ((new QuotaService())->blocksInvite($form, $member, $wave)) {
+            return false;
+        }
+        // Someone who withdrew consent or asked not to be contacted gets no invite (SCO-13).
+        if ((new ConsentService())->blocksContact((int)$member->id)) {
             return false;
         }
         if ($template) {
