@@ -56,6 +56,9 @@ class Module extends ContentContainerModule
 
     /** When 1, the Forms area in Administration uses the full page and hides the left menu. */
     public const SETTING_OPEN_WITHOUT_ADMIN_MENU = 'open_without_admin_menu';
+
+    /** When 1, form managers can prepare a file and send a one-time code to a named contact. */
+    public const SETTING_SECURE_SEND = 'secure_send_enabled';
     public const SETTING_LLM_MAX_BRIEF_CHARS = 'llm_max_brief_chars';
     public const SETTING_LLM_COST_INPUT = 'llm_cost_per_1k_input';
     public const SETTING_LLM_COST_OUTPUT = 'llm_cost_per_1k_output';
@@ -253,6 +256,12 @@ class Module extends ContentContainerModule
     {
         $module = Yii::$app->getModule('thiscovery-forms');
         return $module instanceof self && !empty((int)$module->settings->get(self::SETTING_OPEN_WITHOUT_ADMIN_MENU, 0));
+    }
+
+    public static function secureSendEnabled(): bool
+    {
+        $module = Yii::$app->getModule('thiscovery-forms');
+        return $module instanceof self && !empty((int)$module->settings->get(self::SETTING_SECURE_SEND, 0));
     }
 
     public static function isFromBriefEnabled(): bool

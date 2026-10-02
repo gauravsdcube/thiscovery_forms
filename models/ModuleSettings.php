@@ -37,6 +37,9 @@ class ModuleSettings extends Model
     public $openWithoutAdminMenu = 0;
 
     /** @var int */
+    public $secureSendEnabled = 0;
+
+    /** @var int */
     public $fromBriefEnabled = 0;
 
     /** @var int */
@@ -82,6 +85,7 @@ class ModuleSettings extends Model
         $this->quotasEnabled = (int)$module->settings->get(Module::SETTING_QUOTAS, 0);
         $this->loopsEnabled = (int)$module->settings->get(Module::SETTING_LOOPS, 0);
         $this->openWithoutAdminMenu = (int)$module->settings->get(Module::SETTING_OPEN_WITHOUT_ADMIN_MENU, 0);
+        $this->secureSendEnabled = (int)$module->settings->get(Module::SETTING_SECURE_SEND, 0);
         $this->fromBriefEnabled = (int)$module->settings->get(Module::SETTING_FROM_BRIEF_ENABLED, 0);
         $this->fromBriefLlmEnabled = (int)$module->settings->get(Module::SETTING_FROM_BRIEF_LLM_ENABLED, 0);
         $this->llmProvider = (string)$module->settings->get(Module::SETTING_LLM_PROVIDER, 'openai');
@@ -106,7 +110,7 @@ class ModuleSettings extends Model
             )],
             [['enabledKinds'], 'each', 'rule' => ['in', 'range' => $kinds]],
             [['display'], 'safe'],
-            [['fromBriefEnabled', 'fromBriefLlmEnabled', 'randomisationEnabled', 'econsentEnabled', 'quotasEnabled', 'loopsEnabled', 'openWithoutAdminMenu'], 'boolean'],
+            [['fromBriefEnabled', 'fromBriefLlmEnabled', 'randomisationEnabled', 'econsentEnabled', 'quotasEnabled', 'loopsEnabled', 'openWithoutAdminMenu', 'secureSendEnabled'], 'boolean'],
             [['llmProvider', 'llmApiBase', 'llmApiKey', 'llmModel'], 'string'],
             [['fromBriefMaxUploadMb'], 'integer', 'min' => 1, 'max' => 50],
             [['llmMaxBriefChars'], 'integer', 'min' => 2000, 'max' => 500000],
@@ -130,6 +134,7 @@ class ModuleSettings extends Model
             'quotasEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable quotas'),
             'loopsEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable loops'),
             'openWithoutAdminMenu' => Yii::t('ThiscoveryFormsModule.base', 'Open forms full page, without the administration menu'),
+            'secureSendEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Secure send'),
             'fromBriefEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Enable create from brief / document'),
             'fromBriefLlmEnabled' => Yii::t('ThiscoveryFormsModule.base', 'Allow LLM assist'),
             'llmProvider' => Yii::t('ThiscoveryFormsModule.base', 'LLM provider'),
@@ -177,6 +182,7 @@ class ModuleSettings extends Model
         $module->settings->set(Module::SETTING_QUOTAS, !empty($this->quotasEnabled) ? '1' : '0');
         $module->settings->set(Module::SETTING_LOOPS, !empty($this->loopsEnabled) ? '1' : '0');
         $module->settings->set(Module::SETTING_OPEN_WITHOUT_ADMIN_MENU, !empty($this->openWithoutAdminMenu) ? '1' : '0');
+        $module->settings->set(Module::SETTING_SECURE_SEND, !empty($this->secureSendEnabled) ? '1' : '0');
         $module->settings->set(Module::SETTING_FROM_BRIEF_ENABLED, (int)!empty($this->fromBriefEnabled));
         $module->settings->set(Module::SETTING_FROM_BRIEF_LLM_ENABLED, (int)!empty($this->fromBriefLlmEnabled));
         $module->settings->set(Module::SETTING_LLM_PROVIDER, $provider);

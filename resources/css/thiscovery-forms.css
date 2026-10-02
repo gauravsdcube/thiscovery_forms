@@ -5033,3 +5033,82 @@ body.cf-fill-standalone #topbar-second {
     white-space: normal;
     word-break: break-word;
 }
+
+.cf-secure-settings label {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    margin: 0 0 .75rem;
+    font-weight: 600;
+}
+
+.cf-secure-check {
+    flex-direction: row !important;
+    align-items: center;
+    font-weight: 500;
+}
+
+.cf-secure-lifetime,
+.cf-secure-create,
+.cf-secure-release {
+    margin: 0 0 1.25rem;
+    padding: 1rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+}
+
+.cf-secure-release header {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+}
+
+.cf-secure-release h5 {
+    margin: 0;
+}
+
+.cf-secure-actions,
+.cf-secure-contact {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem;
+    align-items: end;
+    margin: .75rem 0;
+}
+
+.cf-secure-contact label {
+    min-width: 14rem;
+    flex: 1;
+}
+
+.cf-secure-link {
+    margin: .75rem 0;
+    padding: .75rem;
+    background: #f8fafc;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+}
+
+.cf-secure-link input {
+    width: 100%;
+    font-family: ui-monospace, monospace;
+}
+
+.cf-secure-audit {
+    margin-top: .5rem;
+}
+
+.cf-secure-public {
+    max-width: 36rem;
+    margin: 2rem auto;
+}
+
+.cf-secure-public__code {
+    margin-top: 1.25rem;
+}
+
+.cf-secure-public__code label {
+    display: block;
+    margin-bottom: .75rem;
+}

@@ -23,7 +23,8 @@ Suggested page tree:
    11. [Versions and publishing](creators-versioning.md)
    12. [Response integrity](creators-response-integrity.md)
    13. [Sharing and results](creators-results.md)
-   14. [Panels, waves, and email](creators-panels.md)
-   15. [Form types](creators-form-types.md)
+   14. [Secure send](creators-secure-send.md)
+   15. [Panels, waves, and email](creators-panels.md)
+   16. [Form types](creators-form-types.md)
 
 Written for Thiscovery Forms **1.33.0**. Each setting in the studio and in module configuration has a **?** guide. These pages are the longer reference. Settings are grouped, and each group can be collapsed.

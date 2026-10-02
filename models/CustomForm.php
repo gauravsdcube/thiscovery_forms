@@ -1538,6 +1538,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 $db->createCommand()->delete('{{%custom_form_consent_document}}', ['id' => $docIds])->execute();
             }
         }
+        if ($has('{{%custom_form_secure_release}}')) {
+            (new \humhub\modules\thiscoveryForms\services\SecureSendService())->purgeForm((int)$this->id);
+        }
         foreach ([
             '{{%custom_form_consent_requirement}}', '{{%custom_form_quota_allowhost}}', '{{%custom_form_arm_allocation}}',
             '{{%custom_form_rotate_seq}}', '{{%custom_form_erasure}}', 'custom_form_access_token', 'custom_form_integrity_audit',

@@ -185,6 +185,9 @@ $formSettingSections = [
 $settingsNavSections = array_merge($formSettingSections, [
     'integrity', 'css', 'share', 'export', 'translations', 'versions', 'panel', 'rounds', 'approval', 'route',
 ]);
+if (!$isNew && \humhub\modules\thiscoveryForms\Module::secureSendEnabled()) {
+    $settingsNavSections[] = 'secure';
+}
 if ($openTab !== 'builder' && $openTab !== 'settings') {
     if (in_array($openTab, $settingsNavSections, true)) {
         $openSection = $openTab;
@@ -282,6 +285,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                'css' => Url::toHelp($contentContainer, 'creators-settings'),
                'share' => Url::toHelp($contentContainer, 'creators-results'),
                'export' => Url::toHelp($contentContainer, 'creators-settings'),
+               'secure' => Url::toHelp($contentContainer, 'creators-secure-send'),
                'versions' => Url::toHelp($contentContainer, 'creators-versioning'),
            ])) ?>">
             <i class="fa fa-question-circle" aria-hidden="true"></i>
@@ -723,6 +727,11 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         'fieldList' => $fieldList,
                     ]) ?>
                 </section>
+                <?php if (!$isNew && \humhub\modules\thiscoveryForms\Module::secureSendEnabled()): ?>
+                <section class="cf-settings-pane<?= $openSection === 'secure' ? ' is-active' : '' ?>" data-cf-settings-pane="secure" role="tabpanel"<?= $openSection === 'secure' ? '' : ' hidden' ?>>
+                    <?= $this->render('_studio_secure', ['formModel' => $formModel]) ?>
+                </section>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -833,5 +842,8 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
             'enctype' => 'multipart/form-data',
         ]) ?>
         <?= Html::endForm() ?>
+        <?php if (\humhub\modules\thiscoveryForms\Module::secureSendEnabled()): ?>
+            <?= $this->render('_studio_secure_forms', ['formModel' => $formModel]) ?>
+        <?php endif; ?>
     <?php endif; ?>
 </div>

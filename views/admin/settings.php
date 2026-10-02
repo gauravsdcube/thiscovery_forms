@@ -200,6 +200,18 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
             <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The forms list, studio, answers, panels, email templates, and help use the full page. The left administration menu is not shown. This page stays in the menu so you can turn the option off.')]) ?>
         </div>
 
+        <hr>
+        <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Secure send') ?></h4>
+        <p class="help-block">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. When on, form managers can prepare a file and send a one-time code to a named contact who does not need an account. Turning this off stops every existing link.') ?>
+        </p>
+        <div class="cf-check-setting">
+            <label>
+                <?= Html::checkbox('ModuleSettings[secureSendEnabled]', !empty($model->secureSendEnabled), ['value' => 1, 'uncheck' => 0]) ?>
+                <?= Html::encode($model->getAttributeLabel('secureSendEnabled')) ?>
+            </label>
+        </div>
+
         <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Save'), ['class' => 'btn btn-primary']) ?>
         <?php ActiveForm::end(); ?>
 

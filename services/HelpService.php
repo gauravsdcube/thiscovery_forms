@@ -133,6 +133,12 @@ class HelpService
                 'summary' => Yii::t('ThiscoveryFormsModule.base', 'Bot protection, quality scores, review, exclusion, and access modes.'),
                 'icon' => 'shield',
             ],
+            'creators-secure-send' => [
+                'file' => 'creators-secure-send.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Secure send'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Prepared files, one-time codes, and the download audit.'),
+                'icon' => 'lock',
+            ],
             'creators-results' => [
                 'file' => 'creators-results.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Sharing and results'),

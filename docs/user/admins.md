@@ -27,6 +27,12 @@ When it is on, the Forms area in Administration — the list, studio, answers, p
 
 Space forms are unchanged. They still use the space menu.
 
+### Secure send
+
+**Secure send** is off by default.
+
+When it is on, form managers see **Settings → Secure send**. They can prepare a frozen file for a named contact and email that contact a one-time code. The contact does not need an account. The link only opens a page; the file downloads after the code is entered. Turning this off stops every existing link. The code lifetime is chosen on each form.
+
 ### Form types
 
 Tick the types people may **create**. Existing forms of a disabled type stay available; nobody can start a new one of that type until you tick it again.
