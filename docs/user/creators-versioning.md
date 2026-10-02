@@ -21,7 +21,7 @@ Revision numbers and edition numbers are separate (for example Revision #12 and 
 - **Open** — accepting responses against the **current published edition**
 - **Closed** — not accepting responses; the published edition stays for audit and reopen
 
-When versioning is on, you **cannot set status to Open** until at least one edition has been published.
+When versioning is on, **Status on Basics stays locked** until at least one edition has been published. A new form may remain Draft. Any other status change is refused until you publish.
 
 ## Typical flow
 

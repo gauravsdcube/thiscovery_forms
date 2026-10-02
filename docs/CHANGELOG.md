@@ -2,6 +2,15 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.30.6 (October 2, 2026)
+
+Help and the export page, for release.
+
+- Help covers consent, loops, randomisation, quotas, formulas, the status lock, trash, and the export analysis codes.
+- Each setting has a ? guide.
+- The Ready for analysis options stay on one line.
+- The limits under 1.30.4 Later are unchanged: webhooks are not sent, an anonymous completion email log still stores the member and email, resume codes cannot be restored, and a shared variable name stays on the oldest question.
+
 ## 1.30.5 (October 2, 2026)
 
 Corrections found when the database gates were run.

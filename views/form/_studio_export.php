@@ -29,22 +29,21 @@ foreach ($catalogue as $col) {
     </p>
     <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Column choice and PII scrubbing are saved on the form. Header labels (question text vs variable names) are still chosen on the Answers page when you download.')]) ?>
 
-    <div class="cf-field mt-3">
-        <div class="cf-switch">
-            <label>
-                <?= Html::hiddenInput('export_pii_scrub', '0') ?>
-                <?= Html::checkbox('export_pii_scrub', $scrub, [
-                    'value' => '1',
-                    'uncheck' => null,
-                    'data-cf-export-scrub' => true,
-                ]) ?>
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Scrub PII') ?>
-            </label>
-        </div>
-        <p class="cf-hint text-muted mb-0">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'When on, identity and personal-data columns are omitted and remaining cells have emails, phone numbers, and IP addresses replaced with [redacted]. Stored answers are not changed. The download filename ends with -scrubbed.csv.') ?>
-        </p>
+    <div class="cf-check-setting mt-3">
+        <label>
+            <?= Html::hiddenInput('export_pii_scrub', '0') ?>
+            <?= Html::checkbox('export_pii_scrub', $scrub, [
+                'value' => '1',
+                'uncheck' => null,
+                'data-cf-export-scrub' => true,
+            ]) ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Scrub PII') ?>
+        </label>
+        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Omits identity and personal-data columns, and replaces emails, phone numbers, and IP addresses in other cells with [redacted]. Stored answers are not changed. The file name ends with -scrubbed.csv.')]) ?>
     </div>
+    <p class="cf-hint text-muted mb-0">
+        <?= Yii::t('ThiscoveryFormsModule.base', 'When on, identity and personal-data columns are omitted and remaining cells have emails, phone numbers, and IP addresses replaced with [redacted]. Stored answers are not changed. The download filename ends with -scrubbed.csv.') ?>
+    </p>
 
     <?php $analysis = \humhub\modules\thiscoveryForms\services\ExportSettings::get($formModel); ?>
     <details class="cf-set-acc" open>
@@ -53,19 +52,26 @@ foreach ($catalogue as $col) {
             <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'How empty answers and multiple-choice options are coded.') ?></span>
         </summary>
         <div class="cf-set-acc__body">
-    <fieldset class="cf-field mt-3">
+    <fieldset class="cf-export-analysis mt-3">
         <legend class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Ready for analysis') ?></legend>
-        <?php foreach ([
+        <?php
+        $guides = [
+            'export_multi_columns' => Yii::t('ThiscoveryFormsModule.base', 'Adds a 0 or 1 column for each multiple-choice option, as well as the column with the joined answer.'),
+            'export_missing_codes' => Yii::t('ThiscoveryFormsModule.base', 'Empty answers use -99 when the question was shown, -98 when logic hid it, and -97 when the person did not reach it.'),
+            'export_include_in_progress' => Yii::t('ThiscoveryFormsModule.base', 'Includes responses that are still in progress. Off exports complete responses only, matching the dashboard.'),
+        ];
+        foreach ([
             'export_multi_columns' => [$analysis['multi_columns'], Yii::t('ThiscoveryFormsModule.base', 'One 0/1 column per multiple-choice option, as well as the joined answer')],
             'export_missing_codes' => [$analysis['missing_codes'], Yii::t('ThiscoveryFormsModule.base', 'Codes for empty answers: -99 shown but not answered, -98 hidden by logic, -97 not reached')],
             'export_include_in_progress' => [$analysis['include_in_progress'], Yii::t('ThiscoveryFormsModule.base', 'Include responses still in progress (off: complete responses only, as on the dashboard)')],
         ] as $name => [$on, $label]): ?>
-            <div class="cf-switch">
+            <div class="cf-check-setting">
                 <label>
                     <?= Html::hiddenInput($name, '0') ?>
                     <?= Html::checkbox($name, $on, ['value' => '1', 'uncheck' => null]) ?>
                     <?= Html::encode($label) ?>
                 </label>
+                <?= $this->render('_setting_guide', ['text' => $guides[$name]]) ?>
             </div>
         <?php endforeach; ?>
     </fieldset>
@@ -86,7 +92,10 @@ foreach ($catalogue as $col) {
             <div class="cf-set-acc__body">
         <div class="cf-export-cols" data-cf-export-group="<?= Html::encode($groupKey) ?>">
             <div class="cf-export-cols__head">
-                <h5 class="cf-section__title mb-0"><?= Html::encode($groupTitle) ?></h5>
+                <div class="cf-label-row" style="flex:1 1 auto">
+                    <h5 class="cf-section__title mb-0"><?= Html::encode($groupTitle) ?></h5>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Tick a column to include it in every answers CSV. Untick to leave it out. New questions stay included until you exclude them. Columns marked PII are locked off while Scrub PII is on.')]) ?>
+                </div>
                 <div class="cf-export-cols__toolbar">
                     <button type="button" class="btn btn-link btn-sm" data-cf-export-all="<?= Html::encode($groupKey) ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Select all') ?>

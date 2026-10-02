@@ -268,6 +268,11 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
            data-cf-help-pages="<?= Html::encode(json_encode([
                'builder' => Url::toHelp($contentContainer, 'creators-builder'),
                'settings' => Url::toHelp($contentContainer, 'creators-settings'),
+               'consent' => Url::toHelp($contentContainer, 'econsent'),
+               'loops' => Url::toHelp($contentContainer, 'loops'),
+               'randomisation' => Url::toHelp($contentContainer, 'randomisation'),
+               'quotas' => Url::toHelp($contentContainer, 'quotas'),
+               'route' => Url::toHelp($contentContainer, 'creators-builder'),
                'integrity' => Url::toHelp($contentContainer, 'creators-response-integrity'),
                'panel' => Url::toHelp($contentContainer, 'creators-panels'),
                'rounds' => Url::toHelp($contentContainer, 'creators-form-types'),
@@ -494,7 +499,10 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     </div>
                 <?php endif; ?>
                 <div class="form-group">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Form URL') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Form URL') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The link people use to fill the form. It works when the form is Open and they are allowed to take part. For guests, also turn on Allow anonymous submissions.')]) ?>
+                    </div>
                     <div class="input-group">
                         <input type="text" class="form-control" readonly value="<?= Html::encode($shareUrl) ?>" data-cf-share-url>
                         <button type="button" class="btn btn-primary" data-cf-copy-url>
@@ -550,7 +558,10 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 </p>
                 <?php $previewUrl = Url::toPreview($formModel, true); ?>
                 <div class="form-group">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview URL') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview URL') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A test link. Answers are stored separately and are not counted in dashboards or CSV.')]) ?>
+                    </div>
                     <div class="input-group">
                         <input type="text" class="form-control" readonly value="<?= Html::encode($previewUrl) ?>">
                         <button type="button" class="btn btn-primary" data-cf-copy-url>
@@ -582,7 +593,10 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 <?php if ($formModel->allowsPublicDashboard()): ?>
                     <?php $dashUrl = Url::toPublicDashboard($formModel, true); ?>
                     <div class="form-group">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Dashboard URL') ?></label>
+                        <div class="cf-label-row">
+                            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Dashboard URL') ?></label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Anyone with this link can see aggregate charts without signing in. Individual answers and CSV export stay private. Turn it on under Settings → Sharing and display.')]) ?>
+                        </div>
                         <div class="input-group">
                             <input type="text" class="form-control" readonly value="<?= Html::encode($dashUrl) ?>">
                             <button type="button" class="btn btn-primary" data-cf-copy-url>
@@ -670,7 +684,10 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         ->options(['target' => '_blank', 'rel' => 'noopener']) ?>
                 </p>
                 <div class="form-group">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Import file') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Import file') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A JSON or CSV of questions. Import records a revision. It does not import answers.')]) ?>
+                    </div>
                     <input type="file" name="import_file" class="form-control" form="cf-import-form" accept=".json,.csv,application/json,text/csv">
                 </div>
                 <div class="cf-checks mb-3">
@@ -679,6 +696,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                             <input type="checkbox" name="replace_fields" value="1" id="cf-import-replace" form="cf-import-form">
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Replace all existing questions') ?>
                         </label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'On: the import replaces every question on the form. Off: the imported questions are added after the ones already there.')]) ?>
                         <p class="cf-hint text-muted mb-0">
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Leave this unticked to add the imported questions after the ones already on the form.') ?>
                         </p>

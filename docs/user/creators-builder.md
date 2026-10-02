@@ -6,7 +6,7 @@ Everything else (status, share links, integrity, CSS, versions, panels) lives un
 
 ## Adding questions
 
-Use **Add fields** (or the equivalent control on the builder) and choose a type. Drag to reorder. Open a question to edit label, help text, required, options, and logic.
+Use **Add fields** (or the equivalent control on the builder) and choose a type. Drag to reorder. Open a question to edit label, help text, required, options, and logic. Removing a question asks you to confirm, so a click does not delete it by mistake. A published question is hidden from new responses; stored answers keep that question.
 
 Each question can also have:
 
@@ -73,6 +73,8 @@ Tick **Required** when the person must answer before they can continue or submit
 ## Options and grids
 
 For choice questions, add rows under **Choices** (internal code + participant label). Grids need row labels and column labels. Ranking and MaxDiff need a complete set of items.
+
+**Randomise options** gives each response its own order. There is no switch that shows every respondent the same shuffled order. Other and exclusive options stay at the end. The order stored is the order first shown.
 
 On a **grid**, you can tick **On mobile, show each row as a stacked list of options**. When that is off, mobile keeps the horizontal scroll table.
 

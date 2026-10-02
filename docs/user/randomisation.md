@@ -6,7 +6,7 @@ The server draws the order. The browser does not shuffle. The order is stored wi
 
 ## What can be randomised
 
-- Options on a choice question that already has “randomise options” turned on. Other and exclusive options stay at the end.
+- Options on a choice question that already has “randomise options” turned on. Each response gets its own order. There is no setting that shows every guest the same shuffled order. Other and exclusive options stay at the end. The order stored is the order first shown.
 - Questions inside a question group. Choose shuffle or rotate, and optionally how many to show. Questions that are not shown are not on the route and their answers are not kept.
 - Pages between a randomisation block and its end marker. A go-to that leaves the block is refused when you save the form. Pin is not available for pages; use shuffle, rotate, or show a number of pages by setting the block method.
 
@@ -17,8 +17,8 @@ One arm per line: `code|name|weight`.
 Methods:
 
 - Simple weighted: each new response is drawn from the weights.
-- Block: a block is filled in the weight ratio, shuffled, then handed out in order. The next block starts when that one is used up.
-- Least filled: the arm with fewer assignments is chosen. A tie uses the response seed.
+- Block: a block is filled in the weight ratio, shuffled, then handed out in order. The block size must be a multiple of the total arm weight. The next block starts when that one is used up. Parallel starts share one locked allocation row, so two people are not given the same slot.
+- Least filled: the arm with fewer assignments is preferred, with a random element so the next arm cannot be predicted from the counts. Abandoned responses do not hold a place.
 - Stratified block: the same block method inside a stratum. One factor per line, `field:variable` or `panel:site`. A fully anonymous form cannot use a panel attribute.
 
 Assignment happens when the response starts, or after the respondent leaves the page whose key you set.

@@ -26,6 +26,7 @@ $defaultCss = $defaultTheme ? (string)$defaultTheme->custom_css : '';
 
     <div class="form-group cf-field">
         <label class="cf-label" for="cf-theme-id"><?= Yii::t('ThiscoveryFormsModule.base', 'Theme') ?></label>
+        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A shared theme from Administration, or Custom to keep styles on this form only. Values you set below override the theme for this form.')]) ?>
         <?= Html::activeDropDownList($formModel, 'theme_id', $themeOptions, [
             'id' => 'cf-theme-id',
             'class' => 'form-control',
@@ -52,7 +53,14 @@ $defaultCss = $defaultTheme ? (string)$defaultTheme->custom_css : '';
                             $itemClass = 'form-group mb-0' . ($type === 'color' ? ' cf-style-grid__item--color' : '');
                             ?>
                             <div class="<?= $itemClass ?>">
-                                <label class="cf-label" for="<?= Html::encode($id) ?>"><?= Html::encode($field['label']) ?></label>
+                                <div class="cf-label-row">
+                                    <label class="cf-label" for="<?= Html::encode($id) ?>"><?= Html::encode($field['label']) ?></label>
+                                    <?= $this->render('_setting_guide', ['text' => $type === 'color'
+                                        ? Yii::t('ThiscoveryFormsModule.base', 'Colour for this part of the fill page. Leave blank to keep the theme. Transparency is allowed.')
+                                        : ($type === 'weight'
+                                            ? Yii::t('ThiscoveryFormsModule.base', 'Font weight for this part of the fill page. Leave on the theme default unless this form should differ.')
+                                            : Yii::t('ThiscoveryFormsModule.base', 'Size or spacing for this part of the fill page. Leave blank to keep the theme.'))]) ?>
+                                </div>
                                 <?php if ($type === 'weight'): ?>
                                     <?= Html::dropDownList($name, $value, $field['options'] ?? ['' => ''], [
                                         'id' => $id,
@@ -86,9 +94,12 @@ $defaultCss = $defaultTheme ? (string)$defaultTheme->custom_css : '';
             <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Optional extra CSS for this form only.') ?></span>
         </summary>
         <div class="cf-set-acc__body">
-            <p class="cf-hint text-muted">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'Prefer selectors under #cf-fill.') ?>
-            </p>
+            <div class="cf-label-row">
+                <p class="cf-hint text-muted mb-0">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Prefer selectors under #cf-fill.') ?>
+                </p>
+                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Optional CSS for this form only. It does not change the studio, the forms list, or dashboards. Prefer selectors under #cf-fill.')]) ?>
+            </div>
             <?= Html::activeTextarea($formModel, 'custom_css', [
                 'class' => 'form-control cf-css-editor',
                 'rows' => 12,

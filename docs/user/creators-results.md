@@ -49,7 +49,9 @@ On the Answers export, choose **Export headers**:
 - **Variable names** — the field variable ids
 - **Variable and label** — both
 
-Which columns appear, and whether personal data is scrubbed, is set once under **Settings → Export**. Every **Export CSV** button (Answers, Dashboard, Response integrity) uses that set.
+Which columns appear, whether personal data is scrubbed, and how empty answers are coded, is set once under **Settings → Export**. Every **Export CSV** button (Answers, Dashboard, Response integrity) uses that set.
+
+**Ready for analysis** can add a 0/1 column per multiple-choice option, code empty answers (`-99` shown but not answered, `-98` hidden by logic, `-97` not reached), and include responses still in progress. Off, the CSV matches the dashboard and contains complete responses only.
 
 **Scrub PII** (off by default) omits identity and PII-tagged columns and replaces emails, phone numbers, and IP addresses in remaining cells with `[redacted]`. The file is named `*-scrubbed.csv`. Answers in the database are unchanged.
 
@@ -66,7 +68,7 @@ The form author and managers can be notified when someone submits. Check that si
 1. Set status to **Closed** so new fills stop.
 2. Export CSV and keep a copy according to your data policy.
 3. If the public dashboard link was used, regenerate or disable public dashboard share if it should not stay live.
-4. Delete the form only when you are sure you no longer need the data — deletion is permanent.
+4. Move the form to the trash only when fieldwork is finished. Purging it from the trash removes the form and its answers for good.
 
 ## Related pages
 

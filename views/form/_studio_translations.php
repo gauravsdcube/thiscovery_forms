@@ -29,9 +29,12 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
 
 <div class="cf-studio__settings">
     <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Translations') ?></h5>
-    <p class="cf-hint text-muted">
-        <?= Yii::t('ThiscoveryFormsModule.base', 'Keep one form and overlay labels in other languages. Enable languages on the Settings tab, or import a translation file.') ?>
-    </p>
+    <div class="cf-label-row">
+        <p class="cf-hint text-muted mb-0">
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Keep one form and overlay labels in other languages. Enable languages on the Settings tab, or import a translation file.') ?>
+        </p>
+        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The source language is what you write in the builder. Extra languages are chosen under Settings → Languages. A missing translation falls back to the source. Arabic and Urdu use a right-to-left layout.')]) ?>
+    </div>
 
     <?php if ($isNew): ?>
         <div class="alert alert-info">
@@ -62,7 +65,10 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                 ->loader(false) ?>
         </p>
         <div class="form-group">
-            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translation file') ?></label>
+            <div class="cf-label-row">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translation file') ?></label>
+                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'JSON or CSV exported from this page. Import updates the language overlay only. It does not replace the questions.')]) ?>
+            </div>
             <input type="file" name="translation_file" class="form-control" form="cf-i18n-import-form" accept=".json,.csv,application/json,text/csv">
         </div>
         <button type="submit" class="btn btn-primary" form="cf-i18n-import-form">

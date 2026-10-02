@@ -17,7 +17,7 @@ Actions when the cell is full:
 - Go to another page and keep the response open.
 - Mark and continue. The response can finish and does not take a place.
 
-Lowering a target does not remove people who already finished. The fill percent can go over 100. Editing a completed response does not free a place. `php yii thiscovery-forms/quota/reconcile` prints any difference and, with `--apply=1`, sets the counter to the recount.
+Lowering a target does not remove people who already finished. The fill percent can go over 100. Editing a completed response does not free a place and does not turn that response into over quota, whether or not arm randomisation is on. A finished response is stored as complete so later edits can tell it was already counted. `php yii thiscovery-forms/quota/reconcile` prints any difference and, with `--apply=1`, sets the counter to the recount.
 
 An optional least-filled arm uses the open arm quotas. If every arm the person qualifies for is full, the fullest quota’s action runs and the arm is not kept.
 

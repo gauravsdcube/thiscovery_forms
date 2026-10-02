@@ -172,6 +172,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <?php endif; ?>
                 <div class="form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use consent on this form') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Asks for a published information sheet before the form starts. Consent must also be on under Administration. A Consent question in the builder is used instead of that opening sheet.')]) ?>
                     <?= Html::dropDownList('econsent_enabled', $consentOn ? '1' : '0', [
                         '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                         '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -187,6 +188,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'When the sheet changes') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Keep the version they started, ask again on the next visit, or email people who already agreed.')]) ?>
                         <?= Html::dropDownList('econsent_reconsent', (string)$formModel->getSetting('reconsent', 'off'), [
                             'off' => Yii::t('ThiscoveryFormsModule.base', 'Keep the version they started'),
                             'next_visit' => Yii::t('ThiscoveryFormsModule.base', 'Ask again on the next visit'),
@@ -195,6 +197,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Store IP and browser hashes') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Stores only a hash of the IP address and browser, and only when this is on. The default is off. A fully anonymous consent record is not linked to the answer.')]) ?>
                         <?= Html::dropDownList('consent_store_client_hashes', (string)$formModel->getSetting('consent_store_client_hashes', '0') === '1' ? '1' : '0', [
                             '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                             '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -202,6 +205,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-12 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Not consented message') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Shown when someone refuses a required statement. That response is closed and is not counted as complete. Leave empty for the default message.')]) ?>
                         <?= Html::textInput('not_consented_message', (string)$formModel->getSetting('not_consented_message', ''), ['class' => 'form-control']) ?>
                     </div>
                     <?php if (empty($isNew)): ?>
@@ -220,10 +224,11 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
 
             <section class="cf-settings-pane<?= $paneOpen('loops') ? ' is-active' : '' ?>" data-cf-settings-pane="loops" role="tabpanel"<?= $paneOpen('loops') ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Loops') ?></h3>
-                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'A group can repeat once, from a fixed list, selected options, or a number. Nested loops are not in this version.') ?></p>
+                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'A group can repeat from a fixed list, selected options, or a number. One repeating group can contain one other.') ?></p>
                 <input type="hidden" name="loops_present" value="1">
                 <div class="form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use loops on this form') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Repeats a question group. Loops must also be on under Administration. One group can contain one other group. A third level cannot be published.')]) ?>
                     <?= Html::dropDownList('loops_enabled', $loopsOn ? '1' : '0', [
                         '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                         '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -238,6 +243,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <?php ob_start(); ?>
                 <div class="form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use randomisation on this form') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The server draws option order, question order, page order, and arms, and stores them on the response. Randomisation must also be on under Administration. Each response gets its own option order.')]) ?>
                     <?= Html::dropDownList('randomisation_enabled', $randOn ? '1' : '0', [
                         '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                         '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -253,6 +259,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Arm method') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Simple weighted draws from the weights. Block hands out a shuffled block in the weight ratio. Least filled prefers the arm with fewer assignments, with a random element so the next arm cannot be predicted. Stratified block does that inside each stratum.')]) ?>
                         <?= Html::dropDownList('randomisation_method', $rand->config($formModel)['method'], [
                             'simple' => Yii::t('ThiscoveryFormsModule.base', 'Simple weighted'),
                             'block' => Yii::t('ThiscoveryFormsModule.base', 'Block'),
@@ -262,6 +269,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Block size') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Used by block and stratified methods. It must be a multiple of the total arm weight so every block keeps the ratio.')]) ?>
                         <?= Html::textInput('randomisation_block_size', (string)$rand->config($formModel)['block_size'], ['class' => 'form-control']) ?>
                     </div>
                     <div class="col-md-6 form-group cf-field">
@@ -285,6 +293,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Assign the arm when the response starts, or after the respondent leaves the page whose key you set.')]) ?>
                         <?= Html::dropDownList('randomisation_assign', $rand->config($formModel)['assign'], [
                             'start' => Yii::t('ThiscoveryFormsModule.base', 'When the response starts'),
                             'after_page' => Yii::t('ThiscoveryFormsModule.base', 'After a page'),
@@ -292,6 +301,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Page key') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The page key from the builder. The arm is assigned when the respondent leaves that page. Used only when Assign is After a page.')]) ?>
                         <?= Html::textInput('randomisation_assign_page', $rand->config($formModel)['assign_page'], ['class' => 'form-control']) ?>
                     </div>
                     <div class="col-md-12 form-group cf-field">
@@ -315,6 +325,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'A full cell keeps the answers and marks the response over quota. Reservations last 60 minutes only when a quota turns them on.') ?></p>
                 <div class="form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use quotas on this form') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Counts responses against targets. Quotas must also be on under Administration. A full cell keeps the answers and marks the response over quota. Editing a completed response does not change the count.')]) ?>
                     <?= Html::dropDownList('quotas_enabled', $quotaOn ? '1' : '0', [
                         '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                         '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -330,6 +341,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign the least-filled open arm') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Places the respondent in the open arm they qualify for that has the most room. If every qualifying arm is full, that quota’s action runs and no arm is kept.')]) ?>
                         <?= Html::dropDownList('quota_assign_arm', (string)$formModel->getSetting('quota_assign_arm', '0') === '1' ? '1' : '0', [
                             '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                             '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -337,6 +349,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     </div>
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Email when a quota fills') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Optional address to notify when a quota reaches its target. The event is recorded on the quota. It is not sent as a webhook.')]) ?>
                         <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.org']) ?>
                     </div>
                     <?php if (empty($isNew)): ?>
@@ -408,6 +421,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                         <div class="row g-3" data-cf-completion-button-fields>
                             <div class="col-md-6 form-group cf-field">
                                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Button label') ?></label>
+                                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Text on the button under the thank-you message.')]) ?>
                                 <?= Html::activeTextInput($formModel, 'completion_button_label', [
                                     'class' => 'form-control',
                                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Back to form'),
@@ -417,6 +431,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Button URL') ?>
                                     <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                                 </label>
+                                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Where the thank-you button goes. Leave blank to return to this form. Use a full https:// link or a path starting with /.')]) ?>
                                 <?= Html::activeTextInput($formModel, 'completion_button_url', [
                                     'class' => 'form-control',
                                     'placeholder' => 'https://… or /path',
@@ -471,6 +486,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     <div class="row g-3" data-cf-already-button-fields>
                         <div class="col-md-6 form-group cf-field">
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Button label') ?></label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Text on the button on the already-submitted screen.')]) ?>
                             <?= Html::activeTextInput($formModel, 'already_submitted_button_label', [
                                 'class' => 'form-control',
                                 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Continue'),
@@ -480,6 +496,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Button URL') ?>
                                 <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                             </label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Where the already-submitted button goes. Leave blank to open the forms list.')]) ?>
                             <?= Html::activeTextInput($formModel, 'already_submitted_button_url', [
                                 'class' => 'form-control',
                                 'placeholder' => 'https://… or /path',

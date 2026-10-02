@@ -45,11 +45,12 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
             <?= Yii::t('ThiscoveryFormsModule.base', 'Site defaults for what participants see. Each form can inherit or override these on its Settings tab.') ?>
         </p>
         <?php foreach (DisplaySettings::KEYS as $key): ?>
-            <div class="checkbox">
+            <div class="cf-check-setting">
                 <label>
                     <?= Html::checkbox('ModuleSettings[display][' . $key . ']', !empty($model->display[$key]), ['value' => 1, 'uncheck' => 0]) ?>
                     <?= Html::encode(DisplaySettings::labels()[$key] ?? $key) ?>
                 </label>
+                <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Site default for whether the fill page shows this. Each form can override it under Settings → Participant display.')]) ?>
             </div>
         <?php endforeach; ?>
 
@@ -74,11 +75,12 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn consent on. Completing a form no longer records consent by itself.') ?>
         </p>
-        <div class="checkbox">
+        <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[econsentEnabled]', !empty($model->econsentEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('econsentEnabled')) ?>
             </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Lets forms ask for a published information sheet. Each form still has to turn consent on. Completing a form does not record consent by itself.')]) ?>
         </div>
 
         <hr>
@@ -86,23 +88,25 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn quotas on. A full cell keeps the partial answers.') ?>
         </p>
-        <div class="checkbox">
+        <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[quotasEnabled]', !empty($model->quotasEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('quotasEnabled')) ?>
             </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Lets forms count responses against a target. Each form still has to turn quotas on. A full cell keeps the partial answers.')]) ?>
         </div>
 
         <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Loops') ?></h4>
         <p class="help-block">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn loops on. One level only. Unselected repeats are kept but not shown.') ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn loops on. One repeating group can contain one other. Unselected repeats are kept but not shown.') ?>
         </p>
-        <div class="checkbox">
+        <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[loopsEnabled]', !empty($model->loopsEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('loopsEnabled')) ?>
             </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Lets a question group repeat. Each form still has to turn loops on. One repeating group can contain one other. A hidden repeat keeps its answers.')]) ?>
         </div>
 
         <hr>
@@ -110,11 +114,12 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn randomisation on before the server shuffles pages, questions, or options, or assigns an arm.') ?>
         </p>
-        <div class="checkbox">
+        <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[randomisationEnabled]', !empty($model->randomisationEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('randomisationEnabled')) ?>
             </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Lets the server shuffle order and assign arms. Each form still has to turn randomisation on. Each response gets its own option order.')]) ?>
         </div>
 
         <hr>
@@ -122,17 +127,19 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         <p class="help-block">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Lets creators start a Draft survey from a pasted brief or a Word/PDF questionnaire. LLM assist is optional; when enabled, brief text may be sent to the configured provider. Usage is logged with estimated cost (warnings only — no hard spend caps yet).') ?>
         </p>
-        <div class="checkbox">
+        <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[fromBriefEnabled]', !empty($model->fromBriefEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('fromBriefEnabled')) ?>
             </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Shows From a brief on Create, so someone can paste a brief or upload Word or PDF and review proposed questions before a Draft survey is created.')]) ?>
         </div>
-        <div class="checkbox">
+        <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[fromBriefLlmEnabled]', !empty($model->fromBriefLlmEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('fromBriefLlmEnabled')) ?>
             </label>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Sends brief text to the provider below. Usage is logged with an estimated cost. There is no hard spend cap. Agree this with your organisation before turning it on.')]) ?>
         </div>
         <div class="row">
             <div class="col-md-4">

@@ -6,9 +6,11 @@ Write the information sheet and the statements, then publish. A published versio
 
 The consent question shows that version. A required “no” ends the form. The response is closed and is not counted as a completed questionnaire. An optional “no” is stored and the form continues.
 
-The signature is a typed name and the server’s date, a checkbox, or a drawing. A drawing always has the typed name as the alternative a keyboard user can use.
+The signature is a typed name and the server’s date, a checkbox, or a drawing. A drawing always has the typed name as the alternative a keyboard user can use. A fully anonymous form accepts only the checkbox attestation, so no name or drawing is stored next to an unlinkable record.
 
-Fully anonymous forms store the consent without a link to the answer. The person is shown a withdrawal code once. Identified forms can open a certificate. That certificate has the version, the hash, the statements, the signature method, the time, and the language. It does not include an IP address.
+A required tick that is left unticked is a missing answer, not a refusal. The page must be read to the end when the statement says so. If the sheet changes while the page is open, the person is asked to read it again.
+
+Fully anonymous forms store the consent without a link to the answer. A completion does not copy the member’s weight onto that answer. The person is shown a withdrawal code once. Identified forms can open a certificate. That certificate has the version, the hash, the statements, the signature method, the time, and the language. It does not include an IP address.
 
 Withdrawal can keep contact, stop contact, or ask an administrator to delete data. Stopping contact stops reminders and waves. Asking for deletion does not delete answers. It opens a task.
 

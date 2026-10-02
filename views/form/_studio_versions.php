@@ -19,6 +19,12 @@ if (!FormVersionService::isAvailable() || !$formModel->id) {
     return;
 }
 
+echo '<div class="cf-label-row mb-2"><p class="cf-hint text-muted mb-0">'
+    . Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Publish an edition before you change the form status. Participants see the published edition, not unsaved studio edits.'))
+    . '</p>'
+    . $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A revision is a saved copy. Publish freezes the edition people fill. Restore puts an older edition back into the studio. Status on Basics stays locked until an edition has been published.')])
+    . '</div>';
+
 $adapter = new FormVersionAdapter();
 $ownerId = (int)$formModel->id;
 

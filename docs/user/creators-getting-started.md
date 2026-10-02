@@ -31,19 +31,23 @@ The studio has two top tabs: **Form builder** and **Settings**.
 
 Under **Settings**, the left rail groups are:
 
-- **Form** — Basics, End of survey, Who can take part, Participant display, Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions (plus **Consensus** on Consensus / Delphi forms)
+- **Form** — Basics, End of survey, Who can take part, Participant display
+- **Features** — Consent, Loops, Randomisation, Quotas
+- **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Route map (after the first save), and **Consensus** on Consensus / Delphi forms
 - **Programme** — Panel & waves, Rounds, or Approval when that type needs them
 - **Quality & style** — Response integrity, Translations, CSS (themes and colours)
-- **Publish** — Share; **Versions** after the first save when Thiscovery Versioning is enabled for Forms
+- **Publish** — Share, Export, and **Versions** after the first save when Thiscovery Versioning is enabled for Forms
 
-Save applies to the whole form from either top tab. Help in the studio header opens the page that matches the section you are on.
+Each setting has a **?** guide. Groups on a settings page can be collapsed. **Expand all** and **Collapse all** sit at the top of Settings.
+
+Save applies to the whole form from either top tab. A successful save shows **Form saved.** Help in the studio header opens the page that matches the section you are on.
 
 ### Header and footer buttons
 
 - **Back to forms** — return to the list. Unsaved builder changes are lost if you have not saved.
 - **Preview** — saves the form, then opens a **test** copy of the fill page. Test answers are stored separately. They do **not** count in dashboards, totals, or CSV.
-- **Save form** — saves and **stays in the studio**. Use this while you are still building.
-- **Delete form** — permanently removes the form and its responses. There is no undo.
+- **Save form** — saves and **stays in the studio**. Use this while you are still building. You will see **Form saved.**
+- **Delete form** — moves the form to the **trash**. Answers are kept and the form can be restored. Empty the trash only when you mean to remove it for good.
 
 Save often. Preview is the right way to try the form yourself without polluting real results.
 
@@ -54,10 +58,10 @@ On **Settings → Basics**:
 | Status | Meaning |
 | --- | --- |
 | Draft | You and other managers can open it; respondents should not treat it as live |
-| Open | People who are allowed to can fill it — only after you have **published an edition** (when versioning is on) |
+| Open | People who are allowed to can fill it |
 | Closed | Filling stops; you can still view answers and export |
 
-**Publish** (**Settings → Versions** or **Settings → Share**) freezes an edition that participants use. Saving alone does not change what people see while the form is Open. See [Versions and publishing](creators-versioning.md).
+When versioning is on, **Status stays locked** until an edition has been published. A new form can stay Draft. You cannot change the status of a saved form until **Publish** has created an edition. **Publish** (**Settings → Versions** or **Settings → Share**) freezes the edition participants use. Saving alone does not change what people see while the form is Open. See [Versions and publishing](creators-versioning.md).
 
 Set status to **Open** when you are ready to share the live link. Close it when fieldwork ends.
 

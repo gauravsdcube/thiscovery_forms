@@ -404,6 +404,31 @@
     font-weight: 650;
 }
 
+/* Not a .cf-field grid: that two-column layout squeezed these labels to one letter per line. */
+.cf-export-analysis {
+    display: block;
+    border: 0;
+    margin: .75rem 0 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.cf-export-analysis > legend {
+    float: none;
+    width: auto;
+    padding: 0;
+    margin: 0 0 .55rem;
+    font-size: .95rem;
+}
+
+.cf-export-analysis .cf-switch + .cf-switch {
+    margin-top: .5rem;
+}
+
+.cf-export-analysis .cf-switch label {
+    align-items: flex-start;
+}
+
 .cf-export-cols {
     margin: 1.25rem 0 0;
     padding: 1rem 1.1rem 1.1rem;
@@ -1128,6 +1153,23 @@
 }
 
 .cf-guide {
+    display: contents;
+}
+
+.cf-label-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: .35rem;
+}
+
+.cf-label-row > .cf-label {
+    grid-column: 1;
+    grid-row: 1;
+    margin-bottom: 0;
+}
+
+.cf-label-row > .cf-guide {
     display: contents;
 }
 

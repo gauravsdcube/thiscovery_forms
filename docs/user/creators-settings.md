@@ -4,10 +4,12 @@ The studio has two top tabs: **Form builder** and **Settings**.
 
 Under **Settings**, a left-hand list opens each area in the main pane. Groups match the product:
 
-- **Form** — Basics, End of survey, Who can take part, Participant display, Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions (plus Consensus when relevant)
+- **Form** — Basics, End of survey, Who can take part, Participant display
+- **Features** — Consent, Loops, Randomisation, Quotas. Each needs the matching switch under **Administration → Modules → Thiscovery Forms** as well as the switch on the form. See [Consent](econsent.md), [Loops](loops.md), [Randomisation](randomisation.md), and [Quotas](quotas.md).
+- **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Route map, plus Consensus when relevant
 - **Programme** — Panel & waves / Rounds / Approval when the type needs them
 - **Quality & style** — Response integrity, Translations, CSS
-- **Publish** — Share; Export (CSV columns and PII scrubbing); Versions when Thiscovery Versioning is available
+- **Publish** — Share; Export (CSV columns, analysis codes, and PII scrubbing); Versions when Thiscovery Versioning is available
 
 Each setting has a short **?** guide in the studio. This page is the longer reference. Save still applies to the whole form.
 
@@ -19,7 +21,7 @@ Type is shown on Basics but chosen at create time.
 | --- | --- |
 | Title | Name on the form, in lists, and in emails |
 | Description | Shown to respondents (rich text), unless Participant display hides it |
-| Status | Draft, Open, or Closed. **Open requires a published edition** when versioning is on (**Settings → Versions** or **Settings → Share → Publish**). **Publish current draft** saves your latest studio changes, then participants use that edition. |
+| Status | Draft, Open, or Closed. When versioning is on, the status control stays locked until an edition has been published (**Settings → Versions** or **Settings → Share → Publish**). A new form may stay Draft. **Publish current draft** saves your latest studio changes, then participants use that edition. |
 | Folder | Filing; **Unfiled** is fine |
 | Who can view answers | Who may open the answers / dashboard for this form |
 
@@ -50,7 +52,7 @@ Use the end-of-survey messages to say what happens next, not to collect more ans
 | Allow anonymous submissions | People can fill without signing in, if the site allows guests |
 | Allow respondents to edit their answers | Respondents can change a completed response |
 | Allow save and resume | People can continue later with a resume code |
-| Keep incomplete responses | In-progress answers are stored, counted on the dashboard, and included in CSV |
+| Keep incomplete responses | Ticked by default. In-progress answers are stored, counted on the dashboard, and included in CSV when the export also includes in-progress responses |
 | Use waves | Available on Survey, Longitudinal, and EQ-5D-style forms. Turns on **Settings → Panel & waves** after you save |
 | Where waves live | **Per survey** — this form has its own wave calendar. **Per panel** — forms that share a panel share the same waves |
 
@@ -176,6 +178,9 @@ Schedule rounds under **Settings → Rounds**. See [Form types](creators-form-ty
 | Setting | What it does |
 | --- | --- |
 | Scrub PII | Off by default. When on, identity and personal-data columns are omitted, remaining cells have emails, phone numbers, and IP addresses replaced with `[redacted]`, and the filename ends with `-scrubbed.csv`. Stored answers are not changed. |
+| One 0/1 column per option | Adds a 0/1 column for each multiple-choice option, as well as the joined answer |
+| Codes for empty answers | `-99` shown but not answered, `-98` hidden by logic, `-97` not reached |
+| Include responses still in progress | Off exports complete responses only, matching the dashboard |
 | Response metadata / Questions | Tick columns to include. Untick to exclude. New questions stay included until you exclude them. |
 
 While **Scrub PII** is on, identity and PII-tagged columns are locked off on this page (User, email questions, IP and user agent, panel name/email, and anything tagged **Contains personal data** in the builder). They are omitted from the CSV even if you had included them.
@@ -196,10 +201,19 @@ Do not rely on scrubbing as the only privacy control: it does not detect names i
 
 Administrators create and maintain shared themes under **Administration → Modules → Thiscovery Forms → Appearance themes**. Updating a shared theme updates every form that uses it; values you set on the form still override the theme for that form.
 
+## Route map
+
+**Settings → Route map** (after the form has been saved) is read-only. It lists each page, where its rules can send someone, and logic problems that stop save or publish. Without a rule, a page continues to the next one. It shows the saved questions, not unsaved edits.
+
 ## Related pages
 
 - [Getting started](creators-getting-started.md)
 - [Builder and questions](creators-builder.md)
+- [Formulas](creators-formulas.md)
+- [Consent](econsent.md)
+- [Loops](loops.md)
+- [Randomisation](randomisation.md)
+- [Quotas](quotas.md)
 - [Versions and publishing](creators-versioning.md)
 - [Response integrity](creators-response-integrity.md)
 - [Sharing and results](creators-results.md)

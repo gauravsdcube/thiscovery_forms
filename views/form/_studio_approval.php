@@ -30,7 +30,10 @@ $groupItems = UserEditForm::getGroupItems(Group::find()->orderBy(['name' => SORT
         <?= Html::beginForm(Url::studioAction($formModel, 'stage-save'), 'post', ['class' => 'cf-inline-form mb-4']) ?>
             <div class="row g-2 align-items-end">
                 <div class="col-md-6">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stage name') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stage name') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Name of the next approval step, in the order stages should run. If you add no stages, form managers publish records directly.')]) ?>
+                    </div>
                     <input type="text" name="name" class="form-control" placeholder="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'e.g. Moderator review')) ?>">
                 </div>
                 <div class="col-md-6">
@@ -75,11 +78,17 @@ $groupItems = UserEditForm::getGroupItems(Group::find()->orderBy(['name' => SORT
                 <?= Html::beginForm(Url::studioAction($formModel, 'stage-save'), 'post', ['class' => 'mb-3']) ?>
                     <?= Html::hiddenInput('stage_id', $stage->id) ?>
                     <div class="form-group">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stage name') ?></label>
+                        <div class="cf-label-row">
+                            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stage name') ?></label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Name shown to the people who review this stage.')]) ?>
+                        </div>
                         <input type="text" name="name" class="form-control" value="<?= Html::encode($stage->name) ?>">
                     </div>
                     <div class="form-group">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Users who can approve') ?></label>
+                        <div class="cf-label-row">
+                            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Users who can approve') ?></label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Named people who may approve this stage. If a stage has nobody assigned, form managers can approve it.')]) ?>
+                        </div>
                         <?= UserPickerField::widget([
                             'id' => 'cf-stage-users-' . (int)$stage->id,
                             'name' => 'userGuids',
@@ -88,7 +97,10 @@ $groupItems = UserEditForm::getGroupItems(Group::find()->orderBy(['name' => SORT
                         ]) ?>
                     </div>
                     <div class="form-group">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Groups who can approve') ?></label>
+                        <div class="cf-label-row">
+                            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Groups who can approve') ?></label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Any member of a selected group can act for that group. Hold Ctrl or Cmd to select more than one.')]) ?>
+                        </div>
                         <?= Html::dropDownList(
                             'groupIds[]',
                             $stage->getAuthorityGroupIds(),
@@ -101,10 +113,13 @@ $groupItems = UserEditForm::getGroupItems(Group::find()->orderBy(['name' => SORT
                         ) ?>
                         <div class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Hold Ctrl or Cmd to select more than one group. Any member of a selected group can act for that group.') ?></div>
                     </div>
-                    <label class="cf-check">
-                        <input type="checkbox" name="require_all" value="1"<?= $stage->requiresAll() ? ' checked' : '' ?>>
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Every listed user and group must approve this stage (otherwise one matching person is enough).') ?>
-                    </label>
+                    <div class="cf-check-setting">
+                        <label>
+                            <input type="checkbox" name="require_all" value="1"<?= $stage->requiresAll() ? ' checked' : '' ?>>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Every listed user and group must approve this stage (otherwise one matching person is enough).') ?>
+                        </label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'On: every listed user and every selected group must approve. Off: one matching person is enough.')]) ?>
+                    </div>
                     <div class="mt-2">
                         <button type="submit" class="btn btn-primary"><?= Yii::t('ThiscoveryFormsModule.base', 'Save stage') ?></button>
                     </div>

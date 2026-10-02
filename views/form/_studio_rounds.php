@@ -27,7 +27,10 @@ $rounds = $isNew ? [] : (new RoundService())->listRounds($formModel);
         <?= Html::beginForm(Url::studioAction($formModel, 'round-delphi'), 'post', ['class' => 'cf-inline-form mb-3']) ?>
             <div class="row g-2 align-items-end">
                 <div class="col-md-4">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Delphi preset') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Delphi preset') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Creates this many rounds and turns on a comment after each choice and freezing items that reach consensus.')]) ?>
+                    </div>
                     <input type="number" name="round_count" class="form-control" value="3" min="2" max="8">
                 </div>
                 <div class="col-md-8">
@@ -41,7 +44,10 @@ $rounds = $isNew ? [] : (new RoundService())->listRounds($formModel);
         <?= Html::beginForm(Url::studioAction($formModel, 'round-save'), 'post', ['class' => 'cf-inline-form mb-3']) ?>
             <div class="row g-2 align-items-end">
                 <div class="col-md-6">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Name of the new round. Only one round can be open at a time.')]) ?>
+                    </div>
                     <input type="text" name="title" class="form-control" placeholder="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Round 2')) ?>">
                 </div>
                 <div class="col-md-6">
@@ -79,7 +85,10 @@ $rounds = $isNew ? [] : (new RoundService())->listRounds($formModel);
             </div>
             <?= Html::beginForm(Url::studioAction($formModel, 'round-publish'), 'post', ['class' => 'mb-4']) ?>
                 <?= Html::hiddenInput('round_id', $round->id) ?>
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Summary shown at the start of the next round') ?></label>
+                <div class="cf-label-row">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Summary shown at the start of the next round') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Text people see before they answer the next round. Leave empty to generate a distribution and anonymised comments from this round.')]) ?>
+                </div>
                 <div class="cf-rich-editor" data-cf-rich-editor>
                     <?= EditorField::widget([
                         'id' => 'cf-round-summary-' . (int)$round->id,

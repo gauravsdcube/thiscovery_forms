@@ -32,7 +32,10 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
     <?php else: ?>
         <?= Html::beginForm(Url::studioAction($formModel, 'panel-save'), 'post', ['id' => 'cf-panel-save']) ?>
             <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use panel') ?></label>
+                <div class="cf-label-row">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use panel') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Create a panel for this form, or attach one that already exists. Completers with an email are added to it.')]) ?>
+                </div>
                 <select name="panel_id" class="form-control">
                     <option value="0"><?= Yii::t('ThiscoveryFormsModule.base', 'Create a new panel for this form') ?></option>
                     <?php foreach ($panels as $p): ?>
@@ -44,14 +47,20 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
                 </select>
             </div>
             <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Panel name') ?></label>
+                <div class="cf-label-row">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Panel name') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Name shown on the Panels screen. People do not see this while they fill the form.')]) ?>
+                </div>
                 <input type="text" name="panel_title" class="form-control" value="<?= Html::encode($panel->title ?? $formModel->title) ?>">
             </div>
             <div class="form-group">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Description') ?></label>
+                <div class="cf-label-row">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Description') ?></label>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A note for managers about who this panel is for. It is not shown to respondents.')]) ?>
+                </div>
                 <textarea name="panel_description" class="form-control" rows="2"><?= Html::encode($panel->description ?? '') ?></textarea>
             </div>
-            <div class="cf-checks mb-3">
+            <div class="cf-check-setting mb-3">
                 <label>
                     <?= Html::hiddenInput('email_on_wave_open', '0') ?>
                     <?= Html::checkbox('email_on_wave_open', $formModel->emailsOnWaveOpen(), [
@@ -60,6 +69,7 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
                     ]) ?>
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Email all members when a later wave opens (Wave 2 onwards)') ?>
                 </label>
+                <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Sends the wave email when wave 2 or later opens. Wave 1 uses the invite. Choose the template under Settings → Email templates.')]) ?>
             </div>
             <p class="cf-hint text-muted">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Choose invite, wave, reminder, and post-completion templates on the Settings tab.') ?>
@@ -122,15 +132,24 @@ $waves = $isNew ? [] : $waveService->listWaves($formModel);
         <?= Html::beginForm(Url::studioAction($formModel, 'wave-save'), 'post', ['class' => 'cf-inline-form mb-3']) ?>
             <div class="row g-2 align-items-end">
                 <div class="col-md-4">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Name of this wave, for example Wave 2. Respondents see it where the form shows the wave title.')]) ?>
+                    </div>
                     <input type="text" name="title" class="form-control" placeholder="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Wave 2')) ?>">
                 </div>
                 <div class="col-md-3">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Opens') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Opens') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'When this wave can be filled. Only one wave can be open at a time.')]) ?>
+                    </div>
                     <input type="datetime-local" name="opens_at" class="form-control">
                 </div>
                 <div class="col-md-3">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Closes') ?></label>
+                    <div class="cf-label-row">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Closes') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'When filling this wave stops. Leave empty if you will close it yourself.')]) ?>
+                    </div>
                     <input type="datetime-local" name="closes_at" class="form-control">
                 </div>
                 <div class="col-md-2">

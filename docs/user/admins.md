@@ -137,7 +137,16 @@ The forms list uses a left sidebar like Page Builder: **Top-level forms** (unfil
 
 ## What managers can delete
 
-Deleting a form from the list or from the studio **permanently removes** the form and its responses. It is not a recycle-bin hide. Tell creators this before they use **Delete form**.
+**Delete** on the forms list or in the studio moves the form to the **trash**. Answers are kept and the form can be restored. Purging it from the trash removes it for good. Tell creators that **Delete** is a trash action, and that emptying the trash is the permanent step.
+
+### Consent, quotas, loops, and randomisation
+
+Each of these is **off** until you tick it here **and** the form turns it on under **Settings → Features**.
+
+- **Consent** — a published information sheet. Completing a form does not record consent by itself. See [Consent](econsent.md).
+- **Quotas** — targets for who can finish. A full cell keeps the partial answers. See [Quotas](quotas.md).
+- **Loops** — a question group can repeat, and one repeating group can contain one other. See [Loops](loops.md).
+- **Randomisation** — the server shuffles order and can assign an arm. Each response gets its own option order. See [Randomisation](randomisation.md).
 
 ## Headerless fill pages
 

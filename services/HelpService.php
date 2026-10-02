@@ -31,9 +31,14 @@ class HelpService
                 'pages' => [
                     'creators-getting-started',
                     'creators-builder',
+                    'creators-formulas',
                     'creators-csv-import',
                     'creators-from-brief',
                     'creators-settings',
+                    'econsent',
+                    'loops',
+                    'randomisation',
+                    'quotas',
                     'creators-versioning',
                     'creators-response-integrity',
                     'creators-results',
@@ -68,6 +73,12 @@ class HelpService
                 'summary' => Yii::t('ThiscoveryFormsModule.base', 'Question types, pages, logic, piping, variables, and field actions.'),
                 'icon' => 'th-list',
             ],
+            'creators-formulas' => [
+                'file' => 'creators-formulas.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Formulas'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Show and hide rules, calculated questions, and named formulas.'),
+                'icon' => 'calculator',
+            ],
             'creators-csv-import' => [
                 'file' => 'creators-csv-import.md',
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Import questions from CSV'),
@@ -85,6 +96,30 @@ class HelpService
                 'title' => Yii::t('ThiscoveryFormsModule.base', 'Form settings'),
                 'summary' => Yii::t('ThiscoveryFormsModule.base', 'Status, who can take part, export CSV columns, emails, languages, and custom functions.'),
                 'icon' => 'wrench',
+            ],
+            'econsent' => [
+                'file' => 'econsent.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Consent'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Information sheets, signatures, refusal, and withdrawal.'),
+                'icon' => 'check-square-o',
+            ],
+            'loops' => [
+                'file' => 'loops.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Loops'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Repeating question groups, nested repeats, and how answers are stored.'),
+                'icon' => 'repeat',
+            ],
+            'randomisation' => [
+                'file' => 'randomisation.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Randomisation'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Option order, page blocks, arms, and screened-out responses.'),
+                'icon' => 'random',
+            ],
+            'quotas' => [
+                'file' => 'quotas.md',
+                'title' => Yii::t('ThiscoveryFormsModule.base', 'Quotas'),
+                'summary' => Yii::t('ThiscoveryFormsModule.base', 'Targets, full cells, and what happens to the response.'),
+                'icon' => 'tachometer',
             ],
             'creators-versioning' => [
                 'file' => 'creators-versioning.md',

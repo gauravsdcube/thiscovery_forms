@@ -33,7 +33,10 @@ $pageName = static function (string $key) use ($built, $titles): string {
 $problems = LogicAudit::errors($formModel);
 ?>
 <div class="cf-studio__settings cf-studio__settings--route">
-    <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Route map') ?></h3>
+    <div class="cf-label-row">
+        <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Route map') ?></h3>
+        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Read-only map of the saved questions: each page, where its rules can send someone, and logic problems that stop save or publish. Without a rule, a page continues to the next one.')]) ?>
+    </div>
     <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'Where each page can lead. Without a rule, a page continues to the next one. This shows the saved questions.') ?></p>
 
     <?php if ($problems): ?>
