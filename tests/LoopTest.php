@@ -356,6 +356,7 @@ try {
     $check($kept && (string)$kept->value === 'second', 'reducing the number hides n2 and does not renumber it');
     $check((string)$numbered->current_instance_key === 'n2', 'resume keeps the instance key');
 
+    // V3-8: free-text loop answers are never aggregated, and a public dashboard has no loop data.
     $dash = (new DashboardService())->getFormDashboard($form);
     $symptomRow = null;
     foreach ($dash['loops']['questions'] ?? [] as $question) {
@@ -363,11 +364,9 @@ try {
             $symptomRow = $question;
         }
     }
-    $allRepeats = (int)($symptomRow['counts']['*'] ?? 0);
-    $asthmaCount = (int)($symptomRow['counts']['asthma'] ?? 0);
-    $diabetesCount = (int)($symptomRow['counts']['diabetes'] ?? 0);
-    $check($symptomRow !== null && $allRepeats === $asthmaCount + $diabetesCount, 'dashboard adds every repeat');
-    $check($asthmaCount >= 1 && $diabetesCount >= 1 && $asthmaCount !== $allRepeats, 'dashboard can split one instance from the total');
+    $check($symptomRow === null, 'a free-text loop question was shown on the dashboard');
+    $public = (new DashboardService())->getFormDashboard($form, true);
+    $check(empty($public['loops']), 'the public dashboard included loop data');
 
     $roster = ReviewLib::form($space, 'EV F5 roster', [
         'allow_anonymous' => 0,

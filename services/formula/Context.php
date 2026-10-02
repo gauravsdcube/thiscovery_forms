@@ -31,10 +31,42 @@ final class Context
     public array $labels = [];
     /** @var array<string,array<string,mixed>> */
     public array $named = [];
+    public int $steps = 0;
 
     public function __construct()
     {
         $this->arm = Value::empty();
+    }
+
+    /**
+     * Option scores for the browser preview, keyed by variable then code.
+     *
+     * @param FormField[] $fields
+     * @return array<string, array<string, string>>
+     */
+    public static function scoreMap(array $fields): array
+    {
+        $map = [];
+        foreach ($fields as $field) {
+            if (!$field instanceof FormField) {
+                continue;
+            }
+            $name = trim((string)$field->variable);
+            if ($name === '') {
+                continue;
+            }
+            foreach ($field->getChoicePairs() as $pair) {
+                if (!isset($pair['score']) || $pair['score'] === '') {
+                    continue;
+                }
+                $score = Decimal::canonical((string)$pair['score']);
+                if ($score === null) {
+                    continue;
+                }
+                $map[$name][(string)$pair['code']] = $score;
+            }
+        }
+        return $map;
     }
 
     /**

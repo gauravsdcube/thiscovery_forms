@@ -2,7 +2,48 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.30.1 (October 2, 2026)
+
+Critical fixes from the version 3 review (V3-1 to V3-8). Nothing is in production, so no data repair is needed.
+
+- Fix (V3-1): the fill page applies formula go-to, go-to-end and skip-page rules. It previously ignored them while the server applied them, so the route shown and the route stored disagreed (LOG-1).
+- Fix (V3-2): on a fully anonymous form, completion and action emails are logged without the answer id and with the calendar date only, and the member's weight is not copied onto the answer (GOV-2).
+- Fix (V3-3): calculated values are always calculated by the server. A posted value is discarded before any formula runs, calculated questions run in dependency order, and a cycle blocks publishing.
+- Fix (V3-4): a number can have at most 30 whole digits, in PHP and in the browser. The formula preview needs POST, checks form management and is rate limited.
+- Fix (V3-5): shuffles and arm draws use an unbiased SHA-256 stream with rejection sampling, and each question's seed is independent (HMAC-SHA256). Every order is now reachable and orders are no longer correlated across questions.
+- Fix (V3-6): block, stratified-block and rotation allocation lock the allocation row before reading it, so parallel starts stay balanced and cannot collide.
+- Fix (V3-7): editing a completed response never counts it again for a quota or turns it into over-quota. A completed questionnaire always records outcome complete.
+- Fix (V3-8): dashboards aggregate only structured loop answers and never show roster names. The public dashboard has no loop breakdown.
+- Tests: `tests/standalone/run.php` runs pure-PHP checks without HumHub (calculated fields, number limits, randomisation statistics). `AllocationConcurrencyTest` and `QuotaEditTest` run on the HumHub test server.
+
+### Studio
+
+- Saving a form shows “Form saved.” in the status bar and on the studio page.
+- Settings are grouped in the studio navigation, and each group can be collapsed.
+- Incomplete responses are kept unless that setting is turned off.
+- Status stays locked until an edition has been published.
+- Removing a question asks for confirmation.
+
 ## 1.30.0
+
+### Formula release
+
+- A label typed as an expected value is saved as the option code, and an unknown value is rejected.
+- A fully anonymous form cannot be opened or published when a formula uses a panel value. Identity meta keys are refused on every form.
+- Formula text, depth, node count, and evaluation steps share one limits check.
+- The browser preview implements score_of.
+- The quota editor describes a formula.
+
+### High findings
+
+- A restored snapshot no longer binds two questions to the same live field.
+- An imported question whose variable is already on the form gets its own variable, and its rule points at that question.
+- Clone and restore rewrite `{{answer:id}}` and `{{field:id}}` to the new question ids.
+- Editing an answer records the old value, the new value, the actor, and the reason.
+- Deleting a user keeps the research answers, clears identity, files, and panel contact, and records the erasure.
+- Similarity compares choice values, not question ids.
+- Best scores positive and worst scores negative. A multi-select grid chart uses the column code.
+- Each grid choice has an accessible name from its row and column. A choice question is a group labelled by the question, and required is exposed.
 
 ### Formulas
 

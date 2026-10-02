@@ -5,6 +5,12 @@
     flex-direction: column;
 }
 
+.cf-studio__notice {
+    margin: 0;
+    border-radius: 0;
+    flex-shrink: 0;
+}
+
 .cf-studio__content {
     display: flex;
     flex-direction: column;
@@ -214,6 +220,16 @@
     min-height: 0;
 }
 
+.cf-settings-main > .cf-set-toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    margin: 0;
+    padding: .35rem 1.75rem;
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+}
+
 .cf-studio__workspace {
     display: grid;
     grid-template-columns: 240px minmax(0, 1fr);
@@ -393,9 +409,22 @@
 }
 
 .cf-settings-pane__title {
-    margin: 0 0 1rem;
+    margin: 0 0 .35rem;
     font-size: 1.2rem;
     font-weight: 650;
+}
+
+.cf-settings-pane__lead {
+    margin: 0 0 1rem;
+    color: #64748b;
+    font-size: .88rem;
+    line-height: 1.4;
+}
+
+.cf-set-acc .cf-export-cols {
+    margin-top: .85rem;
+    border: 0;
+    padding: 0;
 }
 
 .cf-export-cols {
@@ -445,6 +474,8 @@
     padding: .05rem .4rem;
     margin-left: .15rem;
 }
+
+.cf-end-block {
     border: 1px solid #e5e7eb;
     border-radius: 10px;
     padding: 1rem 1.1rem 1.15rem;

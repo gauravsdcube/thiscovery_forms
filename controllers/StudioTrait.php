@@ -103,15 +103,15 @@ trait StudioTrait
             if (!$edition) {
                 return;
             }
-            Yii::$app->session->setFlash(
-                'success',
-                Yii::t(
-                    'ThiscoveryFormsModule.base',
-                    'Saved and published edition #{n}. Participants now see this version.',
-                    ['n' => $edition ? $edition->edition_number : '?']
-                )
+            $publishedMessage = Yii::t(
+                'ThiscoveryFormsModule.base',
+                'Saved and published edition #{n}. Participants now see this version.',
+                ['n' => $edition ? $edition->edition_number : '?']
             );
+            $this->view->success($publishedMessage);
+            Yii::$app->session->setFlash('success', $publishedMessage);
         } catch (\Throwable $e) {
+            $this->view->error($e->getMessage());
             Yii::$app->session->setFlash('error', $e->getMessage());
         }
     }

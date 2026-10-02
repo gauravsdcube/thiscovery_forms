@@ -11,6 +11,11 @@ use yii\web\NotFoundHttpException;
 
 class QuotaController extends ContentContainerController
 {
+    /**
+     * Global forms have no space. The same actions also run inside a space.
+     */
+    public $requireContainer = false;
+
     public function actionIndex($id)
     {
         $form = $this->findForm($id);
@@ -45,7 +50,7 @@ class QuotaController extends ContentContainerController
                     Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'A target change needs a reason.'));
                 }
             }
-            return $this->redirect($form->content->container->createUrl('/thiscovery-forms/quota/index', ['id' => $form->id]));
+            return $this->redirect($form->actionUrl(['/thiscovery-forms/quota/index', 'id' => $form->id]));
         }
         return $this->render('index', [
             'formModel' => $form,
@@ -69,10 +74,7 @@ class QuotaController extends ContentContainerController
             $host = trim((string)Yii::$app->request->post('host', ''));
             if ($host !== '' && Yii::$app->request->post('rules_json', null) === null) {
                 $svc->addHost($form, $host);
-                return $this->redirect($form->content->container->createUrl('/thiscovery-forms/quota/edit', [
-                    'id' => $form->id,
-                    'quotaId' => $quotaId,
-                ]));
+                return $this->redirect($form->actionUrl(['/thiscovery-forms/quota/edit', 'id' => $form->id, 'quotaId' => $quotaId]));
             }
             if ($host !== '') {
                 $svc->addHost($form, $host);
@@ -98,17 +100,14 @@ class QuotaController extends ContentContainerController
             ]);
             if (!$saved) {
                 Yii::$app->session->setFlash('error', Yii::t('ThiscoveryFormsModule.base', 'The quota could not be saved. A target change needs a reason.'));
-                return $this->redirect($form->content->container->createUrl('/thiscovery-forms/quota/edit', [
-                    'id' => $form->id,
-                    'quotaId' => $quotaId,
-                ]));
+                return $this->redirect($form->actionUrl(['/thiscovery-forms/quota/edit', 'id' => $form->id, 'quotaId' => $quotaId]));
             }
             $errors = $svc->authoringErrors($form);
             $mine = array_values(array_filter($errors, static fn($message) => str_contains($message, (string)$saved['name'])));
             if ($mine) {
                 Yii::$app->session->setFlash('error', implode(' ', $mine));
             }
-            return $this->redirect($form->content->container->createUrl('/thiscovery-forms/quota/index', ['id' => $form->id]));
+            return $this->redirect($form->actionUrl(['/thiscovery-forms/quota/index', 'id' => $form->id]));
         }
         return $this->render('edit', [
             'formModel' => $form,
@@ -119,7 +118,11 @@ class QuotaController extends ContentContainerController
 
     protected function findForm($id): CustomForm
     {
-        $form = CustomForm::find()->contentContainer($this->contentContainer)->andWhere(['custom_form.id' => $id])->one();
+        $query = CustomForm::find()->andWhere(['custom_form.id' => $id]);
+        if ($this->contentContainer) {
+            $query->contentContainer($this->contentContainer);
+        }
+        $form = $query->one();
         if (!$form) {
             throw new NotFoundHttpException();
         }

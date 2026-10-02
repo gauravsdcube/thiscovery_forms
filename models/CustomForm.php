@@ -143,7 +143,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public $hide_humhub_header = 0;
 
     /** @var int|bool Keep incomplete responses for dashboard/export */
-    public $keep_partials = 0;
+    public $keep_partials = 1;
 
     /** @var string none|existing|create */
     public $enrol_panel_mode = 'none';
@@ -243,7 +243,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['allow_edit'], 'default', 'value' => 1],
             [['allow_resume'], 'default', 'value' => 0],
             [['is_template'], 'default', 'value' => 0],
-            [['public_dashboard_enabled', 'hide_humhub_header', 'keep_partials'], 'default', 'value' => 0],
+            [['public_dashboard_enabled', 'hide_humhub_header'], 'default', 'value' => 0],
+            [['keep_partials'], 'default', 'value' => 1],
             [['source_template_id', 'consensus_threshold'], 'integer'],
             [['folder_id'], 'default', 'value' => null],
             [['folder_id'], 'integer'],
@@ -604,6 +605,29 @@ class CustomForm extends ContentActiveRecord implements Searchable
         } catch (\Throwable $e) {
             return empty($this->content->contentcontainer_id ?? null);
         }
+    }
+
+    /**
+     * A module route for this form. A space form stays in its space. A global form uses the site route.
+     *
+     * @param array $route
+     */
+    public function actionUrl(array $route): string
+    {
+        $container = null;
+        if ($this->content && !$this->content->isNewRecord) {
+            try {
+                $container = $this->content->container;
+            } catch (\Throwable $e) {
+                $container = null;
+            }
+        }
+        if ($container) {
+            $params = $route;
+            $path = (string)array_shift($params);
+            return $container->createUrl($path, $params);
+        }
+        return \yii\helpers\Url::to($route);
     }
 
     public function isOpen(): bool
@@ -1166,7 +1190,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->style = is_array($style) ? $style : [];
         $this->public_dashboard_enabled = $this->getSetting('public_dashboard_enabled', false) ? 1 : 0;
         $this->hide_humhub_header = $this->getSetting('hide_humhub_header', false) ? 1 : 0;
-        $this->keep_partials = $this->getSetting('keep_partials', false) ? 1 : 0;
+        $this->keep_partials = $this->getSetting('keep_partials', true) ? 1 : 0;
         $this->enrol_panel_mode = (string)$this->getSetting('enrol_panel_mode', self::ENROL_PANEL_NONE) ?: self::ENROL_PANEL_NONE;
         $this->enrol_panel_id = (int)$this->getSetting('enrol_panel_id', 0);
         $this->enrol_panel_title = (string)$this->getSetting('enrol_panel_title', '');
@@ -1264,28 +1288,32 @@ class CustomForm extends ContentActiveRecord implements Searchable
     }
 
     /**
-     * A1: cannot set Open unless a published edition exists.
+     * Status stays as it is until a published edition exists.
      */
     public function validatePublishedBeforeOpen($attribute): void
     {
-        if ((int)$this->$attribute !== self::STATUS_OPEN) {
-            return;
-        }
         if ($this->isTemplate()) {
             return;
         }
         if (!\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()) {
             return;
         }
-        $svc = new \humhub\modules\thiscoveryForms\services\FormVersionService();
-        if ($svc->hasPublishedEdition($this)) {
+        if ((new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($this)) {
+            return;
+        }
+        $status = (int)$this->$attribute;
+        if ($this->isNewRecord) {
+            if ($status === self::STATUS_DRAFT) {
+                return;
+            }
+        } elseif ($status === (int)$this->getOldAttribute($attribute)) {
             return;
         }
         $this->addError(
             $attribute,
             Yii::t(
                 'ThiscoveryFormsModule.base',
-                'Publish an edition on the Versions tab before setting status to Open.'
+                'Publish an edition on the Versions tab before changing the form status.'
             )
         );
     }
@@ -1655,6 +1683,14 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->persistEconsentFromRequest();
         $this->persistQuotasFromRequest();
         $this->persistLoopsFromRequest();
+
+        if (!$insert && (int)$this->status === self::STATUS_OPEN && $this->id) {
+            $policy = \humhub\modules\thiscoveryForms\services\formula\FormulaPolicy::authoringErrors($this);
+            if ($policy) {
+                $this->addError('status', $policy[0]);
+                return false;
+            }
+        }
 
         return true;
     }
@@ -2553,6 +2589,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
 
         // Second pass: logic, carry-forward, page-break branch field keys
+        $choiceFields = FormField::find()->where(['form_id' => $this->id])->all();
+        $choiceNotices = [];
         foreach ($rows as $tempKey => $row) {
             if (!is_array($row)) {
                 continue;
@@ -2578,7 +2616,23 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $goto = (string)($row['logic_goto'] ?? '');
             if ($formula !== '' || array_key_exists('logic_formula', $row)) {
                 try {
+                    $rewritten = \humhub\modules\thiscoveryForms\services\formula\FormulaChoiceCodes::rewrite($formula, $choiceFields);
+                    $formula = $rewritten['text'];
+                    $choiceNotices = array_merge($choiceNotices, $rewritten['notices']);
                     $field->setLogic(LogicEngine::fromFormula($formula, (string)($row['logic_action'] ?? 'show'), $goto));
+                } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
+                    Yii::$app->session->setFlash('error', $e->getMessage());
+                    return false;
+                }
+            }
+            if ($field->type === FormField::TYPE_CALCULATED) {
+                $calc = $field->getFormulaConfig();
+                try {
+                    $rewritten = \humhub\modules\thiscoveryForms\services\formula\FormulaChoiceCodes::rewrite($calc['formula'], $choiceFields);
+                    $choiceNotices = array_merge($choiceNotices, $rewritten['notices']);
+                    if ($rewritten['text'] !== $calc['formula']) {
+                        $field->setFormulaConfig($rewritten['text'], $calc['result'], $calc['display'], $calc['places']);
+                    }
                 } catch (\humhub\modules\thiscoveryForms\services\formula\FormulaException $e) {
                     Yii::$app->session->setFlash('error', $e->getMessage());
                     return false;
@@ -2620,6 +2674,22 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
 
             $field->save(false);
+        }
+        if ($choiceNotices) {
+            Yii::$app->session->addFlash('info', implode(' ', array_values(array_unique($choiceNotices))));
+        }
+
+        $idMap = \humhub\modules\thiscoveryForms\services\FieldRefRewriter::mapFromCreated($createdMap);
+        if ($idMap !== []) {
+            foreach (array_unique(array_map('intval', $createdMap)) as $mappedId) {
+                $mapped = FormField::findOne($mappedId);
+                if (!$mapped) {
+                    continue;
+                }
+                \humhub\modules\thiscoveryForms\services\FieldRefRewriter::rewriteField($mapped, $idMap);
+                $mapped->save(false);
+            }
+            \humhub\modules\thiscoveryForms\services\FieldRefRewriter::rewriteForm($this, $idMap);
         }
 
         foreach ($existing as $id => $field) {
@@ -2684,6 +2754,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
         foreach ((new \humhub\modules\thiscoveryForms\services\RandomisationService())->authoringErrors($this) as $message) {
             $this->addError('title', $message);
+        }
+        if ((int)$this->status === self::STATUS_OPEN) {
+            foreach (\humhub\modules\thiscoveryForms\services\formula\FormulaPolicy::authoringErrors($this) as $message) {
+                $this->addError('title', $message);
+            }
         }
         if ($this->hasErrors('title')) {
             return false;

@@ -123,7 +123,12 @@ $siteDefaultOn = !empty($defaults['enabled']);
 <p class="help-block">
     <?= Yii::t('ThiscoveryFormsModule.base', 'Quality uses several signals together. A single issue such as a fast completion, a shared IP, or one failed attention check does not on its own mark a response as fraudulent. Use the ? next to each setting for a short explanation.') ?>
 </p>
-<h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Access mode') ?></h5>
+<details class="cf-set-acc">
+    <summary>
+        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Access mode') ?></span>
+        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Who can open the survey.') ?></span>
+    </summary>
+    <div class="cf-set-acc__body">
 <div class="row g-3">
     <div class="col-md-6">
         <div class="cf-field">
@@ -139,7 +144,14 @@ $siteDefaultOn = !empty($defaults['enabled']);
     </div>
 </div>
 
-<h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA') ?></h5>
+</div>
+</details>
+<details class="cf-set-acc">
+    <summary>
+        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA') ?></span>
+        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Verification on submit, and before the form opens.') ?></span>
+    </summary>
+    <div class="cf-set-acc__body">
 <p class="help-block">
     <?= Yii::t('ThiscoveryFormsModule.base', 'Turn CAPTCHA on or off here for this site or survey. Works even when integrity scoring is off. HumHub Altcha needs no external keys. Cloudflare Turnstile is optional and uses keys from Administration only.') ?>
 </p>
@@ -218,12 +230,19 @@ $siteDefaultOn = !empty($defaults['enabled']);
         </div>
     </div>
 <?php endif; ?>
+</div>
+</details>
 
 <div data-cf-integrity-when-on>
 <p class="help-block text-muted" data-cf-integrity-quality-hint style="display:none">
     <?= Yii::t('ThiscoveryFormsModule.base', 'Turn on “Enable integrity checks” above to configure quality scoring options.') ?>
 </p>
-<h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Quality checks') ?></h5>
+<details class="cf-set-acc">
+    <summary>
+        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Quality checks') ?></span>
+        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Bot, speed, duplicates, attention, and scoring switches.') ?></span>
+    </summary>
+    <div class="cf-set-acc__body">
 <div class="row g-3 mt-1">
     <?php foreach ($features as $key => $meta): ?>
         <div class="col-md-6">
@@ -235,8 +254,15 @@ $siteDefaultOn = !empty($defaults['enabled']);
         </div>
     <?php endforeach; ?>
 </div>
+</div>
+</details>
 
-<h5 class="mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Thresholds and weights') ?></h5>
+<details class="cf-set-acc">
+    <summary>
+        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Thresholds and weights') ?></span>
+        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'How many points each signal can subtract, and the review cut-offs.') ?></span>
+    </summary>
+    <div class="cf-set-acc__body">
 <p class="help-block">
     <?= Yii::t('ThiscoveryFormsModule.base', 'Weights are how many points that category can subtract from a starting score of 100. Thresholds decide Trusted versus Review versus Suspicious. Leave a box empty on a survey to use the site default.') ?>
 </p>
@@ -322,4 +348,6 @@ $siteDefaultOn = !empty($defaults['enabled']);
         </div>
     <?php endforeach; ?>
 </div>
+</div>
+</details>
 </div>

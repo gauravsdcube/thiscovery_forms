@@ -59,7 +59,7 @@ foreach ($quotas as $item) {
         </div>
         <div class="form-group">
             <label><?= Yii::t('ThiscoveryFormsModule.base', 'Rules') ?></label>
-            <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'The same all/any tree as question logic. A panel factor uses source panel. An arm factor uses fieldKey arm.') ?></p>
+            <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'A formula, for example [arm] = "pictogram" or [panel:site] = "north". A fully anonymous form cannot use a panel value.') ?></p>
             <?= Html::textarea('rules_json', (string)($quota['rules_json'] ?? ''), ['class' => 'form-control', 'rows' => 8]) ?>
         </div>
         <div class="form-group">

@@ -41,6 +41,32 @@ class RankedQuestionType extends BaseQuestionType
         if (!is_array($decoded)) {
             return [];
         }
+        if (array_key_exists('best', $decoded) || array_key_exists('worst', $decoded)) {
+            $cells = [];
+            $best = $decoded['best'] ?? '';
+            $worst = $decoded['worst'] ?? '';
+            if (!is_array($best) && (string)$best !== '') {
+                $code = (string)$best;
+                $cells[] = [
+                    'bucket_key' => mb_substr($code, 0, 190),
+                    'bucket_label' => mb_substr($this->optionLabel($questionMeta, $code), 0, 255),
+                    'metric' => 'rank_score',
+                    'value' => 1.0,
+                    'n' => 1,
+                ];
+            }
+            if (!is_array($worst) && (string)$worst !== '') {
+                $code = (string)$worst;
+                $cells[] = [
+                    'bucket_key' => mb_substr($code, 0, 190),
+                    'bucket_label' => mb_substr($this->optionLabel($questionMeta, $code), 0, 255),
+                    'metric' => 'rank_score',
+                    'value' => -1.0,
+                    'n' => 1,
+                ];
+            }
+            return $cells;
+        }
         $n = count($decoded);
         $cells = [];
         $i = 0;

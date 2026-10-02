@@ -187,6 +187,12 @@ class EmailTemplateService
         $row->kind = (string)($meta['kind'] ?? FormEmailSend::KIND_INVITE);
         $row->actor_key = isset($meta['actor_key']) ? substr((string)$meta['actor_key'], 0, 64) : null;
         $row->email = $to;
+        if (!empty($meta['anonymous'])) {
+            // Anonymous forms: no answer link, and only the calendar date, so a send
+            // cannot be matched to an answer by time.
+            $row->answer_id = null;
+            $row->created_at = date('Y-m-d') . ' 00:00:00';
+        }
         $row->save(false);
     }
 
@@ -247,24 +253,49 @@ class EmailTemplateService
         if (!$template) {
             return false;
         }
-        if ($this->hasSent(FormEmailSend::KIND_COMPLETION, ['form_id' => $form->id, 'answer_id' => $answer->id])) {
+        $anonymous = self::isAnonymousForm($form);
+        if ($anonymous) {
+            // Never key the log on the answer: that would link the person to it.
+            $sentWhere = [
+                'form_id' => $form->id,
+                'wave_id' => $answer->wave_id ?: null,
+                'actor_key' => \humhub\modules\thiscoveryForms\services\FormActionService::anonymousActorKey($member),
+            ];
+        } else {
+            $sentWhere = ['form_id' => $form->id, 'answer_id' => $answer->id];
+        }
+        if ($this->hasSent(FormEmailSend::KIND_COMPLETION, $sentWhere)) {
             return false;
         }
         $to = $this->emailFromAnswer($form, $answer, $member, $answer->getValuesMap());
         if ($to === '') {
             return false;
         }
+        $meta = [
+            'form_id' => $form->id,
+            'member_id' => $member->id ?? null,
+            'answer_id' => $anonymous ? null : $answer->id,
+            'kind' => FormEmailSend::KIND_COMPLETION,
+        ];
+        if ($anonymous) {
+            $meta['wave_id'] = $answer->wave_id ?: null;
+            $meta['actor_key'] = $sentWhere['actor_key'];
+            $meta['anonymous'] = true;
+        }
         return $this->sendTemplate(
             $template,
             $to,
             $this->varsFor($form, $member, $answer->wave ?? null),
-            [
-                'form_id' => $form->id,
-                'member_id' => $member->id ?? null,
-                'answer_id' => $answer->id,
-                'kind' => FormEmailSend::KIND_COMPLETION,
-            ]
+            $meta
         );
+    }
+
+    /**
+     * A fully anonymous form whose identity mode is enforced. Nothing may link a person to an answer.
+     */
+    public static function isAnonymousForm(CustomForm $form): bool
+    {
+        return \humhub\modules\thiscoveryForms\Module::identityEnforced() && $form->hidesIdentityFromManagers();
     }
 
     public function dispatchDueReminders(): void

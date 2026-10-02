@@ -1339,7 +1339,6 @@ class IntegrityService
     {
         $weight = (float)($cfg['weight_similarity'] ?? 5);
         $threshold = max(50, min(99, (int)($cfg['similarity_threshold'] ?? 90)));
-        $sig = $this->answerSignature($form, $values);
         $texts = $this->answerTexts($form, $values);
         $flags = [];
         $similarIds = [];
@@ -1354,11 +1353,7 @@ class IntegrityService
         /** @var FormAnswer $other */
         foreach ($others as $other) {
             $omap = $other->getValuesMap();
-            $osig = $this->answerSignature($form, $omap);
-            $choiceSim = 0;
-            if ($sig !== '' && $osig !== '') {
-                similar_text($sig, $osig, $choiceSim);
-            }
+            $choiceSim = $this->choiceSimilarity($form, $values, $omap);
             $textSim = 0;
             $otexts = $this->answerTexts($form, $omap);
             foreach ($texts as $i => $t) {
@@ -1486,6 +1481,35 @@ class IntegrityService
         return $updated > 0;
     }
 
+    /**
+     * Share of choice questions that hold the same value. The question id is not part of the comparison.
+     */
+    public function choiceSimilarity(CustomForm $form, array $left, array $right): float
+    {
+        $compared = 0;
+        $same = 0;
+        foreach ($form->getAllFields()->all() as $field) {
+            if (!$field->collectsAnswer() || in_array($field->type, [FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_HTML, FormField::TYPE_FILE, FormField::TYPE_MAP], true)) {
+                continue;
+            }
+            $a = $left[$field->id] ?? $left[(string)$field->id] ?? '';
+            $b = $right[$field->id] ?? $right[(string)$field->id] ?? '';
+            $a = is_array($a) ? json_encode($a) : (string)$a;
+            $b = is_array($b) ? json_encode($b) : (string)$b;
+            if ($a === '' && $b === '') {
+                continue;
+            }
+            $compared++;
+            if ($a === $b) {
+                $same++;
+            }
+        }
+        if ($compared < 1) {
+            return 0.0;
+        }
+        return round(100 * $same / $compared, 2);
+    }
+
     private function answerSignature(CustomForm $form, array $values): string
     {
         $parts = [];
@@ -1494,7 +1518,7 @@ class IntegrityService
                 continue;
             }
             $v = $values[$field->id] ?? '';
-            $parts[] = $field->id . ':' . (is_array($v) ? json_encode($v) : (string)$v);
+            $parts[] = is_array($v) ? json_encode($v) : (string)$v;
         }
         return implode('|', $parts);
     }

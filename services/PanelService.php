@@ -558,13 +558,15 @@ class PanelService
         if ($answer->isTest()) {
             return;
         }
-        if ($knownMember && !$knownMember->isNewRecord) {
+        $anonymous = \humhub\modules\thiscoveryForms\Module::identityEnforced() && $form->hidesIdentityFromManagers();
+        // A member's weight can be unique, so it is not copied onto an anonymous answer.
+        if (!$anonymous && $knownMember && !$knownMember->isNewRecord) {
             $answer->weight = (float)$knownMember->weight;
             if (!$answer->isNewRecord) {
                 $answer->updateAttributes(['weight' => $answer->weight]);
             }
         }
-        if (\humhub\modules\thiscoveryForms\Module::identityEnforced() && $form->hidesIdentityFromManagers()) {
+        if ($anonymous) {
             $this->recordAnonymousCompletion($form, $answer, $knownMember);
             $this->enrolWithoutAnswer($form, $knownMember);
             (new EmailTemplateService())->sendCompletionEmail($form, $answer, $knownMember);

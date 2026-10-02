@@ -857,6 +857,7 @@ class SubmitForm extends Model
                 if ($this->consentRefusedSort !== null && (int)$field->sort_order > (int)$this->consentRefusedSort) {
                     foreach ($existingFields as $slot => $existingCell) {
                         if (str_starts_with((string)$slot, $fieldId . ':')) {
+                            $this->auditCell($answer, $existingCell, null);
                             $existingCell->delete();
                         }
                     }
@@ -878,15 +879,20 @@ class SubmitForm extends Model
                         $cell = $posted[$code];
                         if ($this->isEmptyValue($cell)) {
                             if (isset($existingFields[$slot])) {
+                                $this->auditCell($answer, $existingFields[$slot], null);
                                 $existingFields[$slot]->delete();
                             }
                             continue;
                         }
                         $af = $existingFields[$slot] ?? new FormAnswerField();
+                        $previous = $af->isNewRecord ? null : (string)$af->value;
                         $af->answer_id = $answer->id;
                         $af->field_id = $fieldId;
                         $af->instance_key = $code;
                         $af->value = $this->encodeValue($cell);
+                        if ($previous !== null) {
+                            $this->auditCell($answer, $af, (string)$af->value, $previous);
+                        }
                         if (!$af->save()) {
                             $transaction->rollBack();
                             FormAnswerField::discardDeferredFiles();
@@ -903,6 +909,7 @@ class SubmitForm extends Model
 
                 if (!$visible || $this->isEmptyValue($value)) {
                     if (isset($existingFields[$fieldId . ':'])) {
+                        $this->auditCell($answer, $existingFields[$fieldId . ':'], null);
                         $existingFields[$fieldId . ':']->delete();
                     }
                     continue;
@@ -913,12 +920,16 @@ class SubmitForm extends Model
                 }
 
                 $af = $existingFields[$fieldId . ':'] ?? new FormAnswerField();
+                $previous = $af->isNewRecord ? null : (string)$af->value;
                 $af->answer_id = $answer->id;
                 $af->field_id = $fieldId;
                 if ($instanceColumn) {
                     $af->instance_key = '';
                 }
                 $af->value = $this->encodeValue($value);
+                if ($previous !== null) {
+                    $this->auditCell($answer, $af, (string)$af->value, $previous);
+                }
                 $af->justification = $field->supportsJustification()
                     ? (trim((string)($this->justifications[$field->id] ?? '')) ?: null)
                     : null;
@@ -1308,7 +1319,7 @@ class SubmitForm extends Model
             return FormAnswer::OUTCOME_OVER_QUOTA;
         }
         if (!\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
-            return (string)$answer->outcome;
+            return (string)$answer->outcome !== '' ? (string)$answer->outcome : FormAnswer::OUTCOME_COMPLETE;
         }
         $engine = new \humhub\modules\thiscoveryForms\services\LogicEngine();
         foreach ($this->form->fields as $field) {
@@ -1323,10 +1334,22 @@ class SubmitForm extends Model
                 return FormAnswer::OUTCOME_SCREENED_OUT;
             }
         }
-        if (\humhub\modules\thiscoveryForms\services\RandomisationService::active($this->form)) {
-            return FormAnswer::OUTCOME_COMPLETE;
-        }
-        return (string)$answer->outcome;
+        // Always record a completed questionnaire explicitly, whether or not randomisation
+        // is on, so later saves can tell it was already counted (V3-7).
+        return (string)$answer->outcome !== '' ? (string)$answer->outcome : FormAnswer::OUTCOME_COMPLETE;
+    }
+
+    private function auditCell(FormAnswer $answer, FormAnswerField $cell, ?string $newValue, ?string $oldValue = null): void
+    {
+        $reason = trim((string)Yii::$app->request->post('change_reason', 'edit'));
+        \humhub\modules\thiscoveryForms\services\AnswerAudit::record(
+            $answer,
+            (int)$cell->field_id,
+            (string)($cell->instance_key ?? ''),
+            $oldValue ?? (string)$cell->value,
+            $newValue,
+            $reason !== '' ? $reason : 'edit'
+        );
     }
 
     private function isOnAnswerPath(FormField $field): bool

@@ -4,7 +4,9 @@ namespace humhub\modules\thiscoveryForms\controllers;
 
 use humhub\modules\content\components\ContentContainerController;
 use humhub\modules\thiscoveryForms\models\CustomForm;
+use humhub\modules\thiscoveryForms\permissions\ManageGlobalForm;
 use humhub\modules\thiscoveryForms\permissions\ViewConsentRecords;
+use humhub\modules\user\components\PermissionManager;
 use humhub\modules\thiscoveryForms\services\ConsentService;
 use Yii;
 use yii\web\ForbiddenHttpException;
@@ -12,6 +14,11 @@ use yii\web\NotFoundHttpException;
 
 class ConsentController extends ContentContainerController
 {
+    /**
+     * Global forms have no space. The same actions also run inside a space.
+     */
+    public $requireContainer = false;
+
     protected function getAccessRules()
     {
         return [
@@ -24,13 +31,12 @@ class ConsentController extends ContentContainerController
         $form = $this->findForm($id);
         $this->requireManage($form);
         $svc = new ConsentService();
+        $canViewRecords = $this->canViewRecords($form);
         return $this->render('index', [
             'formModel' => $form,
             'documents' => $svc->documents((int)$form->id),
-            'records' => $form->content->container->getPermissionManager()->can(ViewConsentRecords::class)
-                ? $svc->records((int)$form->id)
-                : [],
-            'canViewRecords' => $form->content->container->getPermissionManager()->can(ViewConsentRecords::class),
+            'records' => $canViewRecords ? $svc->records((int)$form->id) : [],
+            'canViewRecords' => $canViewRecords,
         ]);
     }
 
@@ -49,7 +55,8 @@ class ConsentController extends ContentContainerController
         if (Yii::$app->request->isPost) {
             if (Yii::$app->request->post('new_version') && $document) {
                 $next = $svc->newVersion($form, (int)$document['id']);
-                return $this->redirect($form->content->container->createUrl('/thiscovery-forms/consent/edit', [
+                return $this->redirect($form->actionUrl([
+                    '/thiscovery-forms/consent/edit',
                     'id' => $form->id,
                     'documentId' => $next,
                 ]));
@@ -67,7 +74,7 @@ class ConsentController extends ContentContainerController
                     Yii::$app->session->setFlash('error', implode(' ', $errors));
                 }
             }
-            return $this->redirect($form->content->container->createUrl('/thiscovery-forms/consent/index', ['id' => $form->id]));
+            return $this->redirect($form->actionUrl(['/thiscovery-forms/consent/index', 'id' => $form->id]));
         }
         return $this->render('edit', [
             'formModel' => $form,
@@ -79,7 +86,7 @@ class ConsentController extends ContentContainerController
     public function actionCertificate($id, $recordId)
     {
         $form = $this->findForm($id);
-        if (!$form->content->container->getPermissionManager()->can(ViewConsentRecords::class)) {
+        if (!$this->canViewRecords($form)) {
             throw new ForbiddenHttpException();
         }
         $svc = new ConsentService();
@@ -111,7 +118,7 @@ class ConsentController extends ContentContainerController
             $reason = trim((string)Yii::$app->request->post('reason', ''));
             if ($token !== '') {
                 $done = $svc->withdrawByToken($token, $scope, $reason);
-            } elseif ($recordId > 0 && $form->canManage() && $form->content->container->getPermissionManager()->can(ViewConsentRecords::class)) {
+            } elseif ($recordId > 0 && $form->canManage() && $this->canViewRecords($form)) {
                 foreach ($svc->records((int)$form->id) as $row) {
                     if ((int)$row['id'] === $recordId) {
                         $svc->withdrawRecord($row, $scope, $reason, (int)Yii::$app->user->id ?: null);
@@ -129,11 +136,28 @@ class ConsentController extends ContentContainerController
 
     protected function findForm($id): CustomForm
     {
-        $form = CustomForm::find()->contentContainer($this->contentContainer)->andWhere(['custom_form.id' => $id])->one();
+        $query = CustomForm::find()->andWhere(['custom_form.id' => $id]);
+        if ($this->contentContainer) {
+            $query->contentContainer($this->contentContainer);
+        }
+        $form = $query->one();
         if (!$form) {
             throw new NotFoundHttpException();
         }
         return $form;
+    }
+
+    protected function canViewRecords(CustomForm $form): bool
+    {
+        $user = Yii::$app->user->getIdentity();
+        if (!$user) {
+            return false;
+        }
+        if ($form->isGlobal()) {
+            return (new PermissionManager(['subject' => $user]))->can(ManageGlobalForm::class);
+        }
+        $container = $form->content->container ?? null;
+        return $container && $container->getPermissionManager($user)->can(ViewConsentRecords::class);
     }
 
     protected function requireManage(CustomForm $form): void

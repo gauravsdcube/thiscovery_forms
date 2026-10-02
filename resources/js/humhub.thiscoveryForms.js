@@ -975,16 +975,18 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         // Top tabs: Form builder | Settings. Settings has a left rail of sections.
         var formPanes = {
-            basics: 1, end: 1, access: 1, display: 1, sharing: 1,
-            enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
+            basics: 1, end: 1, access: 1, display: 1,
+            consent: 1, loops: 1, randomisation: 1, quotas: 1,
+            sharing: 1, enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
             integrity: 1, css: 1, share: 1, export: 1
         };
         var extraSections = {
             panel: 1, rounds: 1, approval: 1, translations: 1, versions: 1
         };
         var footerSections = {
-            basics: 1, end: 1, access: 1, display: 1, sharing: 1,
-            enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
+            basics: 1, end: 1, access: 1, display: 1,
+            consent: 1, loops: 1, randomisation: 1, quotas: 1,
+            sharing: 1, enrol: 1, email: 1, languages: 1, actions: 1, consensus: 1,
             integrity: 1, css: 1, share: 1, export: 1
         };
 
@@ -1952,6 +1954,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             e.preventDefault();
+            e.stopPropagation();
             var $row = $(this).closest('.thiscovery-forms-field-row');
             if ($row.hasClass('is-expanded')) {
                 $row.addClass('is-collapsed').removeClass('is-expanded');
@@ -1972,10 +1975,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             refreshConditionOptions();
         });
 
-        $root.on('click', '[data-cf-remove-field]', function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var $row = $(this).closest('.thiscovery-forms-field-row');
+        var removeFieldRow = function ($row) {
             var type = String($row.attr('data-cf-type') || '');
             if (type === 'question_group') {
                 var $body = $row.find('[data-cf-group-body]').first();
@@ -1990,6 +1990,35 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             refreshIndexes();
             refreshConditionOptions();
+        };
+
+        $root.on('click', '[data-cf-remove-field]', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            var $row = $(this).closest('.thiscovery-forms-field-row');
+            if ($row.data('cf-remove-pending')) {
+                return;
+            }
+            var label = $.trim($row.children('.cf-field-card__header').find('[data-cf-title]').first().text());
+            if (!label) {
+                label = module.config.untitled || 'Untitled field';
+            }
+            var template = module.config.removeFieldConfirm || 'Remove "{label}" from this form?';
+            var safeLabel = $('<div>').text(label).html();
+            var msg = template.split('{label}').join(safeLabel);
+            $row.data('cf-remove-pending', true);
+            require('ui.modal').confirm({
+                header: module.config.removeFieldHeader || 'Remove this question?',
+                body: msg,
+                confirmText: module.config.removeFieldConfirmText || 'Remove'
+            }).then(function (confirmed) {
+                $row.removeData('cf-remove-pending');
+                if (confirmed) {
+                    removeFieldRow($row);
+                }
+            }).catch(function () {
+                $row.removeData('cf-remove-pending');
+            });
         });
 
         $root.on('click', '[data-cf-toggle-advanced]', function (e) {
@@ -1997,7 +2026,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             e.stopPropagation();
             var $row = $(this).closest('.thiscovery-forms-field-row');
             expandCard($row);
-            ownCard($row).find('[data-cf-logic-panel]').addClass('is-open');
+            var $panel = ownCard($row).find('[data-cf-logic-panel]');
+            $panel.addClass('is-open');
+            var panelNode = $panel.get(0);
+            if (panelNode && panelNode.scrollIntoView) {
+                panelNode.scrollIntoView({ block: 'nearest' });
+            }
         });
 
         $root.on('click', '[data-cf-add-branch]', function (e) {
@@ -2322,10 +2356,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $.ajax({
                 url: url,
                 method: 'POST',
-                data: {
+                data: $.extend(csrfData(), {
                     formula: $panel.find('[data-cf-formula-text]').val() || '',
                     values: '{}'
-                }
+                })
             }).done(function (data) {
                 if (data && data.ok) {
                     $result.text((data.result === '' ? 'Empty' : data.result) + ' (today ' + data.today + ')');
@@ -4056,16 +4090,21 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }).length > 0;
         };
 
+        // A rule is set when it carries a formula tree (`when`). Stored rules no longer have `rules`.
+        var hasCondition = function (logic) {
+            return !!(logic && logic.when && typeof logic.when === 'object');
+        };
+
         var pageShouldSkip = function (idx, values) {
             values = values || readAnswers();
             var page = pagesConfig[idx] || {};
-            if (routingAligned && page.skipLogic && page.skipLogic.rules && page.skipLogic.rules.length && logicMet(page.skipLogic, values)) {
+            if (routingAligned && hasCondition(page.skipLogic) && logicMet(page.skipLogic, values)) {
                 return true;
             }
             var fieldLogic = page.fieldLogic || [];
             for (var i = 0; i < fieldLogic.length; i++) {
                 var logic = fieldLogic[i].logic || {};
-                if (logic.action === 'skip_page' && logic.rules && logic.rules.length && logicMet(logic, values)) {
+                if (logic.action === 'skip_page' && hasCondition(logic) && logicMet(logic, values)) {
                     return true;
                 }
             }
@@ -4133,7 +4172,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var fieldLogic = page.fieldLogic || [];
             for (var i = 0; i < fieldLogic.length; i++) {
                 var logic = fieldLogic[i].logic || {};
-                if (!logic.rules || !logic.rules.length || !logicMet(logic, values)) {
+                if (!hasCondition(logic) || !logicMet(logic, values)) {
                     continue;
                 }
                 if (logic.action === 'goto_end') {

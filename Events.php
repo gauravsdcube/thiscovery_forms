@@ -139,9 +139,7 @@ class Events
     {
         /** @var User $user */
         $user = $event->sender;
-        foreach (FormAnswer::find()->where(['created_by' => $user->id])->each(100) as $answer) {
-            $answer->delete();
-        }
+        (new \humhub\modules\thiscoveryForms\services\ErasureService())->pseudonymiseUser($user);
     }
 
     public static function onHourlyCron(): void

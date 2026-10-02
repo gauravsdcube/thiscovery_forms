@@ -10,6 +10,9 @@
     root.thiscoveryFormula = api;
 }(typeof globalThis !== 'undefined' ? globalThis : this, function () {
     var SCALE = 12;
+    // Must match Decimal::MAX_WHOLE_DIGITS and Decimal::MAX_TEXT in PHP (V3-4).
+    var MAX_WHOLE_DIGITS = 30;
+    var MAX_TEXT = 64;
 
     function canonical(text) {
         var parsed = parse(text);
@@ -102,7 +105,7 @@
 
     function parse(text) {
         text = String(text).trim();
-        if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text)) {
+        if (text.length > MAX_TEXT || !/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(text)) {
             return null;
         }
         var sign = 1;
@@ -113,6 +116,9 @@
         var parts = text.split('.');
         var whole = parts[0];
         var frac = parts.length > 1 ? parts[1] : '';
+        if (whole.replace(/^0+/, '').length > MAX_WHOLE_DIGITS) {
+            return null;
+        }
         var roundUp = false;
         if (frac.length > SCALE) {
             roundUp = frac.charAt(SCALE) >= '5';
@@ -137,6 +143,9 @@
     function format(sign, digits, scale) {
         if (digits === '0') {
             return '0';
+        }
+        if (digits.replace(/^0+/, '').length > scale + MAX_WHOLE_DIGITS) {
+            return null;
         }
         while (digits.length < scale + 1) {
             digits = '0' + digits;

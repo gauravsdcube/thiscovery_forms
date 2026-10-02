@@ -8,21 +8,52 @@ namespace humhub\modules\thiscoveryForms\services;
 class RandomisationEngine
 {
     /**
+     * Fisher–Yates driven by a SHA-256 counter stream, with rejection sampling so
+     * every order is equally likely (V3-5). The same seed always returns the same order.
+     *
      * @param string[] $items
      * @return string[]
      */
     public function shuffle(array $items, int $seed): array
     {
         $items = array_values($items);
-        $n = count($items);
-        for ($i = $n - 1; $i > 0; $i--) {
-            $seed = ($seed * 1664525 + 1013904223) & 0x7fffffff;
-            $j = $seed % ($i + 1);
+        $draw = $this->stream($seed);
+        for ($i = count($items) - 1; $i > 0; $i--) {
+            $j = $draw($i + 1);
             $tmp = $items[$i];
             $items[$i] = $items[$j];
             $items[$j] = $tmp;
         }
         return $items;
+    }
+
+    /**
+     * A deterministic source of unbiased integers in [0, bound).
+     *
+     * @return \Closure(int):int
+     */
+    public function stream(int $seed): \Closure
+    {
+        $counter = 0;
+        $buffer = '';
+        return static function (int $bound) use ($seed, &$counter, &$buffer): int {
+            if ($bound < 2) {
+                return 0;
+            }
+            // Largest multiple of $bound below 2^32; values at or above it are rejected.
+            $limit = intdiv(0x100000000, $bound) * $bound;
+            while (true) {
+                if (strlen($buffer) < 4) {
+                    $buffer .= hash('sha256', $seed . ':' . $counter, true);
+                    $counter++;
+                }
+                $value = unpack('N', substr($buffer, 0, 4))[1];
+                $buffer = substr($buffer, 4);
+                if ($value < $limit) {
+                    return $value % $bound;
+                }
+            }
+        };
     }
 
     /**
@@ -113,8 +144,7 @@ class RandomisationEngine
         if (!$unit) {
             return '';
         }
-        $seed = ($seed * 1664525 + 1013904223) & 0x7fffffff;
-        return $unit[$seed % count($unit)];
+        return $unit[($this->stream($seed))(count($unit))];
     }
 
     /**
@@ -143,13 +173,16 @@ class RandomisationEngine
             }
         }
         sort($tied);
-        $seed = ($seed * 1664525 + 1013904223) & 0x7fffffff;
-        return $tied[$seed % count($tied)];
+        return $tied[($this->stream($seed))(count($tied))];
     }
 
+    /**
+     * Independent 60-bit seed per scope. HMAC-SHA256 keyed by the response seed, so two
+     * scopes of one response are unrelated (crc32 was linear and correlated them, V3-5).
+     */
     public function seedInt(string $seedHex, string $scope): int
     {
-        return crc32($seedHex . ':' . $scope) & 0x7fffffff;
+        return (int)hexdec(substr(hash_hmac('sha256', $scope, $seedHex), 0, 15));
     }
 
     /**

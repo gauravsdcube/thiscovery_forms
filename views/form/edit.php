@@ -138,6 +138,9 @@ $this->registerJsConfig('thiscoveryForms', [
     'logicActions' => \humhub\modules\thiscoveryForms\services\LogicEngine::actionLabels(),
     'groupLogicActions' => \humhub\modules\thiscoveryForms\services\LogicEngine::actionLabelsForType(FormField::TYPE_QUESTION_GROUP),
     'clearConfirm' => Yii::t('ThiscoveryFormsModule.base', 'Remove all fields from this form?'),
+    'removeFieldConfirm' => Yii::t('ThiscoveryFormsModule.base', 'Remove "{label}" from this form?'),
+    'removeFieldHeader' => Yii::t('ThiscoveryFormsModule.base', 'Remove this question?'),
+    'removeFieldConfirmText' => Yii::t('ThiscoveryFormsModule.base', 'Remove'),
     'copied' => Yii::t('ThiscoveryFormsModule.base', 'Copied!'),
     'kind' => $formModel->kind,
     'maxAnswerable' => $isPoll ? 1 : 0,
@@ -173,7 +176,12 @@ $fieldList = is_array($fields) ? $fields : [];
 $shareUrl = !$isNew ? Url::toView($formModel, true) : '';
 $openTab = (string)Yii::$app->request->get('tab', 'builder');
 $openSection = (string)Yii::$app->request->get('section', 'basics');
-$formSettingSections = ['basics', 'end', 'access', 'display', 'sharing', 'enrol', 'email', 'languages', 'actions', 'consensus'];
+$formSettingSections = [
+    'basics', 'end', 'access', 'display',
+    'consent', 'loops', 'randomisation', 'quotas',
+    'sharing', 'enrol', 'email', 'languages',
+    'actions', 'consensus',
+];
 $settingsNavSections = array_merge($formSettingSections, [
     'integrity', 'css', 'share', 'export', 'translations', 'versions', 'panel', 'rounds', 'approval',
 ]);
@@ -193,6 +201,20 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
 ?>
 
 <div class="cf-studio panel panel-default<?= $isSettingsExtra ? ' is-settings-extra' : '' ?>" id="cf-builder" data-cf-kind="<?= Html::encode($formModel->kind) ?>">
+    <?php
+    foreach (['success' => 'success', 'warning' => 'warning', 'error' => 'danger'] as $flashKey => $alertType) {
+        $flashMessage = Yii::$app->session->getFlash($flashKey, null, false);
+        if (!is_string($flashMessage) || $flashMessage === '') {
+            continue;
+        }
+        Yii::$app->session->removeFlash($flashKey);
+        ?>
+        <div class="alert alert-<?= Html::encode($alertType) ?> cf-studio__notice" role="status">
+            <?= Html::encode($flashMessage) ?>
+        </div>
+        <?php
+    }
+    ?>
     <div class="cf-studio__nav">
         <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Back to forms'))
             ->link(Url::toManageIndex($contentContainer))
@@ -266,7 +288,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
         'class' => 'cf-studio__form',
         'id' => 'cf-studio-form',
         'enctype' => 'multipart/form-data',
-        'data-cf-formula-preview' => $contentContainer->createUrl('/thiscovery-forms/formula/preview'),
+        'data-cf-formula-preview' => \yii\helpers\Url::to(['/thiscovery-forms/formula/preview']),
     ]) ?>
     <?= Html::hiddenInput('studio_tab', $openTab, ['data-cf-studio-tab' => true]) ?>
     <?= Html::hiddenInput('studio_section', $openSection, ['data-cf-studio-section-input' => true]) ?>
@@ -387,6 +409,10 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 'activeSection' => $openSection,
             ]) ?>
             <div class="cf-settings-main">
+                <div class="cf-set-toolbar">
+                    <button type="button" class="btn btn-link btn-sm" data-cf-acc-all="open"><?= Yii::t('ThiscoveryFormsModule.base', 'Expand all') ?></button>
+                    <button type="button" class="btn btn-link btn-sm" data-cf-acc-all="close"><?= Yii::t('ThiscoveryFormsModule.base', 'Collapse all') ?></button>
+                </div>
                 <?= $this->render('_studio_settings', [
                     'formModel' => $formModel,
                     'isNew' => $isNew,
@@ -412,13 +438,24 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
 
                 <section class="cf-settings-pane<?= $openSection === 'share' ? ' is-active' : '' ?>" data-cf-settings-pane="share" role="tabpanel"<?= $openSection === 'share' ? '' : ' hidden' ?>>
 <div class="cf-studio__settings">
-            <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Distribution URL') ?></h5>
+            <details class="cf-set-acc" open>
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Distribution URL') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'The link people use to open and fill the form.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
             <?php if ($isNew): ?>
                 <p class="cf-hint text-muted">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Save the form first to generate a shareable link.') ?>
                 </p>
-                <hr>
-                <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Sample import file') ?></h5>
+                </div>
+            </details>
+            <details class="cf-set-acc">
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Sample import file') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Example JSON and CSV to import after you save.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
                 <p class="cf-hint text-muted">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Download an example, then import it after you save. CSV can include every question type, including page breaks. JSON keeps extra settings such as skip logic.') ?>
                 </p>
@@ -437,6 +474,8 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         ->loader(false)
                         ->options(['target' => '_blank', 'rel' => 'noopener']) ?>
                 </p>
+                </div>
+            </details>
             <?php else: ?>
                 <p class="cf-hint text-muted">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Share this link so people can open and fill the form. For anonymous public access, enable anonymous submissions and set the form status to Open.') ?>
@@ -471,9 +510,15 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <i class="fa fa-external-link"></i>
                     </a>
                 </p>
+                </div>
+            </details>
                 <?php if (\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()): ?>
-                    <hr>
-                    <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Publish') ?></h5>
+            <details class="cf-set-acc">
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Publish') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Freeze the current draft as the edition participants see.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
                     <p class="cf-hint text-muted">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Participants use the published edition. Publish current draft saves your latest studio changes first, then freezes that edition for the live form.') ?>
                     </p>
@@ -488,9 +533,15 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                             <?= Yii::t('ThiscoveryFormsModule.base', 'No edition published yet. You cannot set status to Open until you publish.') ?>
                         </div>
                     <?php endif; ?>
+                </div>
+            </details>
                 <?php endif; ?>
-                <hr>
-                <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview and test') ?></h5>
+            <details class="cf-set-acc">
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Preview and test') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'A test link that is not counted as a real submission.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
                 <p class="cf-hint text-muted">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Share this link to try the form. Test answers are stored separately and are not counted as participant submissions, dashboard totals, or CSV export.') ?>
                 </p>
@@ -517,8 +568,14 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Regenerate link') ?>
                     </button>
                 </p>
-                <hr>
-                <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Share dashboard') ?></h5>
+                </div>
+            </details>
+            <details class="cf-set-acc">
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Share dashboard') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Aggregate charts for anyone with the secret link.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
                 <p class="cf-hint text-muted">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'When enabled in Settings, anyone with this link can see aggregate results without signing in. Individual answers and CSV export stay private.') ?>
                 </p>
@@ -549,8 +606,14 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     </div>
                 <?php endif; ?>
                 <?php if (!$formModel->isTemplate()): ?>
-                    <hr>
-                    <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Save as template') ?></h5>
+                    </div>
+            </details>
+            <details class="cf-set-acc">
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Save as template') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Keep a copy without answers to start new forms.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
                     <p class="cf-hint text-muted">
                         <?= Yii::t(
                             'ThiscoveryFormsModule.base',
@@ -563,8 +626,14 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Save as template') ?>
                     </button>
                 <?php endif; ?>
-                <hr>
-                <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Import and export questions') ?></h5>
+                </div>
+            </details>
+            <details class="cf-set-acc">
+                <summary>
+                    <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Import and export questions') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Download the questions, or import a JSON or CSV file.') ?></span>
+                </summary>
+                <div class="cf-set-acc__body">
                 <?php
                 $importNotice = Yii::$app->session->getFlash('cf_import_notice');
                 if (is_array($importNotice) && !empty($importNotice['message'])):
@@ -619,6 +688,8 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     onclick="var r=document.getElementById('cf-import-replace'); return !r || !r.checked || confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'This will delete every question currently on the form and replace them with the import. This cannot be undone. Continue?')) ?>);">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Import questions') ?>
                 </button>
+                </div>
+            </details>
             <?php endif; ?>
         </div>
                 </section>

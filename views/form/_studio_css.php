@@ -18,6 +18,7 @@ $defaultCss = $defaultTheme ? (string)$defaultTheme->custom_css : '';
 ?>
 
 <div class="cf-studio__settings cf-studio__settings--css">
+    <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'CSS') ?></h3>
     <h5 class="cf-section__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Appearance') ?></h5>
     <p class="cf-hint text-muted">
         <?= Yii::t('ThiscoveryFormsModule.base', 'Pick a shared theme, or Custom to detach and keep local styles only. Values you set below override the selected theme for this form.') ?>
@@ -79,14 +80,21 @@ $defaultCss = $defaultTheme ? (string)$defaultTheme->custom_css : '';
         <?php endforeach; ?>
     </div>
 
-    <h5 class="cf-section__title mt-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Custom CSS') ?></h5>
-    <p class="cf-hint text-muted">
-        <?= Yii::t('ThiscoveryFormsModule.base', 'Optional extra CSS for this form only. Prefer selectors under #cf-fill.') ?>
-    </p>
-    <?= Html::activeTextarea($formModel, 'custom_css', [
-        'class' => 'form-control cf-css-editor',
-        'rows' => 12,
-        'spellcheck' => 'false',
-        'placeholder' => "#cf-fill .cf-fill-hero__title {\n  letter-spacing: .02em;\n}",
-    ]) ?>
+    <details class="cf-set-acc">
+        <summary>
+            <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Custom CSS') ?></span>
+            <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Optional extra CSS for this form only.') ?></span>
+        </summary>
+        <div class="cf-set-acc__body">
+            <p class="cf-hint text-muted">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Prefer selectors under #cf-fill.') ?>
+            </p>
+            <?= Html::activeTextarea($formModel, 'custom_css', [
+                'class' => 'form-control cf-css-editor',
+                'rows' => 12,
+                'spellcheck' => 'false',
+                'placeholder' => "#cf-fill .cf-fill-hero__title {\n  letter-spacing: .02em;\n}",
+            ]) ?>
+        </div>
+    </details>
 </div>

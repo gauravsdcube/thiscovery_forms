@@ -34,6 +34,18 @@ $navItem = static function (string $section, string $title, string $icon, string
             <?= $navItem('end', Yii::t('ThiscoveryFormsModule.base', 'End of survey'), 'fa-flag-checkered', Yii::t('ThiscoveryFormsModule.base', 'Thank you, redirect, already submitted')) ?>
             <?= $navItem('access', Yii::t('ThiscoveryFormsModule.base', 'Who can take part'), 'fa-users', Yii::t('ThiscoveryFormsModule.base', 'Anonymous fill, editing, save and resume')) ?>
             <?= $navItem('display', Yii::t('ThiscoveryFormsModule.base', 'Participant display'), 'fa-eye', Yii::t('ThiscoveryFormsModule.base', 'Title, description, progress, pages')) ?>
+        </div>
+
+        <div class="cf-palette__group">
+            <div class="cf-palette__group-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Features') ?></div>
+            <?= $navItem('consent', Yii::t('ThiscoveryFormsModule.base', 'Consent'), 'fa-check-square-o', Yii::t('ThiscoveryFormsModule.base', 'Statement before the form starts')) ?>
+            <?= $navItem('loops', Yii::t('ThiscoveryFormsModule.base', 'Loops'), 'fa-repeat', Yii::t('ThiscoveryFormsModule.base', 'Repeat a group of questions')) ?>
+            <?= $navItem('randomisation', Yii::t('ThiscoveryFormsModule.base', 'Randomisation'), 'fa-random', Yii::t('ThiscoveryFormsModule.base', 'Arms, order, and screen-out')) ?>
+            <?= $navItem('quotas', Yii::t('ThiscoveryFormsModule.base', 'Quotas'), 'fa-tachometer', Yii::t('ThiscoveryFormsModule.base', 'Targets and who counts')) ?>
+        </div>
+
+        <div class="cf-palette__group">
+            <div class="cf-palette__group-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Sharing') ?></div>
             <?= $navItem('sharing', Yii::t('ThiscoveryFormsModule.base', 'Sharing and display'), 'fa-share-alt', Yii::t('ThiscoveryFormsModule.base', 'Menu, header, dashboard link')) ?>
             <?= $navItem('enrol', Yii::t('ThiscoveryFormsModule.base', 'Panel enrolment'), 'fa-user-plus', Yii::t('ThiscoveryFormsModule.base', 'Add completers to a panel')) ?>
             <?= $navItem('email', Yii::t('ThiscoveryFormsModule.base', 'Email templates'), 'fa-envelope-o', Yii::t('ThiscoveryFormsModule.base', 'Invite, wave, reminder, completion')) ?>

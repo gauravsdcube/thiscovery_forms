@@ -52,9 +52,14 @@ foreach ($catalogue as $col) {
 
     <?php foreach ($groups as $groupKey => $groupTitle): ?>
         <?php $items = $byGroup[$groupKey] ?? []; ?>
-        <div class="cf-export-cols" data-cf-export-group="<?= Html::encode($groupKey) ?>">
+        <details class="cf-set-acc" data-cf-export-group="<?= Html::encode($groupKey) ?>"<?= $groupKey === ExportSettings::GROUP_META ? ' open' : '' ?>>
+            <summary>
+                <span class="cf-set-acc__title"><?= Html::encode($groupTitle) ?></span>
+                <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', '{n} columns', ['n' => count($items)]) ?></span>
+            </summary>
+            <div class="cf-set-acc__body">
+            <div class="cf-export-cols" data-cf-export-group="<?= Html::encode($groupKey) ?>">
             <div class="cf-export-cols__head">
-                <h5 class="cf-section__title mb-0"><?= Html::encode($groupTitle) ?></h5>
                 <div class="cf-export-cols__toolbar">
                     <button type="button" class="btn btn-link btn-sm" data-cf-export-all="<?= Html::encode($groupKey) ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Select all') ?>
@@ -97,6 +102,8 @@ foreach ($catalogue as $col) {
                     <?php endif; ?>
                 </label>
             <?php endforeach; ?>
-        </div>
+            </div>
+            </div>
+        </details>
     <?php endforeach; ?>
 </div>

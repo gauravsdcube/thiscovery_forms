@@ -17,6 +17,10 @@ final class Evaluator
     /** @param array<string,mixed> $tree */
     public function evaluate(array $tree): Value
     {
+        $this->context->steps++;
+        if ($this->context->steps > Limits::STEPS) {
+            return Value::empty();
+        }
         $op = (string)($tree['op'] ?? '');
         $args = is_array($tree['args'] ?? null) ? $tree['args'] : [];
         if ($op === 'lit') {
@@ -459,7 +463,7 @@ final class Evaluator
                 $text .= (string)$value->data;
             }
         }
-        return Value::text(substr($text, 0, 2000));
+        return Value::text(substr($text, 0, Limits::RESULT_TEXT));
     }
 
     private function textOp(string $op, Value $value): Value

@@ -34,8 +34,13 @@ foreach ($fieldList as $cfField) {
     ]) ?>
 
     <div data-cf-integrity-when-on>
-    <div class="cf-field mt-4">
-        <h5 class="mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'Consistency rules') ?></h5>
+    <details class="cf-set-acc">
+        <summary>
+            <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Consistency rules') ?></span>
+            <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Flag a response when every condition in a rule matches.') ?></span>
+        </summary>
+        <div class="cf-set-acc__body">
+    <div class="cf-field mt-2">
         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Each rule needs at least two conditions. The response is flagged only when every condition matches, for example Q1 equals “Never used the service” and Q10 equals “I use it every day”. Give the rule a short id and a label that reviewers will understand. Rules never auto-reject.')]) ?>
     </div>
     <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'Flag a response when all conditions match. Add further rules if you need more than one check.') ?></p>
@@ -84,6 +89,8 @@ foreach ($fieldList as $cfField) {
     <button type="button" class="btn btn-sm btn-light" data-cf-add-consistency>
         <i class="fa fa-plus"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Add consistency rule') ?>
     </button>
+        </div>
+    </details>
     </div>
     <?php if (!$isNew): ?>
         <div class="cf-field mt-4">

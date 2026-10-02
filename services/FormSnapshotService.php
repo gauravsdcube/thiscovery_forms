@@ -14,6 +14,7 @@ use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormFieldI18n;
 use humhub\modules\thiscoveryForms\models\FormI18n;
 use humhub\modules\thiscoveryForms\services\integrity\IntegritySettings;
+use Yii;
 
 /**
  * Export / import / in-memory hydrate of a form definition for versioning.
@@ -253,13 +254,13 @@ class FormSnapshotService
                     return $candidate;
                 }
             }
-            return $candidates[0] ?? null;
+            return null;
         };
 
         $idMap = [];
         foreach ($fields as $field) {
             $oldId = (int)$field->id;
-            $resolved = ($oldId && isset($byId[$oldId])) ? $byId[$oldId] : null;
+            $resolved = ($oldId && isset($byId[$oldId]) && !isset($used[$oldId])) ? $byId[$oldId] : null;
             if (!$resolved) {
                 $var = strtolower(trim((string)$field->variable));
                 if ($var !== '' && !empty($byVar[$var])) {
@@ -346,7 +347,9 @@ class FormSnapshotService
             if ($mappedFrom !== $from) {
                 $field->setCarryForward($mappedFrom, (string)($carry['mode'] ?? FormField::CARRY_SELECTED));
             }
+            FieldRefRewriter::rewriteField($field, $idMap);
         }
+        FieldRefRewriter::rewriteForm($form, $idMap);
     }
 
     protected function importTranslations(CustomForm $form, array $translations): void

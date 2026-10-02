@@ -4,15 +4,34 @@
 const fs = require('fs');
 const path = require('path');
 
-function step(seed) {
-  return Number((BigInt(seed) * 1664525n + 1013904223n) & 0x7fffffffn);
+const crypto = require('crypto');
+
+// Mirror of RandomisationEngine::stream(): SHA-256 counter blocks, 4-byte big-endian draws,
+// rejection sampling so every value in [0, bound) is equally likely.
+function stream(seed) {
+  let counter = 0;
+  let buffer = Buffer.alloc(0);
+  return function (bound) {
+    if (bound < 2) return 0;
+    const limit = Math.floor(0x100000000 / bound) * bound;
+    for (;;) {
+      if (buffer.length < 4) {
+        const block = crypto.createHash('sha256').update(String(seed) + ':' + counter).digest();
+        buffer = Buffer.concat([buffer, block]);
+        counter++;
+      }
+      const value = buffer.readUInt32BE(0);
+      buffer = buffer.subarray(4);
+      if (value < limit) return value % bound;
+    }
+  };
 }
 
 function shuffle(items, seed) {
   items = items.slice();
+  const draw = stream(seed);
   for (let i = items.length - 1; i > 0; i--) {
-    seed = step(seed);
-    const j = seed % (i + 1);
+    const j = draw(i + 1);
     const tmp = items[i];
     items[i] = items[j];
     items[j] = tmp;
@@ -58,8 +77,7 @@ function block(arms, blockSize, seed) {
 function weightedPick(arms, seed) {
   const unit = weightedUnit(arms);
   if (!unit.length) return '';
-  seed = step(seed);
-  return unit[seed % unit.length];
+  return unit[stream(seed)(unit.length)];
 }
 
 function leastFilled(counts, eligible, seed) {
@@ -74,19 +92,12 @@ function leastFilled(counts, eligible, seed) {
     if (best === null || n < best) best = n;
   }
   const tied = unique.filter((code) => (counts[code] || 0) === best).sort();
-  seed = step(seed);
-  return tied[seed % tied.length];
+  return tied[stream(seed)(tied.length)];
 }
 
-function crc32(text) {
-  let crc = 0xffffffff;
-  for (let i = 0; i < text.length; i++) {
-    crc ^= text.charCodeAt(i);
-    for (let bit = 0; bit < 8; bit++) {
-      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
-  }
-  return (crc ^ 0xffffffff) >>> 0;
+// Mirror of RandomisationEngine::seedInt(): HMAC-SHA256 keyed by the response seed.
+function seedInt(seedHex, scope) {
+  return BigInt('0x' + crypto.createHmac('sha256', seedHex).update(scope).digest('hex').slice(0, 15)).toString();
 }
 
 const expected = JSON.parse(fs.readFileSync(path.join(__dirname, 'seeds.json'), 'utf8'));
@@ -99,7 +110,8 @@ eq(rotate(['a', 'b', 'c'], 1), expected.rotate_offset_1, 'rotate');
 eq(block([{ code: 'usual', weight: 1 }, { code: 'new', weight: 1 }], 4, 7), expected.block_size_4, 'block');
 eq(leastFilled({ usual: 2, new: 2 }, ['new', 'usual'], 3), expected.least_filled, 'least filled');
 eq(weightedPick([{ code: 'usual', weight: 1 }, { code: 'new', weight: 2 }], 9), expected.weighted, 'weighted');
-eq((crc32('ab:options:colour') & 0x7fffffff) >>> 0, expected.seed_int, 'seed');
+eq(seedInt('ab', 'options:colour'), expected.seed_int, 'seed');
+eq(shuffle(['a', 'b', 'c', 'd', 'e'], BigInt(expected.seed_int)), expected.shuffle_big_seed, 'shuffle with a 60-bit seed');
 
 if (fails.length) {
   console.error(fails.join('\n'));

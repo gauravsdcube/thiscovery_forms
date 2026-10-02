@@ -9,7 +9,7 @@ use yii\helpers\Html;
 <div class="panel">
     <div class="panel-heading">
         <?= Html::encode($formModel->title) ?>
-        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Add quota'), $formModel->content->container->createUrl('/thiscovery-forms/quota/edit', ['id' => $formModel->id]), ['class' => 'btn btn-primary btn-sm pull-right']) ?>
+        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Add quota'), $formModel->actionUrl(['/thiscovery-forms/quota/edit', 'id' => $formModel->id]), ['class' => 'btn btn-primary btn-sm pull-right']) ?>
     </div>
     <div class="panel-body">
         <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'Numbers come from the counter. Lowering a target does not remove people who already completed. Reconcile is the command that repairs a bad edit.') ?></p>
@@ -39,8 +39,8 @@ use yii\helpers\Html;
                     <td><?= Html::encode((string)$row['status']) ?></td>
                     <td><?= Html::encode((string)$row['reconciled_at']) ?></td>
                     <td>
-                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit'), $formModel->content->container->createUrl('/thiscovery-forms/quota/edit', ['id' => $formModel->id, 'quotaId' => $row['id']])) ?>
-                        <?= Html::beginForm($formModel->content->container->createUrl('/thiscovery-forms/quota/index', ['id' => $formModel->id])) ?>
+                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit'), $formModel->actionUrl(['/thiscovery-forms/quota/edit', 'id' => $formModel->id, 'quotaId' => $row['id']])) ?>
+                        <?= Html::beginForm($formModel->actionUrl(['/thiscovery-forms/quota/index', 'id' => $formModel->id])) ?>
                         <?= Html::hiddenInput('quota_id', (int)$row['id']) ?>
                         <?php if ((string)$row['status'] === 'closed'): ?>
                             <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Reopen'), ['name' => 'open', 'value' => 1, 'class' => 'btn btn-default btn-xs']) ?>

@@ -125,6 +125,18 @@ class FormActionService
         return 'session:' . substr(hash('sha256', $session), 0, 32);
     }
 
+    /**
+     * Duplicate-check key for a fully anonymous form. It never names the answer.
+     */
+    public static function anonymousActorKey(?FormPanelMember $member): string
+    {
+        if ($member && !$member->isNewRecord) {
+            return 'member:' . (int)$member->id;
+        }
+        $session = (string)(Yii::$app->session->id ?: 'none');
+        return 'session:' . substr(hash('sha256', $session), 0, 32);
+    }
+
     public static function sanitizeName(string $name): string
     {
         $name = preg_replace('/[^a-zA-Z0-9_]/', '', trim($name)) ?? '';
@@ -328,13 +340,15 @@ class FormActionService
         if (!$template) {
             return;
         }
+        $anonymous = EmailTemplateService::isAnonymousForm($form);
+        $actorKey = $anonymous ? self::anonymousActorKey($member) : self::actorKey($answer, $member);
         $where = [
             'form_id' => $form->id,
             'field_id' => $sourceField->id ?? null,
             'template_id' => $templateId,
-            'actor_key' => self::actorKey($answer, $member),
+            'actor_key' => $actorKey,
         ];
-        if ($answer && !$answer->isNewRecord) {
+        if (!$anonymous && $answer && !$answer->isNewRecord) {
             $where['answer_id'] = (int)$answer->id;
         }
         if ($emails->hasSent(FormEmailSend::KIND_ACTION, $where)) {
@@ -355,11 +369,12 @@ class FormActionService
             [
                 'form_id' => $form->id,
                 'member_id' => $member->id ?? null,
-                'answer_id' => $answer->id ?? null,
+                'answer_id' => $anonymous ? null : ($answer->id ?? null),
                 'field_id' => $sourceField->id ?? null,
                 'template_id' => $templateId,
                 'kind' => FormEmailSend::KIND_ACTION,
-                'actor_key' => self::actorKey($answer, $member),
+                'actor_key' => $actorKey,
+                'anonymous' => $anonymous,
             ]
         );
     }

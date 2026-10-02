@@ -101,7 +101,11 @@ class DashboardService
         ];
     }
 
-    public function getFormDashboard(CustomForm $form): array
+    /**
+     * @param bool $public true for the share-link dashboard: loop breakdowns are left out
+     *                     entirely, because repeat labels and answers can identify people (V3-8).
+     */
+    public function getFormDashboard(CustomForm $form, bool $public = false): array
     {
         $formId = (int)$form->id;
         $completeQ = FormAnswer::find()->alias('a')
@@ -180,7 +184,7 @@ class DashboardService
             'rounds' => $form->isConsensus() ? $this->getRoundStats($form) : [],
             'arms' => (new RandomisationService())->allocationSummary($form),
             'quotas' => (new QuotaService())->summary($form),
-            'loops' => $this->loopBreakdown($form),
+            'loops' => $public ? [] : $this->loopBreakdown($form),
         ];
     }
 
@@ -853,18 +857,17 @@ class DashboardService
         $fields = array_values($form->fields);
         $questions = [];
         $labels = [];
-        $nameFields = [];
         foreach ($fields as $field) {
             if (!$loops->isLoopField($form, $field)) {
                 continue;
             }
+            // Only structured answers are aggregated: free text and personal-data questions
+            // (for example a roster name) are never shown on a dashboard (V3-8).
+            if (!in_array($field->type, self::STRUCTURED_TYPES, true) || $field->isContainsPii()) {
+                continue;
+            }
             foreach ($loops->columnPaths($fields, $field) as $column) {
                 $labels[(string)$column['code']] = (string)$column['label'];
-            }
-            $group = $loops->groupForField($fields, $field);
-            $name = $group ? $loops->rosterNameField($group, $fields) : null;
-            if ($name && (int)$name->id === (int)$field->id) {
-                $nameFields[(int)$field->id] = true;
             }
             $questions[(int)$field->id] = [
                 'label' => trim(strip_tags((string)$field->label)),
@@ -906,9 +909,6 @@ class DashboardService
             }
             if (!isset($labels[$code])) {
                 $labels[$code] = $code;
-            }
-            if (isset($nameFields[$id]) && $display !== '') {
-                $labels[$code] = $display;
             }
             $questions[$id]['values']['*'][$display] = ($questions[$id]['values']['*'][$display] ?? 0) + 1;
             $questions[$id]['values'][$code][$display] = ($questions[$id]['values'][$code][$display] ?? 0) + 1;

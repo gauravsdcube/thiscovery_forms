@@ -572,8 +572,10 @@ class LoopService
                 return $ordered;
             }
         }
-        $seed = $answer && $answer->id ? crc32((string)$answer->id . ':' . $key) & 0x7fffffff : 1;
         $engine = new RandomisationEngine();
+        $seed = $answer && $answer->id
+            ? (new RandomisationService())->seedForAnswer($answer, 'loop:' . $key)
+            : $engine->seedInt('preview', 'loop:' . $key);
         $codes = array_map(static fn($item) => $item['code'], $list);
         $shuffled = $engine->shuffle($codes, $seed);
         if ($answer && $answer->id) {

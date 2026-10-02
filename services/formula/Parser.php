@@ -16,6 +16,7 @@ final class Parser
     /** @return array<string,mixed> */
     public function parse(string $text): array
     {
+        Limits::assertText($text);
         $this->tokens = $this->lex($text);
         $this->index = 0;
         if ($this->tokens === [] || $this->peek()['t'] === 'eof') {
@@ -26,6 +27,7 @@ final class Parser
             $token = $this->peek();
             throw new FormulaException('Unexpected “' . $token['v'] . '”.', $token['line'], $token['col']);
         }
+        Limits::assertTree($tree);
         return $tree;
     }
 

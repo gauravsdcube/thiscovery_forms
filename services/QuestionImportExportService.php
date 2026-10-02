@@ -326,6 +326,7 @@ class QuestionImportExportService
             $next++;
             $imported++;
         }
+        $existing = $this->renameCollidingImportVariables($existing);
 
         if ($imported === 0) {
             return Yii::t('ThiscoveryFormsModule.base', 'No questions found in the import file.');
@@ -343,6 +344,96 @@ class QuestionImportExportService
         }
 
         return null;
+    }
+
+    /**
+     * An imported question keeps its own variable when the form already uses that name.
+     *
+     * @param array<string,array<string,mixed>> $rows
+     * @return array<string,array<string,mixed>>
+     */
+    private function renameCollidingImportVariables(array $rows): array
+    {
+        $taken = [];
+        foreach ($rows as $key => $row) {
+            if (!is_array($row) || str_starts_with((string)$key, 'imp')) {
+                continue;
+            }
+            $var = strtolower(trim((string)($row['variable'] ?? '')));
+            if ($var !== '') {
+                $taken[$var] = true;
+            }
+        }
+        $firstRename = [];
+        foreach ($rows as $key => $row) {
+            if (!is_array($row) || !str_starts_with((string)$key, 'imp')) {
+                continue;
+            }
+            $var = trim((string)($row['variable'] ?? ''));
+            if ($var === '') {
+                continue;
+            }
+            $low = strtolower($var);
+            if (!isset($taken[$low])) {
+                $taken[$low] = true;
+                continue;
+            }
+            $n = 2;
+            do {
+                $next = $var . '_' . $n;
+                $n++;
+            } while (isset($taken[strtolower($next)]));
+            $rows[$key]['variable'] = $next;
+            $taken[strtolower($next)] = true;
+            $rows[$key] = $this->rewriteVariableTokens($rows[$key], $var, $next);
+            if (!isset($firstRename[$var])) {
+                $firstRename[$var] = $next;
+            }
+        }
+        if ($firstRename === []) {
+            return $rows;
+        }
+        foreach ($rows as $key => $row) {
+            if (!is_array($row) || !str_starts_with((string)$key, 'imp')) {
+                continue;
+            }
+            foreach ($firstRename as $old => $next) {
+                $rows[$key] = $this->rewriteVariableTokens($rows[$key], $old, $next);
+            }
+        }
+        return $rows;
+    }
+
+    /**
+     * @param array<string,mixed> $row
+     * @return array<string,mixed>
+     */
+    private function rewriteVariableTokens(array $row, string $from, string $to): array
+    {
+        if ($from === '' || $from === $to) {
+            return $row;
+        }
+        if (isset($row['logic_formula']) && is_string($row['logic_formula'])) {
+            $row['logic_formula'] = preg_replace(
+                '/\[' . preg_quote($from, '/') . '\]/',
+                '[' . $to . ']',
+                $row['logic_formula']
+            ) ?? $row['logic_formula'];
+        }
+        if (isset($row['carry_from']) && (string)$row['carry_from'] === $from) {
+            $row['carry_from'] = $to;
+        }
+        foreach (['rich_content', 'html_content'] as $column) {
+            if (!isset($row[$column]) || !is_string($row[$column])) {
+                continue;
+            }
+            $row[$column] = str_replace(
+                ['{{answer:' . $from . '}}', '{{field:' . $from . '}}'],
+                ['{{answer:' . $to . '}}', '{{field:' . $to . '}}'],
+                $row[$column]
+            );
+        }
+        return $row;
     }
 
     /**

@@ -254,6 +254,15 @@ class ConsentService
                 $this->assertSignature($submit, $field, $bag);
             }
         }
+        if ($refusedAt === null) {
+            $standalone = $this->standaloneDocument($form);
+            if ($standalone) {
+                $bag = is_array($posted['form'] ?? null) ? $posted['form'] : [];
+                if ($this->validateDocumentBag($submit, $standalone, $bag, 'typed')) {
+                    $refusedAt = -1;
+                }
+            }
+        }
         $submit->consentRefusedSort = $refusedAt;
     }
 
@@ -266,10 +275,12 @@ class ConsentService
         $unlink = $anonymous || $this->unlink($form);
         $posted = Yii::$app->request->post('consent', []);
         $posted = is_array($posted) ? $posted : [];
+        $sawField = false;
         foreach ($form->fields as $field) {
             if ($field->type !== FormField::TYPE_CONSENT) {
                 continue;
             }
+            $sawField = true;
             if ($submit->consentRefusedSort !== null && (int)$field->sort_order > (int)$submit->consentRefusedSort) {
                 continue;
             }
@@ -315,6 +326,83 @@ class ConsentService
             $this->insertRecord($form, $answer, $doc, $presented, $body, $decisions, $bag, $language, $unlink, $refused);
             $answer->save(false, ['consent_version', 'outcome', 'updated_at']);
         }
+        if ($sawField || $asDraft) {
+            return;
+        }
+        $doc = $this->standaloneDocument($form);
+        if (!$doc) {
+            return;
+        }
+        $bag = is_array($posted['form'] ?? null) ? $posted['form'] : [];
+        if (!$unlink) {
+            $vars = $answer->getVars();
+            $vars['consent_document_id'] = (int)$doc['id'];
+            $answer->setVars($vars);
+            $answer->save(false, ['vars_json', 'updated_at']);
+        }
+        $language = (string)($answer->getVars()['response_language'] ?? '');
+        $presented = $this->presentedItems($doc, $language);
+        $body = $this->presentedBody($doc, $language);
+        $decisions = $this->decisions($doc, $bag);
+        $refused = false;
+        foreach ($presented as $item) {
+            if (!empty($item['required']) && ($decisions[$item['code']] ?? '') === 'no') {
+                $refused = true;
+            }
+        }
+        if ($refused) {
+            $answer->outcome = FormAnswer::OUTCOME_NOT_CONSENTED;
+            $message = trim((string)$form->getSetting('not_consented_message', ''));
+            if ($message !== '') {
+                Yii::$app->session->setFlash('cf-not-consented', $message);
+            }
+        }
+        $answer->consent_version = (!$unlink && !$refused) ? (int)$doc['version'] : null;
+        $this->insertRecord($form, $answer, $doc, $presented, $body, $decisions, $bag, $language, $unlink, $refused);
+        $answer->save(false, ['consent_version', 'outcome', 'updated_at']);
+    }
+
+    /**
+     * A published sheet is asked at the start of the form when no Consent question was placed.
+     *
+     * @return array<string,mixed>|null
+     */
+    public function standaloneDocument(CustomForm $form): ?array
+    {
+        if (!self::active($form) || !$this->tablesReady()) {
+            return null;
+        }
+        foreach ($form->fields as $field) {
+            if ($field->type === FormField::TYPE_CONSENT) {
+                return null;
+            }
+        }
+        return $this->latestPublished($form);
+    }
+
+    /**
+     * @param array<string,mixed> $doc
+     * @param array<string,mixed> $bag
+     */
+    private function validateDocumentBag(SubmitForm $submit, array $doc, array $bag, string $signature): bool
+    {
+        $decisions = $this->decisions($doc, $bag);
+        $refused = false;
+        foreach ($this->presentedItems($doc, '') as $item) {
+            if (empty($item['required'])) {
+                continue;
+            }
+            $value = $decisions[$item['code']] ?? '';
+            if ($value === '') {
+                $submit->addError('values', Yii::t('ThiscoveryFormsModule.base', '“{label}” needs an answer.', ['label' => $item['label']]));
+            } elseif ($value === 'no') {
+                $refused = true;
+            }
+        }
+        if (!$refused) {
+            $this->assertSignatureMethod($submit, $signature, $bag);
+        }
+        return $refused;
     }
 
     public function withdrawByToken(string $token, string $scope, string $reason): bool
@@ -762,7 +850,14 @@ class ConsentService
      */
     private function assertSignature(SubmitForm $submit, FormField $field, array $bag): void
     {
-        $method = (string)($field->getConsentConfig()['signature']);
+        $this->assertSignatureMethod($submit, (string)$field->getConsentConfig()['signature'], $bag);
+    }
+
+    /**
+     * @param array<string,mixed> $bag
+     */
+    private function assertSignatureMethod(SubmitForm $submit, string $method, array $bag): void
+    {
         $posted = (string)($bag['signature_method'] ?? $method);
         if (!in_array($posted, ['typed', 'checkbox', 'drawn'], true)) {
             $posted = $method;

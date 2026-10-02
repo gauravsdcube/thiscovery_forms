@@ -10,6 +10,12 @@ final class Decimal
 {
     public const SCALE = 12;
 
+    /** Largest number of whole digits a value may have. Anything larger is empty (V3-4). */
+    public const MAX_WHOLE_DIGITS = 30;
+
+    /** Longest numeric text accepted, so huge inputs are refused before any arithmetic. */
+    public const MAX_TEXT = 64;
+
     public static function canonical(string $text): ?string
     {
         $parsed = self::parse($text);
@@ -115,7 +121,7 @@ final class Decimal
     private static function parse(string $text): ?array
     {
         $text = trim($text);
-        if (!preg_match('/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/', $text)) {
+        if (strlen($text) > self::MAX_TEXT || !preg_match('/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/', $text)) {
             return null;
         }
         $sign = 1;
@@ -124,6 +130,9 @@ final class Decimal
             $text = substr($text, 1);
         }
         [$whole, $frac] = array_pad(explode('.', $text, 2), 2, '');
+        if (strlen(ltrim($whole, '0')) > self::MAX_WHOLE_DIGITS) {
+            return null;
+        }
         $roundUp = false;
         if (strlen($frac) > self::SCALE) {
             $roundUp = $frac[self::SCALE] >= '5';
@@ -143,10 +152,13 @@ final class Decimal
         return [$sign, $digits];
     }
 
-    private static function format(int $sign, string $digits, int $scale): string
+    private static function format(int $sign, string $digits, int $scale): ?string
     {
         if ($digits === '0') {
             return '0';
+        }
+        if (strlen(ltrim($digits, '0')) > $scale + self::MAX_WHOLE_DIGITS) {
+            return null;
         }
         $digits = str_pad($digits, $scale + 1, '0', STR_PAD_LEFT);
         $whole = substr($digits, 0, -$scale);

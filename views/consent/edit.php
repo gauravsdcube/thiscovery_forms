@@ -11,7 +11,7 @@ $frozen = $document && (string)$document['status'] === 'published';
 ?>
 <div class="panel">
     <div class="panel-body">
-        <?= Html::beginForm($formModel->content->container->createUrl('/thiscovery-forms/consent/edit', ['id' => $formModel->id, 'documentId' => $document['id'] ?? null])) ?>
+        <?= Html::beginForm($formModel->actionUrl(['/thiscovery-forms/consent/edit', 'id' => $formModel->id, 'documentId' => $document['id'] ?? null])) ?>
         <div class="form-group">
             <label><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></label>
             <input class="form-control" name="title" value="<?= Html::encode((string)($document['title'] ?? '')) ?>" <?= $frozen ? 'readonly' : '' ?>>

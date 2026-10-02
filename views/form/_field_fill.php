@@ -28,6 +28,16 @@ if ($instanceKey !== '' && is_array($value)) {
     $value = $value[$instanceKey] ?? '';
 }
 $inputId = 'cf-input-' . $field->id . ($instanceKey !== '' ? '-' . preg_replace('/[^a-z0-9_-]/i', '', str_replace('/', '__', $instanceKey)) : '');
+$labelId = 'cf-label-' . $inputId;
+$choiceGroup = in_array($field->type, [
+    FormField::TYPE_RADIO,
+    FormField::TYPE_CHECKBOX,
+    FormField::TYPE_RANKING,
+    FormField::TYPE_GRID_SINGLE,
+    FormField::TYPE_GRID_MULTI,
+    FormField::TYPE_BEST_WORST,
+    FormField::TYPE_MAXDIFF,
+], true);
 if (($value === '' || $value === null || $value === []) && $field->getDefaultValue() !== '') {
     $value = $field->getDefaultValue();
 }
@@ -186,10 +196,17 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
         </div>
     <?php endif; ?>
 
+    <?php if ($choiceGroup): ?>
+    <div class="cf-question__label" id="<?= Html::encode($labelId) ?>" data-cf-pipe="<?= Html::encode($field->label) ?>">
+        <?= $labelText ?>
+        <?php if ($field->required): ?><span class="text-danger">*</span><?php endif; ?>
+    </div>
+    <?php else: ?>
     <label class="cf-question__label" for="<?= Html::encode($inputId) ?>" data-cf-pipe="<?= Html::encode($field->label) ?>">
         <?= $labelText ?>
         <?php if ($field->required): ?><span class="text-danger">*</span><?php endif; ?>
     </label>
+    <?php endif; ?>
 
     <?php if ($field->help_text && !$field->isThermometerRating()): ?>
         <p class="cf-question__help" data-cf-pipe="<?= Html::encode($field->help_text) ?>"><?= $helpText ?></p>
@@ -355,7 +372,14 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $carry = $field->getCarryForward();
             $otherLabel = $field->findOtherOption($choiceOptions);
             $otherState = $otherLabel ? FormField::otherSpecifyState($otherLabel, $value) : ['selected' => false, 'text' => ''];
-            $listAttrs = ['class' => 'cf-choice-list'];
+            $listAttrs = [
+                'class' => 'cf-choice-list',
+                'role' => 'radiogroup',
+                'aria-labelledby' => $labelId,
+            ];
+            if ($field->required) {
+                $listAttrs['aria-required'] = 'true';
+            }
             if ($carry['from'] !== '') {
                 $src = $fieldsById[(int)$carry['from']] ?? null;
                 $listAttrs['data-cf-carry-from'] = $carry['from'];
@@ -367,7 +391,10 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 <?php foreach ($choiceOptions as $opt): ?>
                     <?php $isOther = $otherLabel !== null && (string)$opt === $otherLabel; ?>
                     <label class="cf-choice">
-                        <?= Html::radio($inputName, $isOther ? $otherState['selected'] : $choiceIsPicked($value, (string)$opt), $choiceInputOpts(['value' => $opt])) ?>
+                        <?= Html::radio($inputName, $isOther ? $otherState['selected'] : $choiceIsPicked($value, (string)$opt), $choiceInputOpts([
+                            'value' => $opt,
+                            'required' => (bool)$field->required,
+                        ])) ?>
                         <span><?= Html::encode($choiceLabelFor((string)$opt)) ?></span>
                     </label>
                     <?php if ($isOther): ?>
@@ -396,7 +423,14 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $exclusiveOptions = $field->getExclusiveOptions();
             $otherLabel = $field->findOtherOption($choiceOptions);
             $otherState = $otherLabel ? FormField::otherSpecifyState($otherLabel, $selected) : ['selected' => false, 'text' => ''];
-            $listAttrs = ['class' => 'cf-choice-list'];
+            $listAttrs = [
+                'class' => 'cf-choice-list',
+                'role' => 'group',
+                'aria-labelledby' => $labelId,
+            ];
+            if ($field->required) {
+                $listAttrs['aria-required'] = 'true';
+            }
             if ($maxSelect) {
                 $listAttrs['data-cf-max-select'] = (int)$maxSelect;
             }
@@ -703,9 +737,9 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                         <table class="cf-grid">
                             <thead>
                             <tr>
-                                <th></th>
+                                <th scope="col"></th>
                                 <?php foreach ($grid['columns'] as $col): ?>
-                                    <th><?= Html::encode($col['label']) ?></th>
+                                    <th scope="col"><?= Html::encode($col['label']) ?></th>
                                 <?php endforeach; ?>
                             </tr>
                             </thead>
@@ -717,7 +751,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                                 $rowKey = (string)$row['value'];
                                 ?>
                                 <tr>
-                                    <th><?= Html::encode($row['label']) ?></th>
+                                    <th scope="row"><?= Html::encode($row['label']) ?></th>
                                     <?php foreach ($grid['columns'] as $col): ?>
                                         <td>
                                             <?php
@@ -730,11 +764,12 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                                                     break;
                                                 }
                                             }
+                                            $cellLabel = trim((string)$row['label'] . ', ' . (string)$col['label']);
                                             ?>
                                             <?php if ($multi): ?>
-                                                <?= Html::checkbox($inputName . '[' . $rowKey . '][]', $isPicked, $choiceInputOpts(['value' => $colVal])) ?>
+                                                <?= Html::checkbox($inputName . '[' . $rowKey . '][]', $isPicked, $choiceInputOpts(['value' => $colVal, 'aria-label' => $cellLabel])) ?>
                                             <?php else: ?>
-                                                <?= Html::radio($inputName . '[' . $rowKey . ']', $isPicked, $choiceInputOpts(['value' => $colVal])) ?>
+                                                <?= Html::radio($inputName . '[' . $rowKey . ']', $isPicked, $choiceInputOpts(['value' => $colVal, 'aria-label' => $cellLabel])) ?>
                                             <?php endif; ?>
                                         </td>
                                     <?php endforeach; ?>

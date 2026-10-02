@@ -475,6 +475,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 'data-cf-save-url' => Url::toSaveProgress($formModel),
                 'data-cf-run-actions-url' => Url::toRunActions($formModel),
                 'data-cf-autosave' => $formModel->keepsPartials() ? '1' : '0',
+                'data-cf-choice-scores' => Json::encode(\humhub\modules\thiscoveryForms\services\formula\Context::scoreMap($formModel->fields)),
                 'autocomplete' => 'off',
             ]) ?>
             <?php if ($resumeCode): ?>
@@ -513,6 +514,9 @@ $fillRtl = TranslationService::isRtl($fillLang);
 
             <?php foreach ($pages as $page): ?>
                 <?php
+                $formConsentDoc = ($page['index'] === 0)
+                    ? (new \humhub\modules\thiscoveryForms\services\ConsentService())->standaloneDocument($formModel)
+                    : null;
                 if (!empty($page['instanceKey'])) {
                     $pipeState = [
                         'label' => (string)($page['instanceLabel'] ?? ''),
@@ -559,6 +563,9 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     <?php if (!empty($page['title'])): ?>
                         <?php $pageTitle = $pipe->substitutePlain((string)$page['title'], $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null); ?>
                         <h2 class="cf-form-page__title" data-cf-pipe="<?= Html::encode((string)$page['title']) ?>"><?= $pageTitle ?></h2>
+                    <?php endif; ?>
+                    <?php if (!empty($formConsentDoc)): ?>
+                        <?= $this->render('_consent_sheet', ['formModel' => $formModel, 'document' => $formConsentDoc]) ?>
                     <?php endif; ?>
 
                     <?php

@@ -11,14 +11,14 @@ use yii\helpers\Html;
 <div class="panel">
     <div class="panel-heading"><?= Html::encode($formModel->title) ?></div>
     <div class="panel-body">
-        <p><?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'New draft'), $formModel->content->container->createUrl('/thiscovery-forms/consent/edit', ['id' => $formModel->id]), ['class' => 'btn btn-primary btn-sm']) ?></p>
+        <p><?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'New draft'), $formModel->actionUrl(['/thiscovery-forms/consent/edit', 'id' => $formModel->id]), ['class' => 'btn btn-primary btn-sm']) ?></p>
         <table class="table">
             <thead><tr><th><?= Yii::t('ThiscoveryFormsModule.base', 'Version') ?></th><th><?= Yii::t('ThiscoveryFormsModule.base', 'Title') ?></th><th><?= Yii::t('ThiscoveryFormsModule.base', 'Status') ?></th></tr></thead>
             <tbody>
             <?php foreach ($documents as $doc): ?>
                 <tr>
                     <td><?= (int)$doc['version'] ?></td>
-                    <td><?= Html::a(Html::encode((string)$doc['title']), $formModel->content->container->createUrl('/thiscovery-forms/consent/edit', ['id' => $formModel->id, 'documentId' => $doc['id']])) ?></td>
+                    <td><?= Html::a(Html::encode((string)$doc['title']), $formModel->actionUrl(['/thiscovery-forms/consent/edit', 'id' => $formModel->id, 'documentId' => $doc['id']])) ?></td>
                     <td><?= Html::encode((string)$doc['status']) ?><?= (int)$doc['version'] === 0 ? ' · ' . Yii::t('ThiscoveryFormsModule.base', 'Legacy / unverified') : '' ?></td>
                 </tr>
             <?php endforeach; ?>
@@ -35,7 +35,7 @@ use yii\helpers\Html;
                         <td><?= Html::encode((string)$record['signature_method']) ?><?= $record['answer_id'] === null ? ' · ' . Yii::t('ThiscoveryFormsModule.base', 'Unlinked') : '' ?></td>
                         <td>
                             <?php if ($record['answer_id'] !== null && (string)$record['signature_method'] !== 'legacy'): ?>
-                                <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Download certificate'), $formModel->content->container->createUrl('/thiscovery-forms/consent/certificate', ['id' => $formModel->id, 'recordId' => $record['id']])) ?>
+                                <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Download certificate'), $formModel->actionUrl(['/thiscovery-forms/consent/certificate', 'id' => $formModel->id, 'recordId' => $record['id']])) ?>
                             <?php endif; ?>
                         </td>
                     </tr>

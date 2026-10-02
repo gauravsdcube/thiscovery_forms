@@ -1329,21 +1329,12 @@ class FormField extends ActiveRecord
             } else {
                 $seedKey = 'session:' . (string)(Yii::$app->session->id ?: '0');
             }
-            $seed = crc32($seedKey . ':' . (int)$this->id);
         } else {
             $userId = $userId ?? (int)(Yii::$app->user->id ?? 0);
-            $seed = crc32($userId . ':' . (int)$this->id . ':' . (int)$this->form_id);
+            $seedKey = 'user:' . $userId . ':' . (int)$this->form_id;
         }
-        $order = range(0, count($rest) - 1);
-
-        $n = count($order);
-        for ($i = $n - 1; $i > 0; $i--) {
-            $seed = ($seed * 1664525 + 1013904223) & 0x7fffffff;
-            $j = $seed % ($i + 1);
-            $tmp = $order[$i];
-            $order[$i] = $order[$j];
-            $order[$j] = $tmp;
-        }
+        $engine = new \humhub\modules\thiscoveryForms\services\RandomisationEngine();
+        $order = $engine->shuffle(range(0, count($rest) - 1), $engine->seedInt($seedKey, 'options:' . (int)$this->id));
 
         $shuffled = [];
         foreach ($order as $idx) {

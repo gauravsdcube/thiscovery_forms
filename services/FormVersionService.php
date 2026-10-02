@@ -65,8 +65,10 @@ class FormVersionService
             return null;
         }
         $quotaErrors = (new QuotaService())->authoringErrors($form);
-        if ($quotaErrors) {
-            Yii::$app->session->setFlash('error', implode(' ', $quotaErrors));
+        $formulaErrors = \humhub\modules\thiscoveryForms\services\formula\FormulaPolicy::authoringErrors($form);
+        $blocked = array_merge($quotaErrors, $formulaErrors);
+        if ($blocked) {
+            Yii::$app->session->setFlash('error', implode(' ', $blocked));
             return null;
         }
         return $this->versions->publishRevision(

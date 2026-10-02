@@ -112,7 +112,9 @@ class FormController extends ContentContainerController
                         Yii::warning('Thiscovery Forms revision save failed: ' . $e->getMessage(), 'thiscovery-forms');
                     }
                     if ((string)Yii::$app->request->post('after_save', '') !== 'publish') {
-                        Yii::$app->session->setFlash('success', Yii::t('ThiscoveryFormsModule.base', 'Form saved.'));
+                        $savedMessage = Yii::t('ThiscoveryFormsModule.base', 'Form saved.');
+                        $this->view->success($savedMessage);
+                        Yii::$app->session->setFlash('success', $savedMessage);
                     }
                     if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
                         \humhub\modules\thiscoveryTranslate\services\FormsHook::queueFormTranslation((int)$form->id);
@@ -121,8 +123,11 @@ class FormController extends ContentContainerController
                             if (!$pub['ok']) {
                                 $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
                                 $form->save(false, ['status']);
-                                Yii::$app->session->setFlash('error', $pub['message'] . ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form kept as draft until translations are ready.'));
+                                $blockedMessage = $pub['message'] . ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form kept as draft until translations are ready.');
+                                $this->view->error($blockedMessage);
+                                Yii::$app->session->setFlash('error', $blockedMessage);
                             } else {
+                                $this->view->warn($pub['message']);
                                 Yii::$app->session->setFlash('warning', $pub['message']);
                             }
                         }
@@ -360,7 +365,7 @@ class FormController extends ContentContainerController
             throw new ForbiddenHttpException(Yii::t('ThiscoveryFormsModule.base', 'This dashboard link is not available.'));
         }
 
-        $stats = (new DashboardService())->getFormDashboard($form);
+        $stats = (new DashboardService())->getFormDashboard($form, true);
 
         return $this->render('dashboard', [
             'formModel' => $form,

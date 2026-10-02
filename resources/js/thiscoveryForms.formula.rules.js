@@ -49,6 +49,18 @@
         if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { t: 'date', v: value };
         return text(value);
     }
+    function choiceScores(values) {
+        if (values && values.__scores && typeof values.__scores === 'object') return values.__scores;
+        if (typeof document === 'undefined') return {};
+        var node = document.querySelector('[data-cf-choice-scores]');
+        if (!node) return {};
+        try {
+            var parsed = JSON.parse(node.getAttribute('data-cf-choice-scores') || '{}');
+            return parsed && typeof parsed === 'object' ? parsed : {};
+        } catch (e) {
+            return {};
+        }
+    }
     function fieldType(key) {
         if (typeof document === 'undefined') return '';
         var node = document.querySelector('[data-cf-field-id="' + String(key).replace(/"/g, '') + '"]');
@@ -57,10 +69,10 @@
     function context(values) {
         var fields = {};
         Object.keys(values || {}).forEach(function (key) {
-            if (key.indexOf('panel.') === 0 || key === 'arm' || key.indexOf('var:') === 0 || key.indexOf('url:') === 0 || key.indexOf('meta:') === 0) return;
+            if (key.charAt(0) === '_' || key.indexOf('panel.') === 0 || key === 'arm' || key.indexOf('var:') === 0 || key.indexOf('url:') === 0 || key.indexOf('meta:') === 0) return;
             fields[key] = leaf(values[key], fieldType(key));
         });
-        return { fields: fields, values: values || {}, today: (values && values.__today) || '2026-09-30' };
+        return { fields: fields, values: values || {}, today: (values && values.__today) || '2026-09-30', scores: choiceScores(values) };
     }
     function lit(token) {
         if (token.lit === 'number') return num(token.v);
@@ -235,6 +247,20 @@
         if (node.op === 'today') return { t: 'date', v: ctx.today || '1970-01-01' };
         if (node.op === 'date_diff') return dateDiff(args);
         if (node.op === 'add_days' || node.op === 'add_months') return shiftDate(node.op, args);
+        if (node.op === 'score_of') {
+            var refNode = (node.args || [])[0];
+            var scoreName = refNode && refNode.name ? String(refNode.name) : '';
+            var scored = args[0];
+            if (!scored || scored.t === 'empty' || !scoreName) return empty();
+            var code = String(scored.v);
+            var table = ctx.scores && ctx.scores[scoreName] ? ctx.scores[scoreName] : {};
+            if (table[code] !== undefined && table[code] !== '') {
+                var fromScore = decimal.canonical(String(table[code]));
+                return fromScore === null ? empty() : num(fromScore);
+            }
+            var fromCode = decimal.canonical(code);
+            return fromCode === null ? empty() : num(fromCode);
+        }
         if (node.op === 'if') return truth(args[0]) ? args[1] : (args[2] || empty());
         if (node.op === 'min_valid') {
             if (!args[0] || args[0].t !== 'number') return empty();

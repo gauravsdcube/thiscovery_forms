@@ -392,7 +392,11 @@ class QuotaService
             self::$armBlock = null;
             return;
         }
-        if (!$answer->isNewRecord && $answer->isComplete() && (string)$answer->outcome !== '') {
+        // An answer that was already complete before this save has been counted (or turned
+        // away) once. Editing it must not count it again or turn it into over-quota (V3-7).
+        $wasComplete = !$answer->isNewRecord
+            && ((int)$answer->getOldAttribute('status') === (int)FormAnswer::STATUS_COMPLETE || $answer->isComplete());
+        if ($wasComplete) {
             self::$armBlock = null;
             return;
         }
@@ -930,17 +934,20 @@ class QuotaService
      */
     private function accept(int $quotaId, int $answerId, array &$counter, array $quota): void
     {
-        $before = (int)$counter['accepted'];
-        $counter['accepted'] = $before + 1;
         $db = Yii::$app->db;
-        $db->createCommand()->update('{{%custom_form_quota_counter}}', [
-            'accepted' => $counter['accepted'],
-        ], ['quota_id' => $quotaId])->execute();
-        $exists = (new Query())->from('{{%custom_form_quota_accept}}')->where([
+        // Idempotent: the counter moves only when this answer takes a place it did not hold (V3-7).
+        $row = (new Query())->select(['released'])->from('{{%custom_form_quota_accept}}')->where([
             'quota_id' => $quotaId,
             'answer_id' => $answerId,
-        ])->exists();
-        if (!$exists) {
+        ])->one($db);
+        if ($row && (int)$row['released'] === 0) {
+            return;
+        }
+        if ($row) {
+            $db->createCommand()->update('{{%custom_form_quota_accept}}', [
+                'released' => 0,
+            ], ['quota_id' => $quotaId, 'answer_id' => $answerId])->execute();
+        } else {
             $db->createCommand()->insert('{{%custom_form_quota_accept}}', [
                 'quota_id' => $quotaId,
                 'answer_id' => $answerId,
@@ -948,6 +955,11 @@ class QuotaService
                 'created_at' => gmdate('Y-m-d H:i:s'),
             ])->execute();
         }
+        $before = (int)$counter['accepted'];
+        $counter['accepted'] = $before + 1;
+        $db->createCommand()->update('{{%custom_form_quota_counter}}', [
+            'accepted' => $counter['accepted'],
+        ], ['quota_id' => $quotaId])->execute();
         $target = (int)$quota['target'];
         if ($before === $target - 1 && $counter['accepted'] === $target) {
             $this->audit($quotaId, ['event' => 'quota.full', 'accepted' => $target], null);

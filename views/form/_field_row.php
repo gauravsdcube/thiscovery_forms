@@ -49,7 +49,6 @@ $imageCfg = $field->getImageAreaConfig();
 $mapCfg = $field->getMapConfig();
 $logic = $field->getLogic();
 $carry = $field->getCarryForward();
-$hasCondition = $field->hasCondition();
 $randomize = $field->isRandomizeOptions();
 $panelAttrKeys = $panelAttrKeys ?? \humhub\modules\thiscoveryForms\services\PanelFieldService::surveyFieldLabels(null);
 
@@ -131,7 +130,7 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                 <i class="fa fa-arrow-down"></i>
             </button>
             <button type="button" class="btn btn-sm btn-light" data-cf-toggle-advanced title="<?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?>">
-                <i class="fa fa-code-fork"></i>
+                <i class="fa fa-code-fork"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?>
             </button>
             <button type="button" class="btn btn-sm btn-light" data-cf-save-question title="<?= Yii::t('ThiscoveryFormsModule.base', 'Save as question template') ?>">
                 <i class="fa fa-bookmark-o"></i>
@@ -238,6 +237,51 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                     'autocomplete' => 'off',
                 ]) ?>
                 <p class="cf-hint text-muted mb-0"><?= Yii::t('ThiscoveryFormsModule.base', 'Stable ID for this question. Must be unique in the form. Auto-fills from the label; you can edit it.') ?></p>
+            </div>
+        </div>
+
+        <div class="cf-advanced-panel is-open" data-cf-advanced data-cf-logic-panel>
+            <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?></div>
+            <div class="cf-field-help mb-2"><?= $isQuestionGroup
+                ? Yii::t('ThiscoveryFormsModule.base', 'Show or hide every question in this group with a formula, for example [age] >= 18.')
+                : Yii::t('ThiscoveryFormsModule.base', 'Write a formula. Use and, or, and not. Choice answers are compared by their codes, for example [mood] = "low".') ?></div>
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Action') ?></label>
+                    <?= Html::dropDownList($namePrefix . '[logic_action]', $logic['action'], $actionLabels, [
+                        'class' => 'form-control',
+                        'data-cf-logic-action' => true,
+                    ]) ?>
+                </div>
+                <div class="col-md-4<?= in_array($logic['action'], [LogicEngine::ACTION_GOTO_PAGE], true) ? '' : ' d-none' ?>" data-cf-logic-goto-wrap>
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Go to page key') ?></label>
+                    <?= Html::textInput($namePrefix . '[logic_goto]', $logic['gotoPageKey'], [
+                        'class' => 'form-control',
+                        'placeholder' => 'p2',
+                        'list' => 'cf-page-keys',
+                    ]) ?>
+                </div>
+            </div>
+            <div class="mt-3">
+                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Formula') ?></label>
+                <?= Html::textarea($namePrefix . '[logic_formula]', (string)($logic['text'] ?? ''), [
+                    'class' => 'form-control',
+                    'rows' => 2,
+                    'maxlength' => 4000,
+                    'placeholder' => '[age] >= 18 and [consent] = "yes"',
+                    'data-cf-formula-text' => true,
+                ]) ?>
+                <?php
+                $logicDeps = [];
+                if (is_array($logic['when'] ?? null)) {
+                    $logicDeps = \humhub\modules\thiscoveryForms\services\formula\FormulaDeps::names($logic['when']);
+                }
+                ?>
+                <ul class="cf-formula-deps" data-cf-formula-deps>
+                    <?php foreach ($logicDeps as $dep): ?>
+                        <li><?= Html::encode($dep) ?></li>
+                    <?php endforeach; ?>
+                </ul>
             </div>
         </div>
 
@@ -1093,51 +1137,6 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Maximum drawings') ?></label>
                     <?= Html::input('number', $namePrefix . '[map_max]', $mapCfg['maxFeatures'], ['class' => 'form-control', 'min' => 1, 'max' => 50]) ?>
                 </div>
-            </div>
-        </div>
-
-        <div class="cf-advanced-panel<?= $hasCondition ? ' is-open' : '' ?>" data-cf-advanced data-cf-logic-panel>
-            <div class="cf-advanced-title"><?= Yii::t('ThiscoveryFormsModule.base', 'Logic') ?></div>
-            <div class="cf-field-help mb-2"><?= $isQuestionGroup
-                ? Yii::t('ThiscoveryFormsModule.base', 'Show or hide every question in this group with a formula, for example [age] >= 18.')
-                : Yii::t('ThiscoveryFormsModule.base', 'Write a formula. Use and, or, and not. Choice answers are compared by their codes, for example [mood] = "low".') ?></div>
-            <div class="row g-3">
-                <div class="col-md-5">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Action') ?></label>
-                    <?= Html::dropDownList($namePrefix . '[logic_action]', $logic['action'], $actionLabels, [
-                        'class' => 'form-control',
-                        'data-cf-logic-action' => true,
-                    ]) ?>
-                </div>
-                <div class="col-md-4<?= in_array($logic['action'], [LogicEngine::ACTION_GOTO_PAGE], true) ? '' : ' d-none' ?>" data-cf-logic-goto-wrap>
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Go to page key') ?></label>
-                    <?= Html::textInput($namePrefix . '[logic_goto]', $logic['gotoPageKey'], [
-                        'class' => 'form-control',
-                        'placeholder' => 'p2',
-                        'list' => 'cf-page-keys',
-                    ]) ?>
-                </div>
-            </div>
-            <div class="mt-3">
-                <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Formula') ?></label>
-                <?= Html::textarea($namePrefix . '[logic_formula]', (string)($logic['text'] ?? ''), [
-                    'class' => 'form-control',
-                    'rows' => 2,
-                    'maxlength' => 4000,
-                    'placeholder' => '[age] >= 18 and [consent] = "yes"',
-                    'data-cf-formula-text' => true,
-                ]) ?>
-                <?php
-                $logicDeps = [];
-                if (is_array($logic['when'] ?? null)) {
-                    $logicDeps = \humhub\modules\thiscoveryForms\services\formula\FormulaDeps::names($logic['when']);
-                }
-                ?>
-                <ul class="cf-formula-deps" data-cf-formula-deps>
-                    <?php foreach ($logicDeps as $dep): ?>
-                        <li><?= Html::encode($dep) ?></li>
-                    <?php endforeach; ?>
-                </ul>
             </div>
         </div>
 

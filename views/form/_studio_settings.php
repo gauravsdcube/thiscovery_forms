@@ -54,10 +54,38 @@ foreach ($fieldList as $pkField) {
 }
 $fnRows = $formModel->custom_functions ?: [['name' => '', 'value' => '']];
 $activeSection = $activeSection ?? 'basics';
+$rand = new \humhub\modules\thiscoveryForms\services\RandomisationService();
+$consentSvc = new \humhub\modules\thiscoveryForms\services\ConsentService();
+$loopSvc = new \humhub\modules\thiscoveryForms\services\LoopService();
+$quotaSvc = new \humhub\modules\thiscoveryForms\services\QuotaService();
+$consentOn = $consentSvc->formEnabled($formModel);
+$loopsOn = $loopSvc->formEnabled($formModel);
+$randOn = $rand->formEnabled($formModel);
+$quotaOn = $quotaSvc->formEnabled($formModel);
+$hasFn = false;
+foreach ($fnRows as $fnRow) {
+    if (trim((string)($fnRow['name'] ?? '')) !== '') {
+        $hasFn = true;
+        break;
+    }
+}
+$fold = function (string $title, string $body, bool $open = false, string $hint = '', array $attrs = []): string {
+    return $this->render('_settings_fold', [
+        'title' => $title,
+        'body' => $body,
+        'open' => $open,
+        'hint' => $hint,
+        'attrs' => $attrs,
+    ]);
+};
+$paneOpen = static function (string $id) use ($activeSection): bool {
+    return $activeSection === $id;
+};
 ?>
 <div class="cf-studio__settings">
             <section class="cf-settings-pane<?= $activeSection === 'basics' ? ' is-active' : '' ?>" data-cf-settings-pane="basics" role="tabpanel"<?= $activeSection === 'basics' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Basics') ?></h3>
+                <?php ob_start(); ?>
                 <div class="cf-field">
                     <span class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Form type') ?></span>
                     <?= $this->render('_setting_guide', ['html' => $kindHtml]) ?>
@@ -83,15 +111,35 @@ $activeSection = $activeSection ?? 'basics';
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Explain what this form is for'),
                     ]) ?>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Name and description'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Form type, title, and the description people see.')
+                ) ?>
+                <?php ob_start(); ?>
                 <div class="row g-3">
+                    <?php
+                    $statusLocked = \humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()
+                        && !(new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($formModel);
+                    $statusFieldOptions = ['class' => 'form-control'];
+                    if ($statusLocked) {
+                        $statusFieldOptions['disabled'] = true;
+                        $statusFieldOptions['aria-describedby'] = 'cf-status-locked';
+                    }
+                    ?>
                     <div class="col-md-4 form-group mb-0 cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Status') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Draft is only for managers and preview. Open accepts responses against the published edition (publish on Versions or Share first). Closed keeps the form visible but stops new submissions.')]) ?>
-                        <?= Html::activeDropDownList($formModel, 'status', CustomForm::getStatusLabels(), ['class' => 'form-control']) ?>
-                        <?php if (\humhub\modules\thiscoveryForms\services\FormVersionService::isAvailable()
-                            && !(new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($formModel)): ?>
-                            <p class="cf-hint text-warning mb-0" style="margin-top:6px">
-                                <?= Yii::t('ThiscoveryFormsModule.base', 'Publish an edition before choosing Open.') ?>
+                        <label class="cf-label" for="customform-status"><?= Yii::t('ThiscoveryFormsModule.base', 'Status') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => $statusLocked
+                            ? Yii::t('ThiscoveryFormsModule.base', 'Status stays locked until you publish an edition on the Versions or Share tab. After that, Draft is only for managers and preview, Open accepts responses, and Closed stops new submissions.')
+                            : Yii::t('ThiscoveryFormsModule.base', 'Draft is only for managers and preview. Open accepts responses against the published edition. Closed keeps the form visible but stops new submissions.')]) ?>
+                        <?php if ($statusLocked): ?>
+                            <?= Html::activeHiddenInput($formModel, 'status', ['id' => 'customform-status-value']) ?>
+                        <?php endif; ?>
+                        <?= Html::activeDropDownList($formModel, 'status', CustomForm::getStatusLabels(), $statusFieldOptions) ?>
+                        <?php if ($statusLocked): ?>
+                            <p id="cf-status-locked" class="cf-hint text-warning mb-0" style="margin-top:6px">
+                                <?= Yii::t('ThiscoveryFormsModule.base', 'Publish an edition before you can change the status.') ?>
                             </p>
                         <?php endif; ?>
                     </div>
@@ -106,22 +154,38 @@ $activeSection = $activeSection ?? 'basics';
                         <?= Html::activeDropDownList($formModel, 'answers_visibility', CustomForm::getAnswersVisibilityLabels(), ['class' => 'form-control']) ?>
                     </div>
                 </div>
-                <?php $rand = new \humhub\modules\thiscoveryForms\services\RandomisationService(); ?>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Status and filing'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Status, folder, and who can view answers.')
+                ) ?>
+            </section>
+
+            <section class="cf-settings-pane<?= $paneOpen('consent') ? ' is-active' : '' ?>" data-cf-settings-pane="consent" role="tabpanel"<?= $paneOpen('consent') ? '' : ' hidden' ?>>
+                <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Consent') ?></h3>
+                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'A published statement is asked at the start of the form. A Consent question, if you add one, is used instead.') ?></p>
                 <input type="hidden" name="econsent_present" value="1">
-                <?php $consentSvc = new \humhub\modules\thiscoveryForms\services\ConsentService(); ?>
-                <div class="row g-3 mt-2">
-                    <div class="col-md-12">
-                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Consent') ?></h4>
-                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned consent on. A published information sheet is frozen. Refusing a required statement ends the form and is not a completed questionnaire. Asking to delete data opens an admin task. It does not delete answers.') ?></p>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use consent on this form') ?></label>
-                        <?= Html::dropDownList('econsent_enabled', $consentSvc->formEnabled($formModel) ? '1' : '0', [
-                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
-                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
-                        ], ['class' => 'form-control']) ?>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
+                <?php ob_start(); ?>
+                <?php if (!\humhub\modules\thiscoveryForms\Module::econsentEnabled()): ?>
+                    <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Consent is switched off for the whole site, so this form will not ask yet. Turn it on under Administration, Thiscovery Forms.') ?></p>
+                <?php endif; ?>
+                <div class="form-group cf-field">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use consent on this form') ?></label>
+                    <?= Html::dropDownList('econsent_enabled', $consentOn ? '1' : '0', [
+                        '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                        '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                    ], ['class' => 'form-control', 'style' => 'max-width: 16rem']) ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Use on this form'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Off until this is on and an administrator has turned consent on for the site.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="row g-3">
+                    <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'When the sheet changes') ?></label>
                         <?= Html::dropDownList('econsent_reconsent', (string)$formModel->getSetting('reconsent', 'off'), [
                             'off' => Yii::t('ThiscoveryFormsModule.base', 'Keep the version they started'),
@@ -129,7 +193,7 @@ $activeSection = $activeSection ?? 'basics';
                             'email' => Yii::t('ThiscoveryFormsModule.base', 'Email people who already agreed'),
                         ], ['class' => 'form-control']) ?>
                     </div>
-                    <div class="col-md-4 form-group cf-field">
+                    <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Store IP and browser hashes') ?></label>
                         <?= Html::dropDownList('consent_store_client_hashes', (string)$formModel->getSetting('consent_store_client_hashes', '0') === '1' ? '1' : '0', [
                             '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
@@ -140,72 +204,54 @@ $activeSection = $activeSection ?? 'basics';
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Not consented message') ?></label>
                         <?= Html::textInput('not_consented_message', (string)$formModel->getSetting('not_consented_message', ''), ['class' => 'form-control']) ?>
                     </div>
-                    <?php if (empty($isNew) && $formModel->content && $formModel->content->container): ?>
+                    <?php if (empty($isNew)): ?>
                     <div class="col-md-12">
-                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit consent documents'), $formModel->content->container->createUrl('/thiscovery-forms/consent/index', ['id' => $formModel->id]), ['class' => 'btn btn-default btn-sm']) ?>
+                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit consent documents'), $formModel->actionUrl(['/thiscovery-forms/consent/index', 'id' => $formModel->id]), ['class' => 'btn btn-default btn-sm']) ?>
                     </div>
                     <?php endif; ?>
                 </div>
-                <input type="hidden" name="quotas_present" value="1">
-                <?php $quotaSvc = new \humhub\modules\thiscoveryForms\services\QuotaService(); ?>
-                <div class="row g-3 mt-2">
-                    <div class="col-md-12">
-                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Quotas') ?></h4>
-                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned quotas on. A full cell keeps the answers and marks the response over quota. Reservations are off unless a quota turns them on, and then they last 60 minutes.') ?></p>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use quotas on this form') ?></label>
-                        <?= Html::dropDownList('quotas_enabled', $quotaSvc->formEnabled($formModel) ? '1' : '0', [
-                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
-                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
-                        ], ['class' => 'form-control']) ?>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign the least-filled open arm') ?></label>
-                        <?= Html::dropDownList('quota_assign_arm', (string)$formModel->getSetting('quota_assign_arm', '0') === '1' ? '1' : '0', [
-                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
-                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
-                        ], ['class' => 'form-control']) ?>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Email when a quota fills') ?></label>
-                        <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.test']) ?>
-                    </div>
-                    <?php if (empty($isNew) && $formModel->content && $formModel->content->container): ?>
-                    <div class="col-md-12">
-                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit quotas'), $formModel->content->container->createUrl('/thiscovery-forms/quota/index', ['id' => $formModel->id]), ['class' => 'btn btn-default btn-sm']) ?>
-                    </div>
-                    <?php endif; ?>
-                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'After someone answers'),
+                    ob_get_clean(),
+                    $consentOn,
+                    Yii::t('ThiscoveryFormsModule.base', 'Re-consent, stored hashes, refusal message, and consent documents.')
+                ) ?>
+            </section>
+
+            <section class="cf-settings-pane<?= $paneOpen('loops') ? ' is-active' : '' ?>" data-cf-settings-pane="loops" role="tabpanel"<?= $paneOpen('loops') ? '' : ' hidden' ?>>
+                <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Loops') ?></h3>
+                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'A group can repeat once, from a fixed list, selected options, or a number. Nested loops are not in this version.') ?></p>
                 <input type="hidden" name="loops_present" value="1">
-                <?php $loopSvc = new \humhub\modules\thiscoveryForms\services\LoopService(); ?>
-                <div class="row g-3 mt-2">
-                    <div class="col-md-12">
-                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Loops') ?></h4>
-                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned loops on. A group can repeat once, from a fixed list, selected options, or a number. Nested loops and rosters are not in this version. Unselected answers are kept but not shown.') ?></p>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use loops on this form') ?></label>
-                        <?= Html::dropDownList('loops_enabled', $loopSvc->formEnabled($formModel) ? '1' : '0', [
-                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
-                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
-                        ], ['class' => 'form-control']) ?>
-                    </div>
+                <div class="form-group cf-field">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use loops on this form') ?></label>
+                    <?= Html::dropDownList('loops_enabled', $loopsOn ? '1' : '0', [
+                        '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                        '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                    ], ['class' => 'form-control', 'style' => 'max-width: 16rem']) ?>
                 </div>
+            </section>
+
+            <section class="cf-settings-pane<?= $paneOpen('randomisation') ? ' is-active' : '' ?>" data-cf-settings-pane="randomisation" role="tabpanel"<?= $paneOpen('randomisation') ? '' : ' hidden' ?>>
+                <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h3>
+                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'The server draws the order and the arm, and stores both on the response.') ?></p>
                 <input type="hidden" name="randomisation_present" value="1">
-                <div class="row g-3 mt-2">
-                    <div class="col-md-12">
-                        <h4 class="h5"><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h4>
-                        <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'Off until this box is ticked and an administrator has turned randomisation on for the module. The server draws the order and the arm, and stores both on the response. Guests do not share an order.') ?></p>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use randomisation on this form') ?></label>
-                        <?= Html::dropDownList('randomisation_enabled', $rand->formEnabled($formModel) ? '1' : '0', [
-                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
-                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
-                        ], ['class' => 'form-control']) ?>
-                    </div>
-                    <div class="col-md-4 form-group cf-field">
+                <?php ob_start(); ?>
+                <div class="form-group cf-field">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use randomisation on this form') ?></label>
+                    <?= Html::dropDownList('randomisation_enabled', $randOn ? '1' : '0', [
+                        '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                        '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                    ], ['class' => 'form-control', 'style' => 'max-width: 16rem']) ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Use on this form'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Off until this is on and an administrator has turned randomisation on.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="row g-3">
+                    <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Arm method') ?></label>
                         <?= Html::dropDownList('randomisation_method', $rand->config($formModel)['method'], [
                             'simple' => Yii::t('ThiscoveryFormsModule.base', 'Simple weighted'),
@@ -214,7 +260,7 @@ $activeSection = $activeSection ?? 'basics';
                             'stratified' => Yii::t('ThiscoveryFormsModule.base', 'Stratified block'),
                         ], ['class' => 'form-control']) ?>
                     </div>
-                    <div class="col-md-2 form-group cf-field">
+                    <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Block size') ?></label>
                         <?= Html::textInput('randomisation_block_size', (string)$rand->config($formModel)['block_size'], ['class' => 'form-control']) ?>
                     </div>
@@ -228,14 +274,23 @@ $activeSection = $activeSection ?? 'basics';
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'One factor per line: field:variable or panel:attribute. A fully anonymous form cannot use a panel attribute.')]) ?>
                         <?= Html::textarea('randomisation_strata', $rand->strataText($formModel), ['class' => 'form-control', 'rows' => 4]) ?>
                     </div>
-                    <div class="col-md-4 form-group cf-field">
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Arms'),
+                    ob_get_clean(),
+                    $randOn,
+                    Yii::t('ThiscoveryFormsModule.base', 'Method, block size, arm list, and strata.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="row g-3">
+                    <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign') ?></label>
                         <?= Html::dropDownList('randomisation_assign', $rand->config($formModel)['assign'], [
                             'start' => Yii::t('ThiscoveryFormsModule.base', 'When the response starts'),
                             'after_page' => Yii::t('ThiscoveryFormsModule.base', 'After a page'),
                         ], ['class' => 'form-control']) ?>
                     </div>
-                    <div class="col-md-4 form-group cf-field">
+                    <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Page key') ?></label>
                         <?= Html::textInput('randomisation_assign_page', $rand->config($formModel)['assign_page'], ['class' => 'form-control']) ?>
                     </div>
@@ -245,17 +300,71 @@ $activeSection = $activeSection ?? 'basics';
                         <?= Html::textInput('screen_out_message', $rand->config($formModel)['screen_out_message'], ['class' => 'form-control']) ?>
                     </div>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'When to assign'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Start of the response, or after a page. Plus the screened-out message.')
+                ) ?>
+            </section>
+
+            <section class="cf-settings-pane<?= $activeSection === 'quotas' ? ' is-active' : '' ?>" data-cf-settings-pane="quotas" role="tabpanel"<?= $activeSection === 'quotas' ? '' : ' hidden' ?>>
+                <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Quotas') ?></h3>
+                <input type="hidden" name="quotas_present" value="1">
+                <?php ob_start(); ?>
+                <p class="cf-hint text-muted"><?= Yii::t('ThiscoveryFormsModule.base', 'A full cell keeps the answers and marks the response over quota. Reservations last 60 minutes only when a quota turns them on.') ?></p>
+                <div class="form-group cf-field">
+                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use quotas on this form') ?></label>
+                    <?= Html::dropDownList('quotas_enabled', $quotaOn ? '1' : '0', [
+                        '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                        '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                    ], ['class' => 'form-control', 'style' => 'max-width: 16rem']) ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Use on this form'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Off until this is on and an administrator has turned quotas on.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="row g-3">
+                    <div class="col-md-6 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign the least-filled open arm') ?></label>
+                        <?= Html::dropDownList('quota_assign_arm', (string)$formModel->getSetting('quota_assign_arm', '0') === '1' ? '1' : '0', [
+                            '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
+                            '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
+                        ], ['class' => 'form-control']) ?>
+                    </div>
+                    <div class="col-md-6 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Email when a quota fills') ?></label>
+                        <?= Html::textInput('quota_full_email', (string)$formModel->getSetting('quota_full_email', ''), ['class' => 'form-control', 'placeholder' => 'name@example.test']) ?>
+                    </div>
+                    <?php if (empty($isNew)): ?>
+                    <div class="col-md-12">
+                        <?= Html::a(Yii::t('ThiscoveryFormsModule.base', 'Edit quotas'), $formModel->actionUrl(['/thiscovery-forms/quota/index', 'id' => $formModel->id]), ['class' => 'btn btn-default btn-sm']) ?>
+                    </div>
+                    <?php endif; ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'When a quota fills'),
+                    ob_get_clean(),
+                    $quotaOn,
+                    Yii::t('ThiscoveryFormsModule.base', 'Least-filled arm, notification email, and the quota editor.')
+                ) ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'end' ? ' is-active' : '' ?>" data-cf-settings-pane="end" role="tabpanel"<?= $activeSection === 'end' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'End of survey') ?></h3>
-                <p class="cf-hint text-muted">
+                <p class="cf-settings-pane__lead">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Choose what people see after they finish, and what to show if they have already submitted.') ?>
                 </p>
 
-                <fieldset class="cf-end-block" data-cf-completion-mode>
-                    <legend class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'After a successful submission') ?></legend>
-                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Show a thank-you message (with an optional button), or send people straight to another URL.')]) ?>
+                <details class="cf-set-acc" open data-cf-completion-mode>
+                    <summary>
+                        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'After a successful submission') ?></span>
+                        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Thank-you message, or send people straight to another URL.') ?></span>
+                    </summary>
+                    <div class="cf-set-acc__body">
                     <div class="cf-radio-stack">
                         <?= Html::activeRadioList($formModel, 'completion_mode', CustomForm::getCompletionModeLabels(), [
                             'item' => static function ($index, $label, $name, $checked, $value) {
@@ -326,10 +435,15 @@ $activeSection = $activeSection ?? 'basics';
                             ]) ?>
                         </div>
                     </div>
-                </fieldset>
+                    </div>
+                </details>
 
-                <fieldset class="cf-end-block">
-                    <legend class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Already submitted') ?></legend>
+                <details class="cf-set-acc">
+                    <summary>
+                        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Already submitted') ?></span>
+                        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Message and optional button when they cannot submit again.') ?></span>
+                    </summary>
+                    <div class="cf-set-acc__body">
                     <div class="form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Already submitted message') ?>
                             <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
@@ -372,11 +486,13 @@ $activeSection = $activeSection ?? 'basics';
                             ]) ?>
                         </div>
                     </div>
-                </fieldset>
+                    </div>
+                </details>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'access' ? ' is-active' : '' ?>" data-cf-settings-pane="access" role="tabpanel"<?= $activeSection === 'access' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Who can take part') ?></h3>
+                <?php ob_start(); ?>
                 <div class="cf-checks">
                     <?php if (!$formModel->usesWaves() && !$formModel->isConsensus()): ?>
                     <div class="cf-check-setting">
@@ -396,6 +512,15 @@ $activeSection = $activeSection ?? 'basics';
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Anonymous mode does not store who submitted the form. Guests can fill the form when this is enabled.')]) ?>
                     </div>
                     <?php endif; ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Submissions'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Multiple submissions and anonymous fill.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="cf-checks">
                     <div class="cf-check-setting">
                         <label>
                             <?= Html::activeCheckbox($formModel, 'allow_edit', ['label' => false]) ?>
@@ -417,7 +542,16 @@ $activeSection = $activeSection ?? 'basics';
                         </label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Keep incomplete responses stores in-progress answers for the dashboard and CSV export, even if the person never uses save and resume. Progress is saved as they move through the form.')]) ?>
                     </div>
-                    <?php if ($formModel->isSurvey() || $formModel->isLongitudinal() || $formModel->isEq5d()): ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Editing and progress'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Edit after submit, save and resume, and incomplete responses.')
+                ) ?>
+                <?php if ($formModel->isSurvey() || $formModel->isLongitudinal() || $formModel->isEq5d()): ?>
+                <?php ob_start(); ?>
+                <div class="cf-checks">
                     <div class="cf-check-setting">
                         <label>
                             <?= Html::activeCheckbox($formModel, 'use_waves', ['label' => false]) ?>
@@ -432,15 +566,19 @@ $activeSection = $activeSection ?? 'basics';
                             'class' => 'form-control',
                         ]) ?>
                     </div>
-                    <?php endif; ?>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Waves'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Repeating measures on this survey or a shared panel calendar.')
+                ) ?>
+                <?php endif; ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'display' ? ' is-active' : '' ?>" data-cf-settings-pane="display" role="tabpanel"<?= $activeSection === 'display' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Participant display') ?></h3>
-                <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Leave as “Use site default” to inherit Administration → Modules → Thiscovery Forms. Choose Show or Hide to override for this form only.') ?>
-                </p>
+                <?php ob_start(); ?>
                 <?php
                 $displayOpts = [
                     '' => Yii::t('ThiscoveryFormsModule.base', 'Use site default'),
@@ -464,10 +602,17 @@ $activeSection = $activeSection ?? 'basics';
                         ]) ?>
                     </div>
                 <?php endforeach; ?>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Fill page'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Leave as site default, or show or hide the title, description, progress, and page numbers.')
+                ) ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'sharing' ? ' is-active' : '' ?>" data-cf-settings-pane="sharing" role="tabpanel"<?= $activeSection === 'sharing' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Sharing and display') ?></h3>
+                <?php ob_start(); ?>
                 <div class="cf-checks">
                     <div class="cf-check-setting">
                         <label>
@@ -476,6 +621,15 @@ $activeSection = $activeSection ?? 'basics';
                         </label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Creates a secret link on the Share tab so people can view charts without logging in. Anyone with the link can see the dashboard.')]) ?>
                     </div>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Dashboard link'),
+                    ob_get_clean(),
+                    (bool)$formModel->public_dashboard_enabled,
+                    Yii::t('ThiscoveryFormsModule.base', 'Secret link so people can view charts without signing in.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="cf-checks">
                     <div class="cf-check-setting">
                         <label>
                             <?= Html::activeCheckbox($formModel, 'show_in_menu', ['label' => false]) ?>
@@ -497,7 +651,16 @@ $activeSection = $activeSection ?? 'basics';
                         </label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Run without HumHub header shows only the form on fill, preview, and thank-you pages. Site navigation and the space menu are hidden.')]) ?>
                     </div>
-                    <?php if ($isPoll): ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Menu and header'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Side menu link, and filling the form without the site header.')
+                ) ?>
+                <?php if ($isPoll): ?>
+                <?php ob_start(); ?>
+                <div class="cf-checks">
                     <div class="cf-check-setting">
                         <label>
                             <?= Html::activeCheckbox($formModel, 'show_results', ['label' => false]) ?>
@@ -505,13 +668,20 @@ $activeSection = $activeSection ?? 'basics';
                         </label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'After someone votes, show the poll totals on the fill page.')]) ?>
                     </div>
-                    <?php endif; ?>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Poll results'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Show totals on the fill page after someone votes.')
+                ) ?>
+                <?php endif; ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'enrol' ? ' is-active' : '' ?>" data-cf-settings-pane="enrol" role="tabpanel"<?= $activeSection === 'enrol' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Panel enrolment') ?></h3>
                 <div class="cf-enrol-panel" data-cf-enrol>
+                    <?php ob_start(); ?>
                     <div class="form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Add completers to a panel') ?></label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'If this form already uses a panel on Panel & waves, completers with an email are added there automatically. Use this only to add them to a different panel as well.')]) ?>
@@ -540,6 +710,13 @@ $activeSection = $activeSection ?? 'basics';
                                 : Yii::t('ThiscoveryFormsModule.base', 'Panel')),
                         ]) ?>
                     </div>
+                    <?= $fold(
+                        Yii::t('ThiscoveryFormsModule.base', 'Which panel'),
+                        ob_get_clean(),
+                        true,
+                        Yii::t('ThiscoveryFormsModule.base', 'Do nothing, add completers to an existing panel, or create one.')
+                    ) ?>
+                    <?php ob_start(); ?>
                     <div class="cf-checks">
                         <div class="cf-check-setting">
                             <label>
@@ -549,11 +726,18 @@ $activeSection = $activeSection ?? 'basics';
                             <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'When this form uses a panel, completions are listed on matching members automatically (invite link, signed-in email, or an email field on the form). Tick this to also record on the enrolment panel chosen above.')]) ?>
                         </div>
                     </div>
+                    <?= $fold(
+                        Yii::t('ThiscoveryFormsModule.base', 'Activity log'),
+                        ob_get_clean(),
+                        false,
+                        Yii::t('ThiscoveryFormsModule.base', 'Also record each completion on the enrolment panel.')
+                    ) ?>
                 </div>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'email' ? ' is-active' : '' ?>" data-cf-settings-pane="email" role="tabpanel"<?= $activeSection === 'email' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Email templates') ?></h3>
+                <?php ob_start(); ?>
                 <div class="cf-field mb-3">
                     <span class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'About email templates') ?></span>
                     <?= $this->render('_setting_guide', [
@@ -578,7 +762,16 @@ $activeSection = $activeSection ?? 'basics';
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Sent after a successful submission when we have an email address from the account or a field on the form.')]) ?>
                         <?= Html::activeDropDownList($formModel, 'completion_email_template_id', $emailTemplateOptions, ['class' => 'form-control']) ?>
                     </div>
-                    <div class="col-md-4 form-group cf-field">
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Messages'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Invite, wave, and post-completion templates.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="row g-3">
+                    <div class="col-md-8 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Reminder email') ?></label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Reminders are sent to panel members who have not completed the current open wave, once the wave has been open for the number of days set here. Set days to 0 to turn reminders off.')]) ?>
                         <?= Html::activeDropDownList($formModel, 'reminder_email_template_id', $emailTemplateOptions, ['class' => 'form-control']) ?>
@@ -589,12 +782,18 @@ $activeSection = $activeSection ?? 'basics';
                         <?= Html::activeInput('number', $formModel, 'reminder_days', ['class' => 'form-control', 'min' => 0, 'step' => 1]) ?>
                     </div>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Reminders'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Template and how many days a wave stays open before a reminder.')
+                ) ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'languages' ? ' is-active' : '' ?>" data-cf-settings-pane="languages" role="tabpanel"<?= $activeSection === 'languages' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Languages') ?></h3>
-                <div class="row g-3">
-                    <div class="col-12 form-group cf-field">
+                <?php ob_start(); ?>
+                <div class="form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Source language') ?></label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The source language is what you write in the builder. Extra languages are edited on the Translations tab.')]) ?>
                         <?= Html::activeDropDownList(
@@ -603,8 +802,15 @@ $activeSection = $activeSection ?? 'basics';
                             \humhub\modules\thiscoveryForms\services\TranslationService::selectableLanguageLabels($formModel),
                             ['class' => 'form-control', 'style' => 'max-width: 20rem']
                         ) ?>
-                    </div>
-                    <div class="col-12 form-group cf-field">
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Source language'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'The language you write in the builder.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Enabled languages') ?></label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Languages people can switch to on the fill page. When Thiscovery Translate is on, this list matches the languages enabled there. Translate labels on the Translations tab after you save.')]) ?>
                         <?php
@@ -628,12 +834,18 @@ $activeSection = $activeSection ?? 'basics';
                                 </label>
                             <?php endforeach; ?>
                         </div>
-                    </div>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Enabled languages'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Languages people can switch to on the fill page.')
+                ) ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'actions' ? ' is-active' : '' ?>" data-cf-settings-pane="actions" role="tabpanel"<?= $activeSection === 'actions' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Actions and functions') ?></h3>
+                <?php ob_start(); ?>
                 <div class="cf-field mb-3">
                     <span class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Custom functions and variables') ?></span>
                     <?= $this->render('_setting_guide', [
@@ -674,10 +886,16 @@ $activeSection = $activeSection ?? 'basics';
                         </div>
                     <?php endforeach; ?>
                 </div>
-                <button type="button" class="btn btn-sm btn-light mb-4" data-cf-add-fn>
+                <button type="button" class="btn btn-sm btn-light" data-cf-add-fn>
                     <i class="fa fa-plus"></i> <?= Yii::t('ThiscoveryFormsModule.base', 'Add function') ?>
                 </button>
-
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Custom functions'),
+                    ob_get_clean(),
+                    $hasFn,
+                    Yii::t('ThiscoveryFormsModule.base', 'Named formulas reused as fn:name.')
+                ) ?>
+                <?php ob_start(); ?>
                 <div class="cf-field mb-3">
                     <span class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'On submit') ?></span>
                     <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'These run when the form is submitted, after the last page. Field and page actions are set on each item in the builder.')]) ?>
@@ -688,11 +906,18 @@ $activeSection = $activeSection ?? 'basics';
                     'emailTemplateOptions' => $emailTemplateOptions,
                     'pageKeyOptions' => $submitPageKeys,
                 ]) ?>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'On submit'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Actions that run after the last page.')
+                ) ?>
             </section>
 
             <?php if ($formModel->isConsensus()): ?>
             <section class="cf-settings-pane<?= $activeSection === 'consensus' ? ' is-active' : '' ?>" data-cf-settings-pane="consensus" role="tabpanel"<?= $activeSection === 'consensus' ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Consensus') ?></h3>
+                <?php ob_start(); ?>
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Identity') ?></label>
@@ -728,7 +953,14 @@ $activeSection = $activeSection ?? 'basics';
                         <?= Html::activeTextInput($formModel, 'consensus_exclude_codes', ['class' => 'form-control']) ?>
                     </div>
                 </div>
-                <div class="cf-checks mt-3">
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Scoring'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Identity, threshold, and the agree and disagree bands.')
+                ) ?>
+                <?php ob_start(); ?>
+                <div class="cf-checks">
                     <div class="cf-check-setting">
                         <label>
                             <?= Html::activeCheckbox($formModel, 'freeze_on_consensus', ['label' => false]) ?>
@@ -744,6 +976,12 @@ $activeSection = $activeSection ?? 'basics';
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Asks for a short comment after each choice question in a consensus round.')]) ?>
                     </div>
                 </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'After consensus'),
+                    ob_get_clean(),
+                    false,
+                    Yii::t('ThiscoveryFormsModule.base', 'Freeze items that reach the threshold, and require a comment.')
+                ) ?>
             </section>
             <?php endif; ?>
 </div>

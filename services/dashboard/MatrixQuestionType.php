@@ -44,11 +44,12 @@ class MatrixQuestionType extends BaseQuestionType
         $cells = [];
         foreach ($decoded as $rowKey => $col) {
             if (is_array($col)) {
+                $list = array_is_list($col);
                 foreach ($col as $colKey => $on) {
                     if ($on === '' || $on === null || $on === false || $on === 0 || $on === '0') {
                         continue;
                     }
-                    $ck = is_string($colKey) || is_int($colKey) ? (string)$colKey : (string)$on;
+                    $ck = $list ? (string)$on : (string)$colKey;
                     $rk = (string)$rowKey;
                     $key = $rk . '|' . $ck;
                     $cells = array_merge($cells, $this->cell($key, $rk . ' / ' . $ck));

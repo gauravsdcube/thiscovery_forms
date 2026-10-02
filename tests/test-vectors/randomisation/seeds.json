@@ -1,8 +1,30 @@
 {
-  "shuffle_seed_42": ["b", "c", "e", "a", "d"],
-  "rotate_offset_1": ["b", "c", "a"],
-  "block_size_4": ["new", "usual", "new", "usual"],
-  "least_filled": "new",
-  "weighted": "new",
-  "seed_int": 355918199
+    "shuffle_seed_42": [
+        "d",
+        "b",
+        "e",
+        "c",
+        "a"
+    ],
+    "rotate_offset_1": [
+        "b",
+        "c",
+        "a"
+    ],
+    "block_size_4": [
+        "usual",
+        "new",
+        "usual",
+        "new"
+    ],
+    "least_filled": "new",
+    "weighted": "new",
+    "seed_int": "642807241520284159",
+    "shuffle_big_seed": [
+        "e",
+        "c",
+        "b",
+        "d",
+        "a"
+    ]
 }

@@ -589,6 +589,15 @@ class RandomisationService
             return null;
         }
         $db = Yii::$app->db;
+        if ($cfg['method'] !== 'simple' && $cfg['method'] !== 'least_filled') {
+            $db->createCommand(
+                'INSERT IGNORE INTO {{%custom_form_arm_allocation}} (form_id, stratum_key, next_index, block_json) VALUES (:f, :s, 0, NULL)',
+                [':f' => (int)$form->id, ':s' => $stratum]
+            )->execute();
+        }
+        $attempts = 0;
+        while (true) {
+        $attempts++;
         $tx = $db->beginTransaction();
         try {
             $again = (new Query())->from('{{%custom_form_arm_assignment}}')->where(['answer_id' => (int)$answer->id])->one($db);
@@ -624,9 +633,16 @@ class RandomisationService
                 'assigned_by' => null,
             ])->execute();
             $tx->commit();
+            break;
         } catch (\Throwable $e) {
-            $tx->rollBack();
-            throw $e;
+            if ($tx->isActive) {
+                $tx->rollBack();
+            }
+            $deadlock = $e instanceof \yii\db\Exception && (int)($e->errorInfo[1] ?? 0) === 1213;
+            if (!$deadlock || $attempts >= 5) {
+                throw $e;
+            }
+        }
         }
         return $this->assignment($answer);
     }
@@ -707,10 +723,19 @@ class RandomisationService
 
     private function seedFor(FormAnswer $answer, string $scope): int
     {
+        return $this->seedForAnswer($answer, $scope);
+    }
+
+    /**
+     * Seed for one scope of a response: its stored random seed when there is one,
+     * otherwise a key unique to the answer (never one shared value for everyone).
+     */
+    public function seedForAnswer(FormAnswer $answer, string $scope): int
+    {
         $row = (new Query())->from('{{%custom_form_presentation}}')->where(['answer_id' => (int)$answer->id])->one();
         $hex = (string)($row['seed'] ?? '');
         if ($hex === '') {
-            $hex = '0';
+            $hex = 'answer:' . (int)$answer->id;
         }
         return $this->engine->seedInt($hex, $scope);
     }
@@ -723,24 +748,16 @@ class RandomisationService
         $db = Yii::$app->db;
         $tx = $db->beginTransaction();
         try {
-            $row = (new Query())
-                ->from('{{%custom_form_rotate_seq}}')
-                ->where(['form_id' => $formId, 'scope_key' => $scope])
-                ->one($db);
-            if (!$row) {
-                $db->createCommand()->insert('{{%custom_form_rotate_seq}}', [
-                    'form_id' => $formId,
-                    'scope_key' => $scope,
-                    'next_offset' => 1 % $length,
-                ])->execute();
-                $tx->commit();
-                return 0;
-            }
-            $db->createCommand('SELECT next_offset FROM {{%custom_form_rotate_seq}} WHERE form_id = :f AND scope_key = :s FOR UPDATE', [
+            // Lock-then-read, so two starts can never take the same rotation (V3-6).
+            $db->createCommand(
+                'INSERT IGNORE INTO {{%custom_form_rotate_seq}} (form_id, scope_key, next_offset) VALUES (:f, :s, 0)',
+                [':f' => $formId, ':s' => $scope]
+            )->execute();
+            $locked = $db->createCommand('SELECT next_offset FROM {{%custom_form_rotate_seq}} WHERE form_id = :f AND scope_key = :s FOR UPDATE', [
                 ':f' => $formId,
                 ':s' => $scope,
             ])->queryScalar();
-            $current = (int)$row['next_offset'] % $length;
+            $current = (int)$locked % $length;
             $db->createCommand()->update('{{%custom_form_rotate_seq}}', [
                 'next_offset' => ($current + 1) % $length,
             ], ['form_id' => $formId, 'scope_key' => $scope])->execute();
@@ -832,38 +849,33 @@ class RandomisationService
             return $this->engine->leastFilled($counts, $codes, $seed);
         }
         $db = Yii::$app->db;
-        $row = (new Query())->from('{{%custom_form_arm_allocation}}')->where([
-            'form_id' => (int)$form->id,
-            'stratum_key' => $stratum,
-        ])->one($db);
-        if (!$row) {
-            $block = $this->engine->block($cfg['arms'], (int)$cfg['block_size'], $seed);
-            $db->createCommand()->insert('{{%custom_form_arm_allocation}}', [
-                'form_id' => (int)$form->id,
-                'stratum_key' => $stratum,
-                'next_index' => 1,
-                'block_json' => json_encode($block, JSON_UNESCAPED_UNICODE),
-            ])->execute();
-            return (string)($block[0] ?? '');
+        // The row is created before this transaction. Lock that row and allocate from it (V3-6).
+        $own = $db->getTransaction() === null ? $db->beginTransaction() : null;
+        try {
+            $row = $db->createCommand(
+                'SELECT next_index, block_json FROM {{%custom_form_arm_allocation}} WHERE form_id = :f AND stratum_key = :s FOR UPDATE',
+                [':f' => (int)$form->id, ':s' => $stratum]
+            )->queryOne();
+            $block = json_decode((string)($row['block_json'] ?? ''), true);
+            $index = (int)($row['next_index'] ?? 0);
+            if (!is_array($block) || !$block || $index >= count($block)) {
+                $block = $this->engine->block($cfg['arms'], (int)$cfg['block_size'], $seed);
+                $index = 0;
+            }
+            $code = (string)($block[$index] ?? '');
+            $db->createCommand()->update('{{%custom_form_arm_allocation}}', [
+                'next_index' => $index + 1,
+                'block_json' => json_encode(array_values($block), JSON_UNESCAPED_UNICODE),
+            ], ['form_id' => (int)$form->id, 'stratum_key' => $stratum])->execute();
+            if ($own) {
+                $own->commit();
+            }
+        } catch (\Throwable $e) {
+            if ($own) {
+                $own->rollBack();
+            }
+            throw $e;
         }
-        $db->createCommand(
-            'SELECT next_index FROM {{%custom_form_arm_allocation}} WHERE form_id = :f AND stratum_key = :s FOR UPDATE',
-            [':f' => (int)$form->id, ':s' => $stratum]
-        )->queryScalar();
-        $block = json_decode((string)$row['block_json'], true);
-        if (!is_array($block) || !$block) {
-            $block = $this->engine->block($cfg['arms'], (int)$cfg['block_size'], $seed);
-        }
-        $index = (int)$row['next_index'];
-        if ($index >= count($block)) {
-            $block = $this->engine->block($cfg['arms'], (int)$cfg['block_size'], $seed + $index);
-            $index = 0;
-        }
-        $code = (string)$block[$index];
-        $db->createCommand()->update('{{%custom_form_arm_allocation}}', [
-            'next_index' => $index + 1,
-            'block_json' => json_encode(array_values($block), JSON_UNESCAPED_UNICODE),
-        ], ['form_id' => (int)$form->id, 'stratum_key' => $stratum])->execute();
         return $code;
     }
 }

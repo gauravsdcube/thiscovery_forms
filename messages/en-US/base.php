@@ -1025,4 +1025,6 @@ return [
     'Responses linked by high similarity. Groups are screening aids — shared wording alone is not proof of collusion.' => 'Responses linked by high similarity. Groups are screening aids — shared wording alone is not proof of collusion.',
     'Group {n} ({count} responses)' => 'Group {n} ({count} responses)',
     '{n}s' => '{n}s',
+    'Calculated questions depend on each other in a loop: {labels}.' => 'Calculated questions depend on each other in a loop: {labels}.',
+    'Too many previews. Please wait a minute and try again.' => 'Too many previews. Please wait a minute and try again.',
 ];
