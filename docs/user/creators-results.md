@@ -14,7 +14,7 @@ How people open the form, how you watch progress, and how you export data.
 
 **Save as template** stores the form design for reuse. It does not include answers. Templates are labelled by form type on the Create screen.
 
-**Import and export questions** (same section) accepts JSON or CSV. Leave **Replace all existing questions** unticked to append, or tick it to overwrite the form. Column names and every field type are described in [Import questions from CSV](creators-csv-import.md).
+**Import and export questions** (same section) accepts JSON or CSV. Leave **Replace all existing questions** unticked to append. Tick it to update each question that already has the same variable name and remove questions that are not in the file. Column names and every field type are described in [Import questions from CSV](creators-csv-import.md).
 
 ## Opening from the site
 

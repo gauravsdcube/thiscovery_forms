@@ -7,7 +7,6 @@ $failures = [];
 $dirs = ['services', 'models', 'controllers', 'views', 'helpers', 'commands', 'resources/js', 'widgets', 'notifications'];
 $allowedDates = [
     'services/LlmClient.php' => true, // API version string, not a date used by logic
-    'commands/ImportSparcs2Controller.php' => true, // SPARCS study start date for sample data
 ];
 foreach ($dirs as $dir) {
     if (!is_dir("$root/$dir")) {

@@ -9,7 +9,7 @@ There is no limit on how many questions you can import. Empty rows and unknown t
 On **Settings → Share**, choose the CSV (or JSON) file, then:
 
 - Leave **Replace all existing questions** **unticked** to **append**. Imported questions are added after the ones already on the form.
-- Tick **Replace all existing questions** to **remove every question** on the form and use only the file. You will be asked to confirm. Answers already collected will no longer match the old questions.
+- Tick **Replace all existing questions** to make the file the questionnaire. A question in the file updates the one that already has the same variable name, and answers stay on that question. A question that is not in the file is removed. You will be asked to confirm.
 
 Save the form at least once before you import.
 

@@ -2,6 +2,11 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.31.1 (October 2, 2026)
+
+- Change: The SPARCS2 survey definitions and the `import-sparcs2` console command are no longer part of the module. A study questionnaire belongs on the form, not in the product.
+- Fix: Replacing questions from JSON or CSV updates the question that already has each variable name. A question that is not in the file is removed. The import no longer stops because the question being replaced still has that name. Answers stay on a question whose name is unchanged.
+
 ## 1.31.0 (October 2, 2026)
 
 Production release. It includes everything since 1.28: loops, quotas, electronic consent, randomisation, the formula engine, and the studio. The numbered review fixes are in 1.30.1 through 1.30.7 below. This section is the description of what is being released.

@@ -486,7 +486,7 @@ return [
     'CSV import help' => 'CSV import help',
     'Replace all existing questions' => 'Replace all existing questions',
     'Leave this unticked to add the imported questions after the ones already on the form.' => 'Leave this unticked to add the imported questions after the ones already on the form.',
-    'This will delete every question currently on the form and replace them with the import. This cannot be undone. Continue?' => 'This will delete every question currently on the form and replace them with the import. This cannot be undone. Continue?',
+    'Questions in the file replace the ones that already use the same variable name. Questions that are not in the file are removed. Continue?' => 'Questions in the file replace the ones that already use the same variable name. Questions that are not in the file are removed. Continue?',
     'Existing questions were replaced with the imported file.' => 'Existing questions were replaced with the imported file.',
     'Export JSON' => 'Export JSON',
     'Export CSV' => 'Export CSV',

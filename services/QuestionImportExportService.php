@@ -323,10 +323,21 @@ class QuestionImportExportService
     public function appendFieldPayloads(CustomForm $form, array $payloads, bool $replace = false): ?string
     {
         $existing = [];
+        // A replace updates the live question that already has each variable name, instead of
+        // removing it and adding another with the same name. The removed row would still hold
+        // the name for this save, and the new question would be refused.
+        $reuseByVariable = [];
         if (!$replace) {
             foreach ($form->fields as $field) {
                 $existing[(string)$field->id] = $field->toPostRow();
                 $existing[(string)$field->id]['id'] = $field->id;
+            }
+        } else {
+            foreach ($form->fields as $field) {
+                $var = strtolower(trim((string)$field->variable));
+                if ($var !== '' && !isset($reuseByVariable[$var])) {
+                    $reuseByVariable[$var] = (int)$field->id;
+                }
             }
         }
 
@@ -351,6 +362,11 @@ class QuestionImportExportService
             $importKey = preg_replace('/[^a-zA-Z0-9_]/', '', (string)($payload['key'] ?? '')) ?? '';
             if ($importKey !== '') {
                 $row['import_key'] = $importKey;
+            }
+            $var = strtolower(trim((string)($row['variable'] ?? '')));
+            if ($var !== '' && isset($reuseByVariable[$var])) {
+                $row['id'] = $reuseByVariable[$var];
+                unset($reuseByVariable[$var]);
             }
             $existing['imp' . $next] = $row;
             $next++;

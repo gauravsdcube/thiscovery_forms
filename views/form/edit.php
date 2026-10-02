@@ -696,14 +696,14 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                             <input type="checkbox" name="replace_fields" value="1" id="cf-import-replace" form="cf-import-form">
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Replace all existing questions') ?>
                         </label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'On: the import replaces every question on the form. Off: the imported questions are added after the ones already there.')]) ?>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'On: a question in the file updates the one that already has that variable name. Questions that are not in the file are removed. Off: the imported questions are added after the ones already there.')]) ?>
                         <p class="cf-hint text-muted mb-0">
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Leave this unticked to add the imported questions after the ones already on the form.') ?>
                         </p>
                     </div>
                 </div>
                 <button type="submit" class="btn btn-primary" form="cf-import-form"
-                    onclick="var r=document.getElementById('cf-import-replace'); return !r || !r.checked || confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'This will delete every question currently on the form and replace them with the import. This cannot be undone. Continue?')) ?>);">
+                    onclick="var r=document.getElementById('cf-import-replace'); return !r || !r.checked || confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Questions in the file replace the ones that already use the same variable name. Questions that are not in the file are removed. Continue?')) ?>);">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Import questions') ?>
                 </button>
                 </div>
