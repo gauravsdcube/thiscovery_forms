@@ -13,6 +13,19 @@ use Yii;
 class IntegritySettings
 {
     public const SETTING_KEY = 'integrity';
+
+    /**
+     * Gates a manager can change on the survey without publishing a new edition.
+     * The live survey value wins over the copy stored in a published edition.
+     */
+    public const LIVE_GATE_KEYS = [
+        'captcha',
+        'captcha_mode',
+        'captcha_provider',
+        'open_captcha',
+        'open_rate_count',
+        'open_rate_window',
+    ];
     public const PEPPER_KEY = 'integrity_pepper';
 
     public const ACCESS_PUBLIC = 'public';
@@ -280,6 +293,26 @@ class IntegritySettings
     {
         $overlay = $form->getSetting(self::SETTING_KEY, []);
         return is_array($overlay) ? $overlay : [];
+    }
+
+    /**
+     * Put the survey's current CAPTCHA gates back after a published edition
+     * has replaced settings with the copy from publish time.
+     *
+     * @param array<string,mixed> $liveIntegrity
+     */
+    public static function keepLiveGates(CustomForm $form, array $liveIntegrity): void
+    {
+        $settings = $form->getSettings();
+        $integrity = is_array($settings[self::SETTING_KEY] ?? null) ? $settings[self::SETTING_KEY] : [];
+        foreach (self::LIVE_GATE_KEYS as $key) {
+            if (array_key_exists($key, $liveIntegrity)) {
+                $integrity[$key] = $liveIntegrity[$key];
+            } else {
+                unset($integrity[$key]);
+            }
+        }
+        $form->setSetting(self::SETTING_KEY, $integrity);
     }
 
     public static function sanitize(array $post, bool $allowInherit): array

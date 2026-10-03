@@ -32,9 +32,6 @@ $panelToken = trim((string)Yii::$app->request->get('token', Yii::$app->request->
             <h2 class="cf-resume-gate__title">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Please verify you are human') ?>
             </h2>
-            <p class="cf-resume-gate__lead">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'This survey has received many open attempts from your connection. Complete the check below to continue.') ?>
-            </p>
 
             <?php if ($error): ?>
                 <div class="alert alert-danger"><?= Html::encode($error) ?></div>

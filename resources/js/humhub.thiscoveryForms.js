@@ -3255,6 +3255,33 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $controls.addClass('is-invalid').attr('aria-invalid', 'true').attr('aria-describedby', fieldErrorId($field));
         };
 
+        var turnstileReady = !!window.cfCaptchaGateReady;
+
+        var captchaSolved = function () {
+            var widget = $root.find('altcha-widget').get(0);
+            if (widget) {
+                if ((widget.getAttribute('data-state') || '') === 'verified') {
+                    return true;
+                }
+                var hidden = widget.querySelector('input[type="hidden"]');
+                return !!(hidden && String(hidden.value || '') !== '');
+            }
+            if ($root.find('.cf-turnstile, .cf-turnstile-wrap').length) {
+                return turnstileReady || String($root.find('input[name="cf-turnstile-response"]').val() || '') !== '';
+            }
+            return false;
+        };
+
+        var syncCaptchaSubmit = function () {
+            var $btn = $root.find('[data-cf-captcha-gate]');
+            if (!$btn.length) {
+                return;
+            }
+            var ready = captchaSolved();
+            $btn.prop('disabled', !ready).attr('aria-disabled', ready ? 'false' : 'true');
+            $root.find('[data-cf-captcha-hint]').prop('hidden', ready);
+        };
+
         var resetFillButtons = function () {
             var $btns = $root.find('[data-cf-page-next], [data-cf-submit-wrap] button, [data-cf-submit-wrap] input[type="submit"], [data-cf-fill-form] button[type="submit"]');
             $btns.prop('disabled', false).removeClass('disabled').removeAttr('disabled').removeAttr('aria-disabled');
@@ -3266,6 +3293,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     });
                 }
             } catch (err) {}
+            syncCaptchaSubmit();
         };
 
         var showPageErrorSummary = function (hasErrors) {
@@ -5479,6 +5507,16 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             showPage(startPage);
         }
 
+        $root.find('altcha-widget').each(function () {
+            this.addEventListener('statechange', syncCaptchaSubmit);
+            this.addEventListener('verified', syncCaptchaSubmit);
+        });
+        document.addEventListener('cf-captcha-state', function (ev) {
+            turnstileReady = !!(ev.detail && ev.detail.ready);
+            syncCaptchaSubmit();
+        });
+        syncCaptchaSubmit();
+
         $root.on('input', 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="hidden"]):not([type="reset"])', function () {
             scheduleEvaluate(false);
             scheduleAutosave();
@@ -5580,6 +5618,18 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
 
         $root.on('submit', '[data-cf-fill-form]', function (e) {
+            if ($root.find('[data-cf-captcha-gate]').length && !captchaSolved()) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                syncCaptchaSubmit();
+                var captchaMsg = $.trim($root.find('[data-cf-captcha-hint]').text());
+                if (captchaMsg) {
+                    announceLive(captchaMsg);
+                }
+                resetFillButtons();
+                setTimeout(resetFillButtons, 30);
+                return false;
+            }
             flushEvaluate();
             cancelAutosave();
             captureRespondentMeta();

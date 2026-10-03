@@ -2574,6 +2574,20 @@ body.cf-fill-standalone #topbar-second {
     display: inline-flex;
 }
 
+.cf-fill-nav .cf-fill-submit.cf-fill-submit--captcha {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: .75rem;
+    min-width: min(100%, 22rem);
+}
+
+.cf-captcha-hint {
+    margin: 0;
+    color: #64748b;
+    font-size: .875rem;
+}
+
 .cf-fill-errors {
     margin: 1rem 0 0;
     padding: .75rem 1rem;

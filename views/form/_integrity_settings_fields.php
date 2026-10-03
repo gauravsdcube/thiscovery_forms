@@ -197,7 +197,7 @@ $siteDefaultOn = !empty($defaults['enabled']);
     <div class="col-md-6">
         <div class="cf-field">
             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'CAPTCHA before form opens') ?></label>
-            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Off by default. When On, respondents who open the survey faster than the open-rate limits must pass CAPTCHA before the fill page loads. Uses the same CAPTCHA provider.')]) ?>
+            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Per survey. On overrides the site default: respondents who open faster than the limits below must pass CAPTCHA before the fill page loads. Off overrides the site default and never shows that check. Use site default follows Administration → Modules → Thiscovery Forms. Saving the form applies it to the live survey.')]) ?>
             <?php $tri('open_captcha'); ?>
         </div>
     </div>

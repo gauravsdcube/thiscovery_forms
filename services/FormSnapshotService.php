@@ -196,6 +196,7 @@ class FormSnapshotService
      */
     public function hydrateInMemory(CustomForm $form, array $snapshot): void
     {
+        $liveIntegrity = IntegritySettings::overlayForForm($form);
         $meta = is_array($snapshot['meta'] ?? null) ? $snapshot['meta'] : [];
         foreach ([
             'title', 'description', 'thank_you_content', 'already_submitted_message', 'custom_css',
@@ -210,6 +211,7 @@ class FormSnapshotService
                 $form->$attr = (int)$meta[$attr];
             }
         }
+        IntegritySettings::keepLiveGates($form, $liveIntegrity);
 
         $fields = $this->fieldsFromRows($form, is_array($snapshot['fields'] ?? null) ? $snapshot['fields'] : []);
         $this->bindHydratedFieldsToLiveRows($form, $fields);

@@ -226,15 +226,23 @@ $this->registerJsConfig('thiscoveryForms', [
     'fillFileDeleteUrl' => Url::toFillDeleteFile($formModel),
     'pipeVars' => $pipe->tokenMap($user ?? Yii::$app->user->identity, $formModel, $fillContext->member ?? null),
     'startPage' => (function () use ($existing, $pages): int {
-        $start = ($existing && $existing->isInProgress() && $existing->current_page !== null)
-            ? (int)$existing->current_page
-            : 0;
-        $savedKey = ($existing && $existing->isInProgress() && $existing->hasAttribute('current_page_key'))
-            ? (string)$existing->current_page_key
-            : '';
+        $postedPage = Yii::$app->request->post('current_page');
+        $usePostedPage = Yii::$app->request->isPost && $postedPage !== null && $postedPage !== '';
+        $start = $usePostedPage
+            ? (int)$postedPage
+            : (($existing && $existing->isInProgress() && $existing->current_page !== null)
+                ? (int)$existing->current_page
+                : 0);
+        $savedKey = $usePostedPage
+            ? (string)Yii::$app->request->post('current_page_key', '')
+            : (($existing && $existing->isInProgress() && $existing->hasAttribute('current_page_key'))
+                ? (string)$existing->current_page_key
+                : '');
         $start = \humhub\modules\thiscoveryForms\services\FormPager::resumeIndex($pages, $start, $savedKey);
-        $instance = $existing ? trim((string)$existing->current_instance_key) : '';
-        if ($existing && $existing->isInProgress() && $instance !== '') {
+        $instance = $usePostedPage
+            ? trim((string)Yii::$app->request->post('current_instance_key', ''))
+            : ($existing ? trim((string)$existing->current_instance_key) : '');
+        if ($instance !== '' && ($usePostedPage || ($existing && $existing->isInProgress()))) {
             // Two loops can share repeat codes, so the saved page wins when it is that repeat;
             // otherwise the nearest page for the repeat (V3-45).
             $best = null;
@@ -779,12 +787,22 @@ $fillRtl = TranslationService::isRtl($fillLang);
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Next') ?>
                         </button>
                     <?php endif; ?>
-                    <div class="cf-fill-submit" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
+                    <div class="cf-fill-submit<?= !empty($showCaptcha) ? ' cf-fill-submit--captcha' : '' ?>" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
                         <?php if (!empty($showCaptcha)): ?>
                             <?php if ($captchaProvider === IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE && !empty($integritySettings['turnstile_site_key'])): ?>
                                 <div class="cf-turnstile-wrap mb-3">
+                                    <script>
+                                        window.cfTurnstileSolved = function () {
+                                            window.cfCaptchaGateReady = true;
+                                            document.dispatchEvent(new CustomEvent('cf-captcha-state', {detail: {ready: true}}));
+                                        };
+                                        window.cfTurnstileCleared = function () {
+                                            window.cfCaptchaGateReady = false;
+                                            document.dispatchEvent(new CustomEvent('cf-captcha-state', {detail: {ready: false}}));
+                                        };
+                                    </script>
                                     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-                                    <div class="cf-turnstile" data-sitekey="<?= Html::encode($integritySettings['turnstile_site_key']) ?>"></div>
+                                    <div class="cf-turnstile" data-sitekey="<?= Html::encode($integritySettings['turnstile_site_key']) ?>" data-callback="cfTurnstileSolved" data-expired-callback="cfTurnstileCleared" data-error-callback="cfTurnstileCleared"></div>
                                 </div>
                             <?php elseif ($captchaProvider !== IntegritySettings::CAPTCHA_PROVIDER_TURNSTILE): ?>
                                 <div class="cf-captcha-wrap mb-3">
@@ -794,6 +812,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                     ?>
                                 </div>
                             <?php endif; ?>
+                            <p class="cf-captcha-hint" data-cf-captcha-hint><?= Yii::t('ThiscoveryFormsModule.base', 'Complete the verification check to submit.') ?></p>
                         <?php endif; ?>
                         <?php if ($editingAnswer && SubmitForm::isManagerEdit($formModel, $existing)): ?>
                             <div class="form-group cf-change-reason">
@@ -809,7 +828,12 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 : Yii::t('ThiscoveryFormsModule.base', 'Submit')))
                             ->submit()
                             ->loader(false)
-                            ->cssClass('btn-lg') ?>
+                            ->cssClass('btn-lg')
+                            ->options(!empty($showCaptcha) ? [
+                                'disabled' => true,
+                                'aria-disabled' => 'true',
+                                'data-cf-captcha-gate' => '1',
+                            ] : []) ?>
                     </div>
                 </div>
             </div>

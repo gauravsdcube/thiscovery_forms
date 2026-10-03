@@ -61,9 +61,9 @@ Leave a survey control on **Use site default** unless this study needs different
 
 **CAPTCHA provider:** HumHub Altcha (default) or Cloudflare Turnstile. Turnstile needs site and secret keys in Administration.
 
-**CAPTCHA when:** Off, only when behaviour looks suspicious (honeypot, no session, or rate limit), or Always (every submit, when the provider is available). Failed Always-mode CAPTCHA blocks submit. Other CAPTCHA failures are recorded as flags.
+**CAPTCHA when:** Off, only when behaviour looks suspicious (honeypot, no session, or rate limit), or Always (every submit, when the provider is available). While the check is on screen, Submit stays disabled until it is completed. A submit without a completed check is refused and the answers stay on the page you submitted from.
 
-**Open CAPTCHA gate:** optional. Uses open-rate count and window (default 30 opens per 10 minutes). Separate from submit rate limiting.
+**Open CAPTCHA gate:** optional, and separate from submit rate limiting. Set **CAPTCHA before form opens** on the survey (**Settings → Response integrity**) to On or Off to override the site default. **Use site default** follows Administration → Modules → Thiscovery Forms. Saving the form applies that choice to the live survey. It uses the open-rate count and window (default 30 opens per 10 minutes).
 
 **Rate window:** for example 8 submits per 10 minutes from the same connection.
 
