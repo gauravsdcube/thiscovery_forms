@@ -2,6 +2,21 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.34.0 (October 3, 2026)
+
+### Secure send
+
+- A form manager can prepare a frozen file for one named contact. The contact opens a private link and enters a one-time code emailed to that address. No account is required. Only that address receives the code.
+- The file can be generated from the form’s answers or uploaded. Sending a new code lets the same file be downloaded again. The contact can ask for another code from the link. Changing the email address issues a new link and cancels the current code.
+- How long a code lasts is set on the form, from 5 minutes to 7 days. A code already sent keeps the expiry it was given.
+- The module switch is off until an administrator turns **Secure send** on. The section then appears under the form’s settings.
+- Apply migration `m261002_193000_secure_send`.
+
+### Studio
+
+- Typing in Title, secure send, or any other settings field no longer saves the form. **Save form** saves it. **Preview** and **Publish current draft** still save when those buttons are clicked.
+- Letters in a question appear as they are typed. Show, hide, piping, and calculated values update just after the last character.
+
 ## 1.33.0 (October 2, 2026)
 
 - Change: Module configuration can open the Forms area in Administration on the full page. When **Open forms full page, without the administration menu** is on, the forms list, studio, answers, panels, email templates, and help hide the left administration menu. The configuration page keeps that menu so the option can be turned off. Space forms are unchanged. The option is off until an administrator turns it on.

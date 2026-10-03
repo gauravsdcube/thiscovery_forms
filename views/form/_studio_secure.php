@@ -39,14 +39,14 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Code lifetime (minutes)') ?>
             <?= Html::input('number', 'minutes', $minutes, [
-                'form' => 'cf-secure-lifetime',
+                'data-cf-target' => 'cf-secure-lifetime',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'min' => SecureSendService::MIN_MINUTES,
                 'max' => SecureSendService::MAX_MINUTES,
-                'required' => true,
             ]) ?>
         </label>
-        <button type="submit" class="btn btn-default" form="cf-secure-lifetime">
+        <button type="button" class="btn btn-default" data-cf-target="cf-secure-lifetime">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Save lifetime') ?>
         </button>
         <p class="cf-hint text-muted">
@@ -62,40 +62,40 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'File name') ?>
             <?= Html::textInput('label', Yii::t('ThiscoveryFormsModule.base', 'Answers CSV'), [
-                'form' => 'cf-secure-prepare',
+                'data-cf-target' => 'cf-secure-prepare',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'maxlength' => 160,
-                'required' => true,
             ]) ?>
         </label>
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Contact name') ?>
             <?= Html::textInput('contact_name', '', [
-                'form' => 'cf-secure-prepare',
+                'data-cf-target' => 'cf-secure-prepare',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'maxlength' => 160,
-                'required' => true,
             ]) ?>
         </label>
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Contact email') ?>
             <?= Html::input('email', 'contact_email', '', [
-                'form' => 'cf-secure-prepare',
+                'data-cf-target' => 'cf-secure-prepare',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'maxlength' => 190,
-                'required' => true,
             ]) ?>
         </label>
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Column headings') ?>
             <?= Html::dropDownList('header_mode', $headerMode, ExportService::headerModeLabels(), [
-                'form' => 'cf-secure-prepare',
+                'data-cf-target' => 'cf-secure-prepare',
                 'class' => 'form-control',
             ]) ?>
         </label>
         <label class="cf-secure-check">
             <?= Html::checkbox('include_in_progress', (string)($export['include_in_progress'] ?? '0') === '1', [
-                'form' => 'cf-secure-prepare',
+                'data-cf-target' => 'cf-secure-prepare',
                 'value' => '1',
                 'uncheck' => null,
             ]) ?>
@@ -103,7 +103,7 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
         </label>
         <label class="cf-secure-check">
             <?= Html::checkbox('include_excluded', (string)($export['include_excluded'] ?? '0') === '1', [
-                'form' => 'cf-secure-prepare',
+                'data-cf-target' => 'cf-secure-prepare',
                 'value' => '1',
                 'uncheck' => null,
             ]) ?>
@@ -111,10 +111,10 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
         </label>
         <?php foreach (['status', 'q', 'integrity', 'min_score'] as $carry): ?>
             <?php if ((string)($export[$carry] ?? '') !== ''): ?>
-                <?= Html::hiddenInput($carry, (string)$export[$carry], ['form' => 'cf-secure-prepare']) ?>
+                <?= Html::hiddenInput($carry, (string)$export[$carry], ['data-cf-target' => 'cf-secure-prepare']) ?>
             <?php endif; ?>
         <?php endforeach; ?>
-        <button type="submit" class="btn btn-primary" form="cf-secure-prepare">
+        <button type="button" class="btn btn-primary" data-cf-target="cf-secure-prepare">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Prepare file') ?>
         </button>
     </div>
@@ -127,40 +127,40 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'File name') ?>
             <?= Html::textInput('label', '', [
-                'form' => 'cf-secure-upload',
+                'data-cf-target' => 'cf-secure-upload',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'maxlength' => 160,
-                'required' => true,
             ]) ?>
         </label>
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Contact name') ?>
             <?= Html::textInput('contact_name', '', [
-                'form' => 'cf-secure-upload',
+                'data-cf-target' => 'cf-secure-upload',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'maxlength' => 160,
-                'required' => true,
             ]) ?>
         </label>
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'Contact email') ?>
             <?= Html::input('email', 'contact_email', '', [
-                'form' => 'cf-secure-upload',
+                'data-cf-target' => 'cf-secure-upload',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
                 'maxlength' => 190,
-                'required' => true,
             ]) ?>
         </label>
         <label>
             <?= Yii::t('ThiscoveryFormsModule.base', 'File') ?>
             <?= Html::fileInput('secure_file', null, [
-                'form' => 'cf-secure-upload',
+                'data-cf-target' => 'cf-secure-upload',
+                'data-cf-required' => '1',
                 'class' => 'form-control',
-                'required' => true,
                 'accept' => '.csv,.txt,.tsv,.xlsx,.xls,.pdf,.zip,.json',
             ]) ?>
         </label>
-        <button type="submit" class="btn btn-primary" form="cf-secure-upload">
+        <button type="button" class="btn btn-primary" data-cf-target="cf-secure-upload">
             <?= Yii::t('ThiscoveryFormsModule.base', 'Prepare uploaded file') ?>
         </button>
     </div>
@@ -199,16 +199,16 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
             <?php endif; ?>
             <?php if ($active): ?>
                 <div class="cf-secure-actions">
-                    <button type="submit" class="btn btn-primary btn-sm" form="cf-secure-send-<?= $rid ?>">
+                    <button type="button" class="btn btn-primary btn-sm" data-cf-target="cf-secure-send-<?= $rid ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Send a new code') ?>
                     </button>
-                    <button type="submit" class="btn btn-default btn-sm" form="cf-secure-revoke-code-<?= $rid ?>">
+                    <button type="button" class="btn btn-default btn-sm" data-cf-target="cf-secure-revoke-code-<?= $rid ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Revoke code') ?>
                     </button>
-                    <button type="submit" class="btn btn-default btn-sm" form="cf-secure-rotate-<?= $rid ?>">
+                    <button type="button" class="btn btn-default btn-sm" data-cf-target="cf-secure-rotate-<?= $rid ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Issue a new link') ?>
                     </button>
-                    <button type="submit" class="btn btn-danger btn-sm" form="cf-secure-revoke-<?= $rid ?>"
+                    <button type="button" class="btn btn-danger btn-sm" data-cf-target="cf-secure-revoke-<?= $rid ?>"
                         onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Revoke this file? The link will stop working. The audit is kept.')) ?>);">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Revoke file') ?>
                     </button>
@@ -217,22 +217,22 @@ if (!isset(ExportService::headerModeLabels()[$headerMode])) {
                     <label>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Contact name') ?>
                         <?= Html::textInput('contact_name', $release->contact_name, [
-                            'form' => 'cf-secure-contact-' . $rid,
+                            'data-cf-target' => 'cf-secure-contact-' . $rid,
+                            'data-cf-required' => '1',
                             'class' => 'form-control',
                             'maxlength' => 160,
-                            'required' => true,
                         ]) ?>
                     </label>
                     <label>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Contact email') ?>
                         <?= Html::input('email', 'contact_email', $release->contact_email, [
-                            'form' => 'cf-secure-contact-' . $rid,
+                            'data-cf-target' => 'cf-secure-contact-' . $rid,
+                            'data-cf-required' => '1',
                             'class' => 'form-control',
                             'maxlength' => 190,
-                            'required' => true,
                         ]) ?>
                     </label>
-                    <button type="submit" class="btn btn-default btn-sm" form="cf-secure-contact-<?= $rid ?>">
+                    <button type="button" class="btn btn-default btn-sm" data-cf-target="cf-secure-contact-<?= $rid ?>">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Save contact') ?>
                     </button>
                     <p class="cf-hint text-muted">

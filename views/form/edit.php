@@ -229,14 +229,13 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 : $formModel->title) ?>
         </div>
         <div class="cf-studio__nav-actions">
-            <button type="submit" name="after_save" value="preview" form="cf-studio-form" class="btn btn-primary cf-studio__preview-btn">
+            <button type="button" class="btn btn-primary cf-studio__preview-btn" data-cf-studio-submit="preview">
                 <i class="fa fa-eye" aria-hidden="true"></i>
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Preview') ?>
             </button>
             <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))
-                ->submit()
                 ->icon('floppy-o')
-                ->options(['form' => 'cf-studio-form'])
+                ->options(['type' => 'button', 'data-cf-studio-submit' => 'save'])
                 ->cssClass('cf-studio__preview-btn')
                 ->loader(false) ?>
             <?php if (!$isNew && $formModel->canManage()): ?>
@@ -522,7 +521,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Open form') ?>
                         <i class="fa fa-external-link"></i>
                     </a>
-                    <button type="submit" class="btn btn-link btn-sm" form="cf-regen-fill-form"
+                    <button type="button" class="btn btn-link btn-sm" data-cf-target="cf-regen-fill-form"
                         onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'The current fill link will stop working. Continue?')) ?>);">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Issue a new link') ?>
                     </button>
@@ -542,7 +541,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     <?php
                     $hasEdition = (new \humhub\modules\thiscoveryForms\services\FormVersionService())->hasPublishedEdition($formModel);
                     ?>
-                    <button type="submit" name="after_save" value="publish" class="btn btn-primary btn-sm" form="cf-studio-form">
+                    <button type="submit" name="after_save" value="publish" class="btn btn-primary btn-sm">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Publish current draft') ?>
                     </button>
                     <?php if (!$hasEdition): ?>
@@ -584,7 +583,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Open preview') ?>
                         <i class="fa fa-external-link"></i>
                     </a>
-                    <button type="submit" class="btn btn-link btn-sm" form="cf-regen-preview-form">
+                    <button type="button" class="btn btn-link btn-sm" data-cf-target="cf-regen-preview-form">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Regenerate link') ?>
                     </button>
                 </p>
@@ -619,7 +618,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Open shared dashboard') ?>
                             <i class="fa fa-external-link"></i>
                         </a>
-                        <button type="submit" class="btn btn-link btn-sm" form="cf-regen-dash-form">
+                        <button type="button" class="btn btn-link btn-sm" data-cf-target="cf-regen-dash-form">
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Regenerate link') ?>
                         </button>
                     </p>
@@ -644,7 +643,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                             ['type' => CustomForm::getKindLabels()[$formModel->kind] ?? $formModel->kind]
                         ) ?>
                     </p>
-                    <button type="submit" class="btn btn-light" form="cf-template-form">
+                    <button type="button" class="btn btn-light" data-cf-target="cf-template-form">
                         <i class="fa fa-clone"></i>
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Save as template') ?>
                     </button>
@@ -697,12 +696,12 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Import file') ?></label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A JSON or CSV of questions. Import records a revision. It does not import answers.')]) ?>
                     </div>
-                    <input type="file" name="import_file" class="form-control" form="cf-import-form" accept=".json,.csv,application/json,text/csv">
+                    <input type="file" name="import_file" class="form-control" data-cf-target="cf-import-form" data-cf-required="1" accept=".json,.csv,application/json,text/csv">
                 </div>
                 <div class="cf-checks mb-3">
                     <div class="cf-check-setting">
                         <label>
-                            <input type="checkbox" name="replace_fields" value="1" id="cf-import-replace" form="cf-import-form">
+                            <input type="checkbox" name="replace_fields" value="1" id="cf-import-replace" data-cf-target="cf-import-form">
                             <?= Yii::t('ThiscoveryFormsModule.base', 'Replace all existing questions') ?>
                         </label>
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'On: a question in the file updates the one that already has that variable name. Questions that are not in the file are removed. Off: the imported questions are added after the ones already there.')]) ?>
@@ -711,7 +710,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         </p>
                     </div>
                 </div>
-                <button type="submit" class="btn btn-primary" form="cf-import-form"
+                <button type="button" class="btn btn-primary" data-cf-target="cf-import-form"
                     onclick="var r=document.getElementById('cf-import-replace'); return !r || !r.checked || confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Questions in the file replace the ones that already use the same variable name. Questions that are not in the file are removed. Continue?')) ?>);">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Import questions') ?>
                 </button>
@@ -763,7 +762,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
             </button>
             <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))->submit()->icon('floppy-o') ?>
             <?php if (!$isNew && $formModel->canManage()): ?>
-                <button type="submit" form="cf-delete-form" class="btn btn-danger cf-studio__delete-btn"
+                <button type="button" data-cf-target="cf-delete-form" class="btn btn-danger cf-studio__delete-btn"
                     onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Move this form to the trash? Its answers are kept and it can be restored.')) ?>);">
                     <i class="fa fa-trash" aria-hidden="true"></i>
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Delete form') ?>

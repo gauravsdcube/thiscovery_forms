@@ -1373,7 +1373,148 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return fields;
         };
 
-        $root.on('submit', 'form.cf-studio__form', function () {
+        // Controls for delete, import, and secure send used to carry form="…"
+        // while sitting inside this form. Safari then posted the form on every
+        // character typed in Title or those fields. They are plain controls now
+        // and only submit their own form when their button is clicked.
+        var allowStudioSubmit = false;
+        var armStudioSubmit = function () {
+            allowStudioSubmit = true;
+            window.setTimeout(function () {
+                allowStudioSubmit = false;
+            }, 0);
+        };
+        $root.find('form.cf-studio__form [form]').each(function () {
+            var owner = this.getAttribute('form');
+            this.removeAttribute('form');
+            if (owner && owner !== 'cf-studio-form' && !this.getAttribute('data-cf-target')) {
+                this.setAttribute('data-cf-target', owner);
+            }
+            if (this.tagName === 'BUTTON' && owner && owner !== 'cf-studio-form') {
+                this.type = 'button';
+            }
+        });
+        var ownedFieldEmpty = function (el) {
+            if (el.type === 'checkbox' || el.type === 'radio') {
+                return !el.checked;
+            }
+            if (el.type === 'file') {
+                return !el.files || !el.files.length;
+            }
+            return $.trim(String(el.value || '')) === '';
+        };
+        var submitOwnedForm = function (targetId) {
+            if (!/^[A-Za-z0-9_-]+$/.test(targetId)) {
+                return;
+            }
+            var form = document.getElementById(targetId);
+            if (!form) {
+                return;
+            }
+            var fields = [];
+            document.querySelectorAll('[data-cf-target]').forEach(function (el) {
+                if (el.getAttribute('data-cf-target') !== targetId) {
+                    return;
+                }
+                if (!el.matches('input, select, textarea')) {
+                    return;
+                }
+                fields.push(el);
+            });
+            var i;
+            for (i = 0; i < fields.length; i++) {
+                var el = fields[i];
+                if (el.getAttribute('data-cf-required') === '1' && ownedFieldEmpty(el)) {
+                    el.required = true;
+                    el.reportValidity();
+                    el.required = false;
+                    return;
+                }
+                if (typeof el.checkValidity === 'function' && !el.checkValidity()) {
+                    el.reportValidity();
+                    return;
+                }
+            }
+            form.querySelectorAll('[data-cf-cloned]').forEach(function (node) {
+                node.remove();
+            });
+            var fileNode = null;
+            fields.forEach(function (el) {
+                if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) {
+                    return;
+                }
+                if (el.type === 'file') {
+                    fileNode = el;
+                    return;
+                }
+                var hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = el.name;
+                hidden.value = el.value;
+                hidden.setAttribute('data-cf-cloned', '1');
+                form.appendChild(hidden);
+            });
+            if (fileNode && fileNode.parentNode) {
+                var mark = document.createComment('cf-file');
+                fileNode.parentNode.insertBefore(mark, fileNode);
+                form.appendChild(fileNode);
+            }
+            form.submit();
+        };
+        $root.off('click.cfForeignSubmit').on('click.cfForeignSubmit', 'button[data-cf-target]', function (e) {
+            if (e.isDefaultPrevented()) {
+                return;
+            }
+            e.preventDefault();
+            submitOwnedForm(String(this.getAttribute('data-cf-target') || ''));
+        });
+        $root.off('mousedown.cfStudioSubmit').on('mousedown.cfStudioSubmit', 'form.cf-studio__form button[type="submit"]', armStudioSubmit);
+        $root.off('keydown.cfStudioSubmit').on('keydown.cfStudioSubmit', 'form.cf-studio__form button[type="submit"]', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                armStudioSubmit();
+            }
+        });
+        $root.off('click.cfStudioNav').on('click.cfStudioNav', '[data-cf-studio-submit]', function (e) {
+            e.preventDefault();
+            var $form = $root.find('form.cf-studio__form');
+            if (!$form.length) {
+                return;
+            }
+            $form.find('input[name="after_save"]').remove();
+            if (this.getAttribute('data-cf-studio-submit') === 'preview') {
+                $('<input type="hidden" name="after_save" value="preview">').appendTo($form);
+            }
+            allowStudioSubmit = true;
+            if (typeof $form.get(0).requestSubmit === 'function') {
+                $form.get(0).requestSubmit();
+            } else {
+                $form.trigger('submit');
+                $form.get(0).submit();
+            }
+            window.setTimeout(function () {
+                allowStudioSubmit = false;
+            }, 0);
+        });
+        $root.find('form.cf-studio__form').each(function () {
+            this.addEventListener('keydown', function (e) {
+                if (e.key !== 'Enter' || !e.target) {
+                    return;
+                }
+                var tag = e.target.tagName;
+                if (tag === 'INPUT' || tag === 'SELECT') {
+                    e.preventDefault();
+                }
+            }, true);
+        });
+
+        $root.on('submit', 'form.cf-studio__form', function (e) {
+            if (!allowStudioSubmit) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                return false;
+            }
+            allowStudioSubmit = false;
+            $(this).find('[data-cf-target]').filter('input, select, textarea').prop('disabled', true);
             refreshIndexes();
             syncRichEditors();
             syncAllLogicKeep();
@@ -1414,11 +1555,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             e.preventDefault();
             $studio.find('input[name="after_save"][value="publish"]').remove();
             $('<input type="hidden" name="after_save" value="publish">').appendTo($studio);
+            allowStudioSubmit = true;
             if (typeof $studio.get(0).requestSubmit === 'function') {
                 $studio.get(0).requestSubmit();
             } else {
                 $studio.trigger('submit');
             }
+            window.setTimeout(function () {
+                allowStudioSubmit = false;
+            }, 0);
         });
 
         $root.on('submit', '[data-cf-panel="rounds"] form', function () {
@@ -2209,15 +2354,24 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             reindexConsistency();
         });
 
+        var studioTypeTimer = null;
+        var queueStudioType = function (fn) {
+            clearTimeout(studioTypeTimer);
+            studioTypeTimer = setTimeout(fn, 40);
+        };
+
         $root.on('input change', '[data-cf-image-url]', function () {
-            var $row = $(this).closest('.thiscovery-forms-field-row');
-            var url = $.trim(String($(this).val() || ''));
-            if (url) {
-                $row.find('[data-cf-image-guid]').val('');
-                $row.find('[data-cf-image-src]').val(url);
-                $row.find('[data-cf-image-clear]').removeClass('d-none');
-            }
-            renderHotspotBuilder($row);
+            var input = this;
+            queueStudioType(function () {
+                var $row = $(input).closest('.thiscovery-forms-field-row');
+                var url = $.trim(String($(input).val() || ''));
+                if (url) {
+                    $row.find('[data-cf-image-guid]').val('');
+                    $row.find('[data-cf-image-src]').val(url);
+                    $row.find('[data-cf-image-clear]').removeClass('d-none');
+                }
+                renderHotspotBuilder($row);
+            });
         });
 
         $root.on('change', '[data-cf-image-file]', function () {
@@ -2398,49 +2552,58 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
 
         $root.on('input', '[data-cf-field-label]', function () {
-            var $row = $(this).closest('.thiscovery-forms-field-row');
-            var $own = ownCard($row);
-            refreshTypeUi($row);
-            var key = String($row.attr('data-cf-key') || '');
-            var label = $.trim(String($(this).val() || '')) || ('#' + key);
-            var internal = $.trim(String($own.find('[data-cf-internal-label]').val() || ''));
-            retitleConditionOption(key, (internal || label) + (function () {
-                var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
-                return v ? (' [' + v + ']') : '';
-            })());
-            var $var = $own.find('[data-cf-variable]').first();
-            if ($var.length && $var.attr('data-cf-variable-touched') !== '1') {
-                $var.val(slugVariable(label));
-            }
-            var $internal = $own.find('[data-cf-internal-label]').first();
-            if ($internal.length && !$internal.attr('data-cf-internal-touched') && !$.trim($internal.val())) {
-                $internal.val(label);
-            }
+            var input = this;
+            queueStudioType(function () {
+                var $row = $(input).closest('.thiscovery-forms-field-row');
+                var $own = ownCard($row);
+                refreshTypeUi($row);
+                var key = String($row.attr('data-cf-key') || '');
+                var label = $.trim(String($(input).val() || '')) || ('#' + key);
+                var internal = $.trim(String($own.find('[data-cf-internal-label]').val() || ''));
+                retitleConditionOption(key, (internal || label) + (function () {
+                    var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
+                    return v ? (' [' + v + ']') : '';
+                })());
+                var $var = $own.find('[data-cf-variable]').first();
+                if ($var.length && $var.attr('data-cf-variable-touched') !== '1') {
+                    $var.val(slugVariable(label));
+                }
+                var $internal = $own.find('[data-cf-internal-label]').first();
+                if ($internal.length && !$internal.attr('data-cf-internal-touched') && !$.trim($internal.val())) {
+                    $internal.val(label);
+                }
+            });
         });
 
         $root.on('input', '[data-cf-internal-label]', function () {
-            $(this).attr('data-cf-internal-touched', '1');
-            var $row = $(this).closest('.thiscovery-forms-field-row');
-            refreshTypeUi($row);
-            var key = String($row.attr('data-cf-key') || '');
-            var $own = ownCard($row);
-            var label = $.trim(String($(this).val() || ''))
-                || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
-                || ('#' + key);
-            var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
-            retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
+            var input = this;
+            $(input).attr('data-cf-internal-touched', '1');
+            queueStudioType(function () {
+                var $row = $(input).closest('.thiscovery-forms-field-row');
+                refreshTypeUi($row);
+                var key = String($row.attr('data-cf-key') || '');
+                var $own = ownCard($row);
+                var label = $.trim(String($(input).val() || ''))
+                    || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
+                    || ('#' + key);
+                var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
+                retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
+            });
         });
 
         $root.on('input', '[data-cf-variable]', function () {
-            $(this).attr('data-cf-variable-touched', '1');
-            var $row = $(this).closest('.thiscovery-forms-field-row');
-            var $own = ownCard($row);
-            var key = String($row.attr('data-cf-key') || '');
-            var label = $.trim(String($own.find('[data-cf-internal-label]').val() || ''))
-                || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
-                || ('#' + key);
-            var v = $.trim(String($(this).val() || ''));
-            retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
+            var input = this;
+            $(input).attr('data-cf-variable-touched', '1');
+            queueStudioType(function () {
+                var $row = $(input).closest('.thiscovery-forms-field-row');
+                var $own = ownCard($row);
+                var key = String($row.attr('data-cf-key') || '');
+                var label = $.trim(String($own.find('[data-cf-internal-label]').val() || ''))
+                    || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
+                    || ('#' + key);
+                var v = $.trim(String($(input).val() || ''));
+                retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
+            });
         });
 
         $root.on('click', '[data-cf-add-option]', function (e) {
@@ -4389,23 +4552,29 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         };
 
         var parseFieldLogic = function ($field) {
+            var raw = $field.attr('data-cf-logic') || '';
+            var depKey = String($field.attr('data-cf-depends') || '');
+            var cacheKey = raw + '\n' + depKey;
+            var cached = $field.data('cfLogicCache');
+            if (cached && cached.key === cacheKey) {
+                return cached.logic;
+            }
             var logic = null;
-            var raw = $field.attr('data-cf-logic');
             if (raw) {
                 try {
                     logic = JSON.parse(raw);
                 } catch (e) {}
             }
             if (!logic) {
-                var dep = $field.data('cf-depends');
-                if (!dep) {
+                if (!depKey) {
+                    $field.data('cfLogicCache', {key: cacheKey, logic: null});
                     return null;
                 }
                 logic = {
                     action: 'show',
                     combinator: 'and',
                     rules: [{
-                        fieldKey: String(dep),
+                        fieldKey: depKey,
                         operator: String($field.data('cf-operator') || 'equals'),
                         value: String($field.data('cf-value') || '')
                     }]
@@ -4419,6 +4588,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     return String((rule && rule.fieldKey) || '') !== '' || !!(rule && (rule.op || rule.when));
                 });
             }
+            $field.data('cfLogicCache', {key: cacheKey, logic: logic});
             return logic;
         };
 
@@ -4763,22 +4933,27 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             currentPage = idx;
             var $targetPage = $root.find('[data-cf-page="' + idx + '"]');
-            $targetPage.removeClass('cf-page-offpath');
-            $targetPage.find('[data-cf-offpath-disabled]').each(function () {
-                var $input = $(this);
-                $input.removeAttr('data-cf-offpath-disabled');
-                if ($input.is('[data-cf-other-text]')) {
-                    return;
+            // Typing re-evaluates the page that is already on screen. Skip the
+            // page-wide enable/disable walk so the caret is not disturbed.
+            var skipPageDom = !!(options.navOnly && !pageChanged && $targetPage.hasClass('is-active'));
+            if (!skipPageDom) {
+                $targetPage.removeClass('cf-page-offpath');
+                $targetPage.find('[data-cf-offpath-disabled]').each(function () {
+                    var $input = $(this);
+                    $input.removeAttr('data-cf-offpath-disabled');
+                    if ($input.is('[data-cf-other-text]')) {
+                        return;
+                    }
+                    if ($input.closest('.cf-grid-fade, [data-cf-grid-stack]').length) {
+                        return;
+                    }
+                    this.disabled = false;
+                });
+
+                if (pageChanged || !$targetPage.hasClass('is-active')) {
+                    $root.find('[data-cf-page]').removeClass('is-active');
+                    $targetPage.addClass('is-active');
                 }
-                if ($input.closest('.cf-grid-fade, [data-cf-grid-stack]').length) {
-                    return;
-                }
-                this.disabled = false;
-            });
-            
-            if (pageChanged || !$targetPage.hasClass('is-active')) {
-                $root.find('[data-cf-page]').removeClass('is-active');
-                $targetPage.addClass('is-active');
             }
 
             var nav = nextVisiblePage(idx);
@@ -5005,6 +5180,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             syncHtmlValues();
             var values = readAnswers();
             var newlyShown = [];
+            var setEnabledState = function ($nodes, disabled) {
+                $nodes.each(function () {
+                    if (this.disabled !== disabled) {
+                        this.disabled = disabled;
+                    }
+                });
+            };
             var applyVisibility = function ($field) {
                 var logic = parseFieldLogic($field);
                 var visible = isLogicVisible(logic, scopedFor($field, values));
@@ -5030,19 +5212,21 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     newlyShown.push($field.get(0));
                 }
                 if ($field.is('[data-cf-respondent-hidden]')) {
-                    $field.find('input, select, textarea').prop('disabled', false);
+                    setEnabledState($field.find('input, select, textarea'), false);
                     return;
                 }
                 if ($field.hasClass('cf-question-group')) {
                     if (!visible) {
-                        $field.find('input, select, textarea').prop('disabled', true);
+                        setEnabledState($field.find('input, select, textarea'), true);
                     }
                     return;
                 }
-                $field.find('input, select, textarea').prop('disabled', !visible);
+                setEnabledState($field.find('input, select, textarea'), !visible);
             };
             var guard = 0;
             var changed = true;
+            var $logicGroups = $root.find('.cf-question-group[data-cf-conditional]');
+            var $logicFields = $root.find('[data-cf-conditional]').not('.cf-question-group');
             while (changed && guard < 24) {
                 guard++;
                 changed = false;
@@ -5055,8 +5239,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                         changed = true;
                     }
                 };
-                $root.find('.cf-question-group[data-cf-conditional]').each(noteChange);
-                $root.find('[data-cf-conditional]').not('.cf-question-group').each(noteChange);
+                $logicGroups.each(noteChange);
+                $logicFields.each(noteChange);
             }
             newlyShown = newlyShown.filter(function (el) {
                 return el && !el.classList.contains('cf-hidden');
@@ -5070,7 +5254,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             updateProgress();
             if (multiPage) {
-                showPage(currentPage);
+                showPage(currentPage, {scroll: false, navOnly: true});
             }
             if (syncGridMobileInputs) {
                 syncGridMobileInputs();
@@ -5089,6 +5273,34 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     } catch (e) {}
                 });
             }
+        };
+
+        // Show/hide, piping and calculated values used to run inside the keystroke,
+        // so the typed character waited until that walk finished. Choices update at
+        // once. Text waits until the character has painted, and bursts collapse
+        // into one pass.
+        var evaluateTimer = null;
+        var flushEvaluate = function () {
+            if (!evaluateTimer) {
+                return;
+            }
+            clearTimeout(evaluateTimer);
+            evaluateTimer = null;
+            evaluate();
+        };
+        var scheduleEvaluate = function (immediate) {
+            if (evaluateTimer) {
+                clearTimeout(evaluateTimer);
+                evaluateTimer = null;
+            }
+            if (immediate) {
+                evaluate();
+                return;
+            }
+            evaluateTimer = setTimeout(function () {
+                evaluateTimer = null;
+                evaluate();
+            }, 60);
         };
 
         $('#search-menu').attr('aria-label', module.config.searchLabel || 'Search');
@@ -5221,6 +5433,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $root.on('click', '[data-cf-page-next]', function (e) {
                 e.preventDefault();
                 e.stopPropagation();
+                flushEvaluate();
                 if (!validateCurrentPage()) {
                     return false;
                 }
@@ -5266,8 +5479,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             showPage(startPage);
         }
 
-        $root.on('change keyup input', 'input, select, textarea', function () {
-            evaluate();
+        $root.on('input', 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="hidden"]):not([type="reset"])', function () {
+            scheduleEvaluate(false);
+            scheduleAutosave();
+        });
+        $root.on('change', 'input, select, textarea', function () {
+            scheduleEvaluate(true);
             scheduleAutosave();
         });
 
@@ -5363,6 +5580,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
 
         $root.on('submit', '[data-cf-fill-form]', function (e) {
+            flushEvaluate();
             cancelAutosave();
             captureRespondentMeta();
             syncHtmlValues();
@@ -5403,15 +5621,22 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $inactive = mobile ? $wrap.find('.cf-grid-fade') : $wrap.find('[data-cf-grid-stack]');
                 $inactive.find('input, select, textarea').each(function () {
                     if (this.name) {
-                        $(this).attr('data-cf-grid-name', this.name).removeAttr('name');
+                        this.setAttribute('data-cf-grid-name', this.name);
+                        this.removeAttribute('name');
                     }
-                }).prop('disabled', true);
+                    if (!this.disabled) {
+                        this.disabled = true;
+                    }
+                });
                 $active.find('input, select, textarea').each(function () {
                     var stored = this.getAttribute('data-cf-grid-name');
                     if (stored && !this.name) {
                         this.name = stored;
                     }
-                }).prop('disabled', false);
+                    if (this.disabled) {
+                        this.disabled = false;
+                    }
+                });
             });
         };
         $root.on('change', '[data-cf-mobile-layout="stack"] input', function () {

@@ -700,12 +700,12 @@ class SecureSendService
     public static function storageDir(): string
     {
         $dir = Yii::getAlias('@runtime/thiscovery-forms-secure');
-        if (!is_dir($dir)) {
-            mkdir($dir, 0700, true);
+        if (!is_dir($dir) && !@mkdir($dir, 0700, true) && !is_dir($dir)) {
+            return $dir;
         }
         $ht = $dir . DIRECTORY_SEPARATOR . '.htaccess';
-        if (!is_file($ht)) {
-            file_put_contents($ht, "Require all denied\nDeny from all\n");
+        if (is_dir($dir) && is_writable($dir) && !is_file($ht)) {
+            @file_put_contents($ht, "Require all denied\nDeny from all\n");
         }
         return $dir;
     }
