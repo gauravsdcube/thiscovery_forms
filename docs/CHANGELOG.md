@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.34.1 (October 3, 2026)
+
+- Fix: **Help** lists **Secure send** for form creators. The guide was in the release but did not appear on the Help page. **Form settings** links to it under Publish.
+
 ## 1.34.0 (October 3, 2026)
 
 ### Secure send

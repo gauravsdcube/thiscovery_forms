@@ -9,7 +9,7 @@ Under **Settings**, a left-hand list opens each area in the main pane. Groups ma
 - **Sharing** — Sharing and display, Panel enrolment, Email templates, Languages, Actions and functions, Flow chart, plus Consensus when relevant
 - **Programme** — Panel & waves / Rounds / Approval when the type needs them
 - **Quality & style** — Response integrity, Translations, CSS
-- **Publish** — Share; Export (CSV columns, analysis codes, and PII scrubbing); Versions when Thiscovery Versioning is available
+- **Publish** — Share; Export (CSV columns, analysis codes, and PII scrubbing); [Secure send](creators-secure-send.md) when an administrator has turned it on; Versions when Thiscovery Versioning is available
 
 Each setting has a short **?** guide in the studio. This page is the longer reference. Save still applies to the whole form.
 

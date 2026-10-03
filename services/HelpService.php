@@ -42,6 +42,7 @@ class HelpService
                     'creators-versioning',
                     'creators-response-integrity',
                     'creators-results',
+                    'creators-secure-send',
                     'creators-panels',
                     'creators-form-types',
                 ],
