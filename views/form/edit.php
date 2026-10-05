@@ -653,7 +653,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
             <details class="cf-set-acc">
                 <summary>
                     <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Import and export questions') ?></span>
-                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Download the questions, or import a JSON or CSV file.') ?></span>
+                    <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'Download the questions and settings as JSON, or the questions as CSV.') ?></span>
                 </summary>
                 <div class="cf-set-acc__body">
                 <?php
@@ -666,7 +666,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                     </div>
                 <?php endif; ?>
                 <p class="cf-hint text-muted">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'CSV can include every question type, including page breaks. Tick Replace to overwrite the form; leave it unticked to append. See Help for columns and examples.') ?>
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'JSON includes the questions and the form settings, except secure send, share links, and records that belong to this site (panels, themes, and email templates). CSV is questions only. Settings are applied when you replace the questions, or when the form has none yet. Tick Replace to overwrite the questions; leave it unticked to append. See Help for columns and examples.') ?>
                 </p>
                 <p>
                     <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Export JSON'))
@@ -694,7 +694,7 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 <div class="form-group">
                     <div class="cf-label-row">
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Import file') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A JSON or CSV of questions. Import records a revision. It does not import answers.')]) ?>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'A JSON or CSV of questions. JSON can also include the form settings, except secure send. Those settings are applied when you replace the questions, or when the form has no questions yet. Import records a revision. It does not import answers.')]) ?>
                     </div>
                     <input type="file" name="import_file" class="form-control" data-cf-target="cf-import-form" data-cf-required="1" accept=".json,.csv,application/json,text/csv">
                 </div>

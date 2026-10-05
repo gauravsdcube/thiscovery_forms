@@ -473,6 +473,9 @@ trait StudioTrait
             $msg = $replace
                 ? Yii::t('ThiscoveryFormsModule.base', 'Existing questions were replaced with the imported file.')
                 : Yii::t('ThiscoveryFormsModule.base', 'Questions imported.');
+            if ($service->settingsApplied) {
+                $msg .= ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form settings were copied, except secure send.');
+            }
             $this->view->success($msg);
             Yii::$app->session->setFlash('cf_import_notice', ['type' => 'success', 'message' => $msg]);
         }

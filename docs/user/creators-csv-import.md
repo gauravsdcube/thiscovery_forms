@@ -13,6 +13,8 @@ On **Settings → Share**, choose the CSV (or JSON) file, then:
 
 Save the form at least once before you import.
 
+**Export JSON** also includes the form settings, so a tested form can be copied onto a new one. Secure send is left out, as are share links and anything that belongs only to this site: panels, appearance themes, and email templates. Those settings are applied when **Replace all existing questions** is ticked, or when the form you import into has no questions yet. Adding questions to a form that already has some does not change that form’s settings. CSV does not include settings.
+
 Download **Sample CSV** from Share if you want a working file to copy.
 
 ## Excel tips

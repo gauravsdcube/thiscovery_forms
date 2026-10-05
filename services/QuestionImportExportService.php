@@ -14,6 +14,27 @@ class QuestionImportExportService
     public const FORMAT = 'thiscovery-forms-questions';
     public const VERSION = 1;
 
+    /** Set when a JSON import copied the form settings onto the target. */
+    public bool $settingsApplied = false;
+
+    /**
+     * Links, secrets, and records that exist only on this site. Secure send is never transferred.
+     * @var string[]
+     */
+    private const SETTINGS_OMIT = [
+        'secure_send_minutes',
+        'test_token',
+        'public_dashboard_token',
+        'panel_id',
+        'enrol_panel_id',
+        'theme_id',
+        'invite_email_template_id',
+        'wave_email_template_id',
+        'reminder_email_template_id',
+        'completion_email_template_id',
+        'consent_client_salt',
+    ];
+
     /**
      * Spreadsheet columns. Import accepts any subset; extra unknown columns are ignored.
      * @var string[]
@@ -120,6 +141,7 @@ class QuestionImportExportService
             'kind' => $form->kind,
             'title' => $form->title,
             'fields' => $fields,
+            'settings' => $this->exportSettings($form, $aliases),
         ];
     }
 
@@ -147,6 +169,7 @@ class QuestionImportExportService
      */
     public function importJson(CustomForm $form, string $json, bool $replace = false): ?string
     {
+        $this->settingsApplied = false;
         $decoded = json_decode($json, true);
         if (!is_array($decoded)) {
             return Yii::t('ThiscoveryFormsModule.base', 'The file is not valid JSON.');
@@ -157,7 +180,8 @@ class QuestionImportExportService
             return Yii::t('ThiscoveryFormsModule.base', 'JSON is missing a fields list.');
         }
 
-        return $this->appendFieldPayloads($form, $fields, $replace);
+        $settings = isset($decoded['settings']) && is_array($decoded['settings']) ? $decoded['settings'] : null;
+        return $this->appendFieldPayloads($form, $fields, $replace, $settings);
     }
 
     /**
@@ -319,9 +343,11 @@ class QuestionImportExportService
 
     /**
      * @param array $payloads export-style or post-row field arrays
+     * @param array<string,mixed>|null $settings form settings from a JSON export; CSV passes none
      */
-    public function appendFieldPayloads(CustomForm $form, array $payloads, bool $replace = false): ?string
+    public function appendFieldPayloads(CustomForm $form, array $payloads, bool $replace = false, ?array $settings = null): ?string
     {
+        $hadQuestions = $form->fields !== [];
         $existing = [];
         // A replace updates the live question that already has each variable name, instead of
         // removing it and adding another with the same name. The removed row would still hold
@@ -381,6 +407,9 @@ class QuestionImportExportService
         if (!$form->saveFieldsFromPost($existing)) {
             // Nothing was imported (V3-37); say why.
             return $form->designRefusalMessage();
+        }
+        if ($settings !== null && ($replace || !$hadQuestions)) {
+            $this->applyImportedSettings($form, $settings);
         }
         // An import is a save: record the revision, or "publish latest revision" would
         // publish the definition from before it (DAT-19).
@@ -573,6 +602,164 @@ class QuestionImportExportService
             $values[] = $this->csvCellValue($column, $row, $field);
         }
         return $values;
+    }
+
+    /**
+     * @param array<string,string> $aliases
+     * @return array<string,mixed>
+     */
+    private function exportSettings(CustomForm $form, array $aliases): array
+    {
+        $values = $form->getSettings();
+        foreach (self::SETTINGS_OMIT as $key) {
+            unset($values[$key]);
+        }
+        if (($values['enrol_panel_mode'] ?? '') === CustomForm::ENROL_PANEL_EXISTING) {
+            $values['enrol_panel_mode'] = CustomForm::ENROL_PANEL_NONE;
+        }
+        $values = $this->portableSettings($values, $aliases);
+
+        return [
+            'description' => $form->description,
+            'thank_you_content' => $form->thank_you_content,
+            'already_submitted_message' => $form->already_submitted_message,
+            'custom_css' => $form->custom_css,
+            'answers_visibility' => $form->answers_visibility,
+            'allow_multiple' => (int)$form->allow_multiple,
+            'allow_anonymous' => (int)$form->allow_anonymous,
+            'allow_edit' => (int)$form->allow_edit,
+            'allow_resume' => (int)$form->allow_resume,
+            'values' => $values,
+        ];
+    }
+
+    /**
+     * @param array<string,mixed> $values
+     * @param array<string,string> $aliases id and id123 => portable key
+     * @return array<string,mixed>
+     */
+    private function portableSettings(array $values, array $aliases): array
+    {
+        if (isset($values['integrity']) && is_array($values['integrity'])) {
+            $values['integrity'] = $this->rewriteIntegrityFields($values['integrity'], $aliases, true);
+        }
+        if (isset($values['export']) && is_array($values['export'])) {
+            $values['export'] = $this->rewriteExportColumns($values['export'], $aliases, true);
+        }
+        return $values;
+    }
+
+    /**
+     * @param array<string,mixed> $settings
+     */
+    private function applyImportedSettings(CustomForm $form, array $settings): void
+    {
+        unset($form->fields);
+        $aliasToId = [];
+        foreach ($form->fields as $field) {
+            $var = trim((string)$field->variable);
+            if ($var !== '') {
+                $aliasToId[$var] = (int)$field->id;
+            }
+        }
+
+        $values = isset($settings['values']) && is_array($settings['values']) ? $settings['values'] : [];
+        foreach (self::SETTINGS_OMIT as $key) {
+            unset($values[$key]);
+        }
+        if (($values['enrol_panel_mode'] ?? '') === CustomForm::ENROL_PANEL_EXISTING) {
+            $values['enrol_panel_mode'] = CustomForm::ENROL_PANEL_NONE;
+        }
+        if (isset($values['integrity']) && is_array($values['integrity'])) {
+            $values['integrity'] = $this->rewriteIntegrityFields($values['integrity'], $aliasToId, false);
+        }
+        if (isset($values['export']) && is_array($values['export'])) {
+            $values['export'] = $this->rewriteExportColumns($values['export'], $aliasToId, false);
+        }
+
+        $current = $form->getSettings();
+        foreach ($values as $key => $value) {
+            $current[$key] = $value;
+        }
+        $form->settings_json = json_encode($current, JSON_UNESCAPED_UNICODE);
+
+        foreach (['description', 'thank_you_content', 'already_submitted_message', 'answers_visibility'] as $column) {
+            if (array_key_exists($column, $settings)) {
+                $form->$column = $settings[$column];
+            }
+        }
+        if (array_key_exists('custom_css', $settings)) {
+            $form->custom_css = str_replace('<', '', (string)$settings['custom_css']);
+        }
+        foreach (['allow_multiple', 'allow_anonymous', 'allow_edit', 'allow_resume'] as $flag) {
+            if (array_key_exists($flag, $settings)) {
+                $form->$flag = !empty($settings[$flag]) ? 1 : 0;
+            }
+        }
+        $form->syncSettingsAttributes();
+        $form->save(false);
+        $this->settingsApplied = true;
+    }
+
+    /**
+     * @param array<string,mixed> $integrity
+     * @param array<string,string|int> $map
+     * @return array<string,mixed>
+     */
+    private function rewriteIntegrityFields(array $integrity, array $map, bool $toAlias): array
+    {
+        foreach ($integrity['consistency_rules'] ?? [] as $r => $rule) {
+            if (!is_array($rule)) {
+                continue;
+            }
+            foreach ($rule['conditions'] ?? [] as $c => $cond) {
+                if (!is_array($cond) || !isset($cond['field_id'])) {
+                    continue;
+                }
+                $token = (string)$cond['field_id'];
+                if ($token === '' || !isset($map[$token])) {
+                    if (!$toAlias) {
+                        unset($integrity['consistency_rules'][$r]['conditions'][$c]);
+                    }
+                    continue;
+                }
+                $integrity['consistency_rules'][$r]['conditions'][$c]['field_id'] = $toAlias
+                    ? (string)$map[$token]
+                    : (int)$map[$token];
+            }
+            if (isset($integrity['consistency_rules'][$r]['conditions']) && is_array($integrity['consistency_rules'][$r]['conditions'])) {
+                $integrity['consistency_rules'][$r]['conditions'] = array_values($integrity['consistency_rules'][$r]['conditions']);
+            }
+        }
+        return $integrity;
+    }
+
+    /**
+     * @param array<string,mixed> $export
+     * @param array<string,string|int> $map
+     * @return array<string,mixed>
+     */
+    private function rewriteExportColumns(array $export, array $map, bool $toAlias): array
+    {
+        $columns = $export['exclude_columns'] ?? [];
+        if (!is_array($columns)) {
+            return $export;
+        }
+        $clean = [];
+        foreach ($columns as $key) {
+            $key = trim((string)$key);
+            if ($key === '') {
+                continue;
+            }
+            if (preg_match('/^field\.([A-Za-z0-9_]+)(.*)$/', $key, $match) && isset($map[$match[1]])) {
+                $key = 'field.' . $map[$match[1]] . $match[2];
+            } elseif (str_starts_with($key, 'field.') && !$toAlias) {
+                continue;
+            }
+            $clean[] = $key;
+        }
+        $export['exclude_columns'] = array_values(array_unique($clean));
+        return $export;
     }
 
     /**

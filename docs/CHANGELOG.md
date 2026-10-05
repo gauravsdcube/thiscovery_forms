@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.35.0 (October 5, 2026)
+
+- Change: **Export JSON** includes the form settings as well as the questions, so a tested form can be copied onto a new one. Secure send is left out, as are share links and records that belong only to this site: panels, appearance themes, and email templates. Those settings are applied when the questions are replaced, or when the form being imported into has no questions yet. Adding questions to a form that already has some does not change that form’s settings. CSV remains questions only.
+
 ## 1.34.2 (October 3, 2026)
 
 - Fix: When CAPTCHA is on the submit step, **Submit** stays disabled until the check is completed. A refused submit returns to the page that was submitted, with the answers kept.
