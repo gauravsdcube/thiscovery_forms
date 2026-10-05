@@ -1382,7 +1382,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             allowStudioSubmit = true;
             window.setTimeout(function () {
                 allowStudioSubmit = false;
-            }, 0);
+            }, 400);
         };
         $root.find('form.cf-studio__form [form]').each(function () {
             var owner = this.getAttribute('form');

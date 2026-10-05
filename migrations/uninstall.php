@@ -6,6 +6,8 @@ class uninstall extends Migration
 {
     public function up()
     {
+        $this->dropTable('custom_form_message_i18n');
+        $this->dropTable('form_email_template_i18n');
         $this->dropTable('custom_form_secure_event');
         $this->dropTable('custom_form_secure_code');
         $this->dropTable('custom_form_secure_release');

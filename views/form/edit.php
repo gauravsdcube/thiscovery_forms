@@ -756,11 +756,14 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
             ->link(Url::toManageIndex($contentContainer))
             ->icon('arrow-left') ?>
         <div class="cf-studio__footer-actions">
-            <button type="submit" name="after_save" value="preview" class="btn btn-primary">
+            <button type="button" class="btn btn-primary" data-cf-studio-submit="preview">
                 <i class="fa fa-eye" aria-hidden="true"></i>
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Preview') ?>
             </button>
-            <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))->submit()->icon('floppy-o') ?>
+            <?= Button::save(Yii::t('ThiscoveryFormsModule.base', 'Save form'))
+                ->icon('floppy-o')
+                ->options(['type' => 'button', 'data-cf-studio-submit' => 'save'])
+                ->loader(false) ?>
             <?php if (!$isNew && $formModel->canManage()): ?>
                 <button type="button" data-cf-target="cf-delete-form" class="btn btn-danger cf-studio__delete-btn"
                     onclick="return confirm(<?= \yii\helpers\Json::htmlEncode(Yii::t('ThiscoveryFormsModule.base', 'Move this form to the trash? Its answers are kept and it can be restored.')) ?>);">

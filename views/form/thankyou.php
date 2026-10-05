@@ -17,8 +17,9 @@ ThiscoveryFormsAsset::register($this);
 $css = $formModel->getSafeCustomCss();
 $answer = $answer ?? null;
 $isPreview = !empty($isPreview);
-$fillLang = (new TranslationService())->resolve($formModel);
-(new TranslationService())->overlay($formModel, $fillLang);
+$fillLang = \humhub\modules\thiscoveryForms\services\ParticipantMessages::activeLanguage()
+    ?: (new TranslationService())->resolve($formModel);
+\humhub\modules\thiscoveryForms\services\ParticipantMessages::bind($formModel, $fillLang);
 $fillRtl = TranslationService::isRtl($fillLang);
 $showButton = $formModel->showsCompletionButton();
 $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUrl(), '/')
@@ -84,7 +85,10 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <?php
             $screenMessage = '';
             if ($answer && (string)$answer->outcome === \humhub\modules\thiscoveryForms\models\FormAnswer::OUTCOME_SCREENED_OUT) {
-                $screenMessage = trim((string)(new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['screen_out_message']);
+                $screenMessage = \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored(
+                    'author.screen_out',
+                    trim((string)(new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['screen_out_message'])
+                );
             }
             ?>
             <?php if ((is_string($overQuota) && $overQuota !== '') || (is_string($notConsented) && $notConsented !== '')): ?>

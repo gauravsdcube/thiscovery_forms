@@ -1306,7 +1306,7 @@ class QuotaService
      */
     private function message(CustomForm $form, array $quota): string
     {
-        $language = trim((string)($form->getSetting('response_language', '') ?? ''));
+        $language = \humhub\modules\thiscoveryForms\services\ParticipantMessages::activeLanguage() ?? '';
         if ($language !== '') {
             $row = (new Query())->from('{{%custom_form_quota_i18n}}')->where([
                 'quota_id' => (int)$quota['id'],

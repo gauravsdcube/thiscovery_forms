@@ -347,11 +347,38 @@ trait ProgrammeTrait
         $service = new TranslationService();
         $formData = Yii::$app->request->post('form_i18n', []);
         $service->saveFormStrings($form, $lang, is_array($formData) ? $formData : []);
+        if (is_array($formData) && array_key_exists('thank_you_content', $formData)) {
+            \humhub\modules\thiscoveryForms\services\ParticipantMessages::saveThankYou(
+                $form,
+                $lang,
+                (string)$formData['thank_you_content']
+            );
+        }
         $fieldsData = Yii::$app->request->post('field_i18n', []);
         if (is_array($fieldsData)) {
             foreach ($form->fields as $field) {
                 $row = $fieldsData[(string)$field->id] ?? [];
                 $service->saveFieldStrings($field, $lang, is_array($row) ? $row : []);
+            }
+        }
+        $messageData = Yii::$app->request->post('message_i18n', []);
+        if (is_array($messageData)) {
+            \humhub\modules\thiscoveryForms\services\ParticipantMessages::savePosted($form, $lang, $messageData);
+        }
+        $emailData = Yii::$app->request->post('email_i18n', []);
+        if (is_array($emailData)) {
+            \humhub\modules\thiscoveryForms\services\ParticipantMessages::saveEmailPosted($lang, $emailData);
+        }
+        $quotaData = Yii::$app->request->post('quota_i18n', []);
+        if (is_array($quotaData)) {
+            $quotas = new \humhub\modules\thiscoveryForms\services\QuotaService();
+            foreach ($quotaData as $quotaId => $parts) {
+                if (!is_array($parts)) {
+                    continue;
+                }
+                foreach ($parts as $part => $value) {
+                    $quotas->saveTranslation((int)$quotaId, (string)$part, $lang, trim((string)$value));
+                }
             }
         }
 

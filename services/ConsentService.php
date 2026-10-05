@@ -382,7 +382,10 @@ class ConsentService
             }
             if ($refused) {
                 $answer->outcome = FormAnswer::OUTCOME_NOT_CONSENTED;
-                $message = trim((string)$form->getSetting('not_consented_message', ''));
+                $message = \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored(
+                    'author.not_consented',
+                    trim((string)$form->getSetting('not_consented_message', ''))
+                );
                 if ($message !== '') {
                     Yii::$app->session->setFlash('cf-not-consented', $message);
                 }
@@ -420,7 +423,10 @@ class ConsentService
         }
         if ($refused) {
             $answer->outcome = FormAnswer::OUTCOME_NOT_CONSENTED;
-            $message = trim((string)$form->getSetting('not_consented_message', ''));
+            $message = \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored(
+                'author.not_consented',
+                trim((string)$form->getSetting('not_consented_message', ''))
+            );
             if ($message !== '') {
                 Yii::$app->session->setFlash('cf-not-consented', $message);
             }

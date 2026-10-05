@@ -154,7 +154,13 @@ class EmailTemplateService
         if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
             return false;
         }
-        $rendered = $this->render($template, $vars);
+        $rendered = $this->render(
+            \humhub\modules\thiscoveryForms\services\ParticipantMessages::localizeTemplate(
+                $template,
+                (string)($meta['language'] ?? '')
+            ),
+            $vars
+        );
         if (trim($rendered['subject']) === '' || trim($rendered['text']) === '') {
             return false;
         }
@@ -244,6 +250,7 @@ class EmailTemplateService
                     'member_id' => $member->id,
                     'wave_id' => $wave->id ?? null,
                     'kind' => $kind,
+                    'language' => \humhub\modules\thiscoveryForms\services\ParticipantMessages::accountLanguage($member, $form),
                 ]
             );
         }
@@ -282,6 +289,7 @@ class EmailTemplateService
             'member_id' => $anonymous ? null : ($member->id ?? null),
             'answer_id' => $anonymous ? null : $answer->id,
             'kind' => FormEmailSend::KIND_COMPLETION,
+            'language' => (string)($answer->getVars()['response_language'] ?? \humhub\modules\thiscoveryForms\services\ParticipantMessages::activeLanguage() ?? ''),
         ];
         if ($anonymous) {
             $meta['wave_id'] = $answer->wave_id ?: null;
@@ -374,7 +382,10 @@ class EmailTemplateService
                     $template,
                     $to,
                     $this->varsFor($form, $member, $wave, $panel),
-                    $where + ['kind' => FormEmailSend::KIND_REMINDER]
+                    $where + [
+                        'kind' => FormEmailSend::KIND_REMINDER,
+                        'language' => \humhub\modules\thiscoveryForms\services\ParticipantMessages::accountLanguage($member, $form),
+                    ]
                 );
             }
         }

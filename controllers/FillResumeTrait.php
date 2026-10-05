@@ -36,6 +36,7 @@ trait FillResumeTrait
     {
         $form = $this->findFillForm($id);
         $this->applyFillLayout($form);
+        $this->fillContext($form);
         return $this->render('thankyou', [
             'formModel' => $form,
             'contentContainer' => $this->contentContainer ?? null,
@@ -646,6 +647,7 @@ trait FillResumeTrait
     protected function handleEmailResumeCode(CustomForm $form)
     {
         $this->assertResumeEnabled($form);
+        $this->fillContext($form);
 
         if (!Yii::$app->request->isPost) {
             return $this->redirect(Url::toView($form));
@@ -685,6 +687,7 @@ trait FillResumeTrait
     protected function handleResumeLookup(CustomForm $form)
     {
         $this->assertResumeEnabled($form);
+        $this->fillContext($form);
 
         $code = (string)(Yii::$app->request->post('resume_code')
             ?: Yii::$app->request->get('code', ''));
@@ -713,7 +716,6 @@ trait FillResumeTrait
 
     protected function fillViewExtras(CustomForm $form, FillContext $ctx): array
     {
-        (new TranslationService())->overlay($form, $ctx->language);
         $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));
         $ownDraft = $form->allowsResume() ? $this->resolveOwnInProgress($form) : null;
 

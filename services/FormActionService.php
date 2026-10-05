@@ -582,6 +582,7 @@ class FormActionService
                 'kind' => FormEmailSend::KIND_ACTION,
                 'actor_key' => $actorKey,
                 'anonymous' => $anonymous,
+                'language' => (string)($answer?->getVars()['response_language'] ?? \humhub\modules\thiscoveryForms\services\ParticipantMessages::activeLanguage() ?? ''),
             ]
         );
     }

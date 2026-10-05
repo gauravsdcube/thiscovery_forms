@@ -139,4 +139,12 @@ class FormEmailTemplate extends ActiveRecord
         $row = ContentContainer::findOne((int)$this->contentcontainer_id);
         return $row ? $row->getPolymorphicRelation() : null;
     }
+
+    public function afterDelete()
+    {
+        parent::afterDelete();
+        if (Yii::$app->db->schema->getTableSchema('{{%form_email_template_i18n}}', true) !== null) {
+            Yii::$app->db->createCommand()->delete('{{%form_email_template_i18n}}', ['template_id' => (int)$this->id])->execute();
+        }
+    }
 }

@@ -2,6 +2,15 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.36.0 (October 5, 2026)
+
+- Messages on a translated form: buttons, checks, captcha, save and resume, endings, quota text, and the email templates attached to the form. Questions stay on the existing translation. The first generate for a language is kept as the site wording. A form can replace any line. Apply migration `m261005_150000_participant_messages`.
+- Translation export and the translation boxes show the wording of rich text, without the editor’s HTML tags. A link with an address is written as the link text and the address.
+- The language buttons on a form show the English name and the name in that language, such as Hindi/हिन्दी.
+- Deleting a question frees its variable name so a new question can use it. Past answers stay on the deleted question.
+- The **Save form** button at the bottom of the studio saves the form.
+- Enabling a language on a draft no longer says the translation is incomplete before it has been written. The notice names the language, for example Hindi.
+
 ## 1.35.0 (October 5, 2026)
 
 - Change: **Export JSON** includes the form settings as well as the questions, so a tested form can be copied onto a new one. Secure send is left out, as are share links and records that belong only to this site: panels, appearance themes, and email templates. Those settings are applied when the questions are replaced, or when the form being imported into has no questions yet. Adding questions to a form that already has some does not change that form’s settings. CSV remains questions only.

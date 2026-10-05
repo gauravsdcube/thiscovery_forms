@@ -1493,6 +1493,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $db = Yii::$app->db;
         $has = static fn(string $table): bool => $db->schema->getTableSchema($table, true) !== null;
         $formId = (int)$this->id;
+        if ($has('{{%custom_form_message_i18n}}')) {
+            $db->createCommand()->delete('{{%custom_form_message_i18n}}', ['form_id' => $formId])->execute();
+        }
         $answerIds = array_map('intval', FormAnswer::find()->select('id')->where(['form_id' => $formId])->column());
         $byAnswer = [
             '{{%custom_form_arm_assignment}}', '{{%custom_form_arm_override}}', '{{%custom_form_presentation}}',
@@ -1798,7 +1801,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function getAlreadySubmittedMessage(): string
     {
         $title = (string)$this->title;
-        $custom = trim((string)$this->already_submitted_message);
+        $custom = \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored(
+            'author.already_submitted',
+            trim((string)$this->already_submitted_message)
+        );
         if ($custom !== '') {
             return strtr($custom, [
                 '{formName}' => Html::encode($title),
@@ -2150,7 +2156,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
     {
         $label = trim((string)$this->completion_button_label);
         return $label !== ''
-            ? $label
+            ? \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored('author.completion_button', $label)
             : Yii::t('ThiscoveryFormsModule.base', 'Back to form');
     }
 
@@ -2171,6 +2177,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function getAlreadySubmittedButtonLabel(): string
     {
         $label = trim((string)$this->already_submitted_button_label);
+        $label = $label !== ''
+            ? \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored('author.already_submitted_button', $label)
+            : '';
         return $label !== ''
             ? $label
             : Yii::t('ThiscoveryFormsModule.base', 'Continue');
@@ -2641,28 +2650,27 @@ class CustomForm extends ContentActiveRecord implements Searchable
         /** @var array<string,string> $renames old variable => new variable */
         $renames = [];
         $postedIds = [];
-        $keptNames = [];
         foreach ($orderedRows as $item) {
             if (isset($item['row']['id']) && $item['row']['id'] !== '') {
-                $postedId = (int)$item['row']['id'];
-                $postedIds[$postedId] = true;
-                $postedName = strtolower(trim((string)($item['row']['variable'] ?? '')));
-                if ($postedName !== '' && isset($existing[$postedId])
-                    && $postedName === strtolower(trim((string)$existing[$postedId]->variable))) {
-                    // The live question is keeping its name, so a removed copy of that name
-                    // does not block it.
-                    $keptNames[$postedName] = true;
-                }
+                $postedIds[(int)$item['row']['id']] = true;
             }
         }
+        // A question this save removes gives up its variable before the new questions are written,
+        // so the name can be used again. The row itself is removed further down.
+        // updateAll skips beforeSave, which would otherwise put the name back while the question is still live.
+        $releasing = [];
         foreach ($existing as $field) {
-            // A removed question keeps its name reserved, unless this save brings it back or a
-            // live question is already keeping it. A question this save removes is not posted.
-            $name = strtolower(trim((string)$field->variable));
-            if ($name !== '' && !isset($postedIds[(int)$field->id]) && !isset($keptNames[$name])) {
-                $usedVariables[$name] = true;
-                $usedBy[$name] = Yii::t('ThiscoveryFormsModule.base', 'a removed question');
+            if (isset($postedIds[(int)$field->id]) || !$field->hasAttribute('variable_live')) {
+                continue;
             }
+            if ($field->variable_live === null || $field->variable_live === '') {
+                continue;
+            }
+            $field->variable_live = null;
+            $releasing[] = (int)$field->id;
+        }
+        if ($releasing !== []) {
+            FormField::updateAll(['variable_live' => null], ['id' => $releasing]);
         }
         foreach ($orderedRows as $item) {
             $tempKey = $item['key'];

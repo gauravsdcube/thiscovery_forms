@@ -174,19 +174,18 @@ class GlobalController extends Controller
                         Yii::$app->session->setFlash('success', $savedMessage);
                     }
                     if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
-                        \humhub\modules\thiscoveryTranslate\services\FormsHook::queueFormTranslation((int)$form->id);
-                        $pub = \humhub\modules\thiscoveryTranslate\services\FormsHook::checkPublishReady($form);
-                        if (!empty($pub['message'])) {
-                            if (!$pub['ok']) {
-                                $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
-                                $form->save(false, ['status']);
-                                $blockedMessage = $pub['message'] . ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form kept as draft until translations are ready.');
-                                $this->view->error($blockedMessage);
-                                Yii::$app->session->setFlash('error', $blockedMessage);
-                            } else {
-                                $this->view->warn($pub['message']);
-                                Yii::$app->session->setFlash('warning', $pub['message']);
-                            }
+                        $notice = \humhub\modules\thiscoveryTranslate\services\FormsHook::noticeAfterSave($form);
+                        if ($notice && !empty($notice['block'])) {
+                            $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
+                            $form->save(false, ['status']);
+                            $this->view->error($notice['message']);
+                            Yii::$app->session->setFlash('error', $notice['message']);
+                        } elseif ($notice && ($notice['level'] ?? '') === 'warning') {
+                            $this->view->warn($notice['message']);
+                            Yii::$app->session->setFlash('warning', $notice['message']);
+                        } elseif ($notice) {
+                            $this->view->info($notice['message']);
+                            Yii::$app->session->setFlash('info', $notice['message']);
                         }
                     }
                     return $this->redirectAfterStudioSave($form);
@@ -273,6 +272,7 @@ class GlobalController extends Controller
             return $blocked;
         }
         $submit->form = $form;
+        $fillContext = $this->fillContext($form);
         $openCaptchaError = null;
         if (!$preview) {
             $svc = new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService();
@@ -296,7 +296,7 @@ class GlobalController extends Controller
             'existing' => $existing,
             'contentContainer' => null,
             'savedDraft' => null,
-        ], $this->fillViewExtras($form, $this->fillContext($form)), $extra));
+        ], $this->fillViewExtras($form, $fillContext), $extra));
     }
 
     public function actionEditAnswer($id, $answerId)

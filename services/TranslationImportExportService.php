@@ -2,6 +2,7 @@
 
 namespace humhub\modules\thiscoveryForms\services;
 
+use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormField;
 use humhub\modules\thiscoveryForms\models\FormFieldI18n;
@@ -239,6 +240,35 @@ class TranslationImportExportService
                 $skipped++;
                 continue;
             }
+            if ($parsed['kind'] === 'message') {
+                foreach (($row['translations'] ?? []) as $langCode => $value) {
+                    $lang = TranslationService::normalizeLanguage((string)$langCode);
+                    $value = $this->editorText(trim((string)$value));
+                    if ($lang === null || $lang === $source || $value === '') {
+                        continue;
+                    }
+                    ParticipantMessages::savePosted($form, $lang, [(string)$parsed['key'] => $value]);
+                    $importedLangs[$lang] = true;
+                    $updated++;
+                }
+                continue;
+            }
+            if ($parsed['kind'] === 'email') {
+                foreach (($row['translations'] ?? []) as $langCode => $value) {
+                    $lang = TranslationService::normalizeLanguage((string)$langCode);
+                    $value = (string)$value;
+                    if (in_array((string)$parsed['part'], ['header_html', 'body_html', 'footer_html'], true)) {
+                        $value = $this->editorText($value);
+                    }
+                    if ($lang === null || $lang === $source || trim($value) === '') {
+                        continue;
+                    }
+                    ParticipantMessages::saveEmailPart((int)$parsed['template_id'], $lang, (string)$parsed['part'], $value);
+                    $importedLangs[$lang] = true;
+                    $updated++;
+                }
+                continue;
+            }
             if ($parsed['kind'] === 'quota') {
                 foreach (($row['translations'] ?? []) as $langCode => $value) {
                     $lang = TranslationService::normalizeLanguage((string)$langCode);
@@ -278,6 +308,9 @@ class TranslationImportExportService
                     continue;
                 }
                 $value = trim((string)$value);
+                if ($parsed['kind'] === 'form' && ($parsed['part'] ?? '') === 'thank_you_content') {
+                    $value = $this->editorText($value);
+                }
                 if ($value === '') {
                     continue;
                 }
@@ -356,7 +389,23 @@ class TranslationImportExportService
         $units = [];
         $this->pushUnit($units, 'form.title', 'form', 'title', (string)$form->title, null);
         $this->pushUnit($units, 'form.description', 'form', 'description', (string)$form->description, null, false);
-        $this->pushUnit($units, 'form.thank_you_content', 'form', 'thank_you_content', (string)$form->thank_you_content, null, false);
+        $this->pushUnit($units, 'form.thank_you_content', 'form', 'thank_you_content', $this->editorText((string)$form->thank_you_content), null, false);
+        foreach (ParticipantMessageCatalog::entries() as $key => $entry) {
+            $this->pushUnit($units, 'message.' . $key, 'message', (string)$entry['group'], (string)$entry['source'], null, false);
+        }
+        if (trim((string)$form->thank_you_content) !== '') {
+            $this->pushUnit($units, 'message.author.thank_you', 'message', 'author', $this->editorText((string)$form->thank_you_content), null, false);
+        }
+        foreach (ParticipantMessages::authorSources($form) as $key => $meta) {
+            $this->pushUnit($units, 'message.' . $key, 'message', 'author', $this->editorText((string)$meta['source']), null, false);
+        }
+        foreach (ParticipantMessages::emailTemplates($form) as $template) {
+            $id = (int)$template->id;
+            $this->pushUnit($units, 'email.' . $id . '.subject', 'email', 'subject', (string)$template->subject, null, false);
+            $this->pushUnit($units, 'email.' . $id . '.header_html', 'email', 'header_html', $this->editorText((string)$template->header_html), null, false);
+            $this->pushUnit($units, 'email.' . $id . '.body_html', 'email', 'body_html', $this->editorText((string)$template->body_html), null, false);
+            $this->pushUnit($units, 'email.' . $id . '.footer_html', 'email', 'footer_html', $this->editorText((string)$template->footer_html), null, false);
+        }
         foreach ((new ConsentService())->translationUnits($form) as $unit) {
             $this->pushUnit($units, $unit['key'], 'consent', $unit['part'], $unit['source'], null, false);
         }
@@ -389,7 +438,7 @@ class TranslationImportExportService
                 $this->pushUnit($units, "field.$id.page_title", $type, 'page_title', (string)$field->getPageBreakConfig()['title'], $id, false);
             }
             if ($field->type === FormField::TYPE_RICH_TEXT) {
-                $this->pushUnit($units, "field.$id.rich_content", $type, 'rich_content', $field->getRichTextContent(), $id, false);
+                $this->pushUnit($units, "field.$id.rich_content", $type, 'rich_content', $this->editorText($field->getRichTextContent()), $id, false);
             }
             if ($field->type === FormField::TYPE_HTML) {
                 $html = $field->getHtmlConfig();
@@ -446,6 +495,11 @@ class TranslationImportExportService
         ];
     }
 
+    private function editorText(string $text): string
+    {
+        return RichHtml::forTranslation($text);
+    }
+
     /**
      * @param string[] $langs
      * @return array<string, array<string, string>>
@@ -464,7 +518,26 @@ class TranslationImportExportService
             /** @var FormI18n $row */
             $map[$row->language]['form.title'] = (string)$row->title;
             $map[$row->language]['form.description'] = (string)$row->description;
-            $map[$row->language]['form.thank_you_content'] = (string)$row->thank_you_content;
+            $map[$row->language]['form.thank_you_content'] = $this->editorText((string)$row->thank_you_content);
+        }
+        foreach ($langs as $lang) {
+            foreach (ParticipantMessages::textsFor($form, $lang) as $key => $text) {
+                $map[$lang]['message.' . $key] = $this->editorText($text);
+            }
+            foreach (ParticipantMessages::emailTemplates($form) as $template) {
+                $email = \humhub\modules\thiscoveryForms\models\FormEmailTemplateI18n::findOne([
+                    'template_id' => (int)$template->id,
+                    'language' => $lang,
+                ]);
+                if (!$email) {
+                    continue;
+                }
+                $id = (int)$template->id;
+                $map[$lang]['email.' . $id . '.subject'] = (string)$email->subject;
+                $map[$lang]['email.' . $id . '.header_html'] = $this->editorText((string)$email->header_html);
+                $map[$lang]['email.' . $id . '.body_html'] = $this->editorText((string)$email->body_html);
+                $map[$lang]['email.' . $id . '.footer_html'] = $this->editorText((string)$email->footer_html);
+            }
         }
 
         $ids = [];
@@ -499,7 +572,7 @@ class TranslationImportExportService
                 $map[$lang]["field.$id.page_title"] = (string)$overlay['page_title'];
             }
             if (!empty($overlay['rich_content'])) {
-                $map[$lang]["field.$id.rich_content"] = (string)$overlay['rich_content'];
+                $map[$lang]["field.$id.rich_content"] = $this->editorText((string)$overlay['rich_content']);
             }
             if (!empty($overlay['html_content'])) {
                 $map[$lang]["field.$id.html_content"] = (string)$overlay['html_content'];
@@ -533,6 +606,12 @@ class TranslationImportExportService
     private function parseKey(string $key): ?array
     {
         $key = trim($key);
+        if (preg_match('/^message\.([a-z0-9_.]+)$/', $key, $m)) {
+            return ['kind' => 'message', 'key' => $m[1]];
+        }
+        if (preg_match('/^email\.(\d+)\.(subject|header_html|body_html|footer_html)$/', $key, $m)) {
+            return ['kind' => 'email', 'template_id' => (int)$m[1], 'part' => $m[2]];
+        }
         if (preg_match('/^quota\.(\d+)\.(name|message)$/', $key, $m)) {
             return ['kind' => 'quota', 'quota_id' => (int)$m[1], 'part' => $m[2]];
         }
@@ -632,6 +711,11 @@ class TranslationImportExportService
     {
         $part = $parsed['part'];
         $index = $parsed['index'] ?? null;
+
+        if ($part === 'rich_content') {
+            $data[$part] = $this->editorText($value);
+            return;
+        }
 
         if (in_array($part, ['label', 'help_text', 'page_title', 'rich_content', 'html_content', 'html_instructions', 'rating_low_label', 'rating_high_label'], true)) {
             $data[$part] = $value;

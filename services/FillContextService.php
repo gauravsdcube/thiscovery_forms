@@ -13,6 +13,7 @@ class FillContextService
     {
         $ctx = new FillContext($form);
         $ctx->language = (new TranslationService())->resolve($form);
+        ParticipantMessages::bind($form, (string)$ctx->language);
         $ctx->accessToken = self::readAccessToken();
 
         $token = trim((string)Yii::$app->request->get('token', Yii::$app->request->post('panel_token', '')));

@@ -18,35 +18,10 @@ class TranslationService
      */
     public static function languageLabels(): array
     {
-        $labels = [
-            'en-GB' => Yii::t('ThiscoveryFormsModule.base', 'English (UK)'),
-            'en-US' => Yii::t('ThiscoveryFormsModule.base', 'English (US)'),
-            'cy' => Yii::t('ThiscoveryFormsModule.base', 'Welsh'),
-            'gd' => Yii::t('ThiscoveryFormsModule.base', 'Scottish Gaelic'),
-            'ga' => Yii::t('ThiscoveryFormsModule.base', 'Irish'),
-            'fr' => Yii::t('ThiscoveryFormsModule.base', 'French'),
-            'de' => Yii::t('ThiscoveryFormsModule.base', 'German'),
-            'es' => Yii::t('ThiscoveryFormsModule.base', 'Spanish'),
-            'it' => Yii::t('ThiscoveryFormsModule.base', 'Italian'),
-            'pt' => Yii::t('ThiscoveryFormsModule.base', 'Portuguese'),
-            'nl' => Yii::t('ThiscoveryFormsModule.base', 'Dutch'),
-            'pl' => Yii::t('ThiscoveryFormsModule.base', 'Polish'),
-            'ro' => Yii::t('ThiscoveryFormsModule.base', 'Romanian'),
-            'ar' => Yii::t('ThiscoveryFormsModule.base', 'Arabic'),
-            'ur' => Yii::t('ThiscoveryFormsModule.base', 'Urdu'),
-            'zh' => Yii::t('ThiscoveryFormsModule.base', 'Chinese (Simplified)'),
-            'hi' => Yii::t('ThiscoveryFormsModule.base', 'Hindi'),
-            'bn' => Yii::t('ThiscoveryFormsModule.base', 'Bengali'),
-            'pa' => Yii::t('ThiscoveryFormsModule.base', 'Punjabi'),
-            'gu' => Yii::t('ThiscoveryFormsModule.base', 'Gujarati'),
-            'tr' => Yii::t('ThiscoveryFormsModule.base', 'Turkish'),
-            'uk' => Yii::t('ThiscoveryFormsModule.base', 'Ukrainian'),
-            'ru' => Yii::t('ThiscoveryFormsModule.base', 'Russian'),
-            'sv' => Yii::t('ThiscoveryFormsModule.base', 'Swedish'),
-            'da' => Yii::t('ThiscoveryFormsModule.base', 'Danish'),
-            'fi' => Yii::t('ThiscoveryFormsModule.base', 'Finnish'),
-            'el' => Yii::t('ThiscoveryFormsModule.base', 'Greek'),
-        ];
+        $labels = [];
+        foreach (self::englishLanguageNames() as $code => $name) {
+            $labels[$code] = Yii::t('ThiscoveryFormsModule.base', $name);
+        }
 
         try {
             if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
@@ -61,6 +36,116 @@ class TranslationService
         }
 
         return $labels;
+    }
+
+    /**
+     * Participant language switch: English name, then the name in that language.
+     * English stays "English (UK)" when the two names are the same.
+     */
+    public static function participantLanguageLabel(string $code): string
+    {
+        $english = self::englishLanguageName($code);
+        $native = self::nativeLanguageName($code);
+        if ($native === '' || strcasecmp($english, $native) === 0) {
+            return $english;
+        }
+        return $english . '/' . $native;
+    }
+
+    public static function englishLanguageName(string $code): string
+    {
+        $names = self::englishLanguageNames();
+        $found = self::lookupLabel($names, $code);
+        if ($found !== null) {
+            return $found;
+        }
+        try {
+            if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
+                $found = self::lookupLabel(\humhub\modules\thiscoveryTranslate\services\LocaleMap::labels(), $code);
+                if ($found !== null) {
+                    return $found;
+                }
+            }
+        } catch (\Throwable $e) {
+            // Forms must work without Translate installed.
+        }
+        return $code;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private static function englishLanguageNames(): array
+    {
+        return [
+            'en-GB' => 'English (UK)',
+            'en-US' => 'English (US)',
+            'cy' => 'Welsh',
+            'gd' => 'Scottish Gaelic',
+            'ga' => 'Irish',
+            'fr' => 'French',
+            'de' => 'German',
+            'es' => 'Spanish',
+            'it' => 'Italian',
+            'pt' => 'Portuguese',
+            'nl' => 'Dutch',
+            'pl' => 'Polish',
+            'ro' => 'Romanian',
+            'ar' => 'Arabic',
+            'ur' => 'Urdu',
+            'zh' => 'Chinese (Simplified)',
+            'hi' => 'Hindi',
+            'bn' => 'Bengali',
+            'pa' => 'Punjabi',
+            'gu' => 'Gujarati',
+            'tr' => 'Turkish',
+            'uk' => 'Ukrainian',
+            'ru' => 'Russian',
+            'sv' => 'Swedish',
+            'da' => 'Danish',
+            'fi' => 'Finnish',
+            'el' => 'Greek',
+        ];
+    }
+
+    private static function nativeLanguageName(string $code): string
+    {
+        $natives = ['gd' => 'Gàidhlig'];
+        try {
+            if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
+                $natives = array_merge(\humhub\modules\thiscoveryTranslate\services\LocaleMap::nativeLabels(), $natives);
+            }
+        } catch (\Throwable $e) {
+            // Forms must work without Translate installed.
+        }
+        $found = self::lookupLabel($natives, $code);
+        if ($found !== null) {
+            return $found;
+        }
+        $base = explode('-', str_replace('_', '-', $code))[0] ?? '';
+        if ($base !== '' && $base !== $code) {
+            $found = self::lookupLabel($natives, $base);
+            if ($found !== null) {
+                return $found;
+            }
+        }
+        return '';
+    }
+
+    /**
+     * @param array<string, string> $labels
+     */
+    private static function lookupLabel(array $labels, string $code): ?string
+    {
+        if (isset($labels[$code])) {
+            return (string)$labels[$code];
+        }
+        foreach ($labels as $key => $label) {
+            if (strcasecmp((string)$key, $code) === 0) {
+                return (string)$label;
+            }
+        }
+        return null;
     }
 
     /**

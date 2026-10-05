@@ -1,9 +1,8 @@
 <?php
 /**
- * NEW-10 / DAT-10. A removed question keeps its variable name, and export does not
- * collapse two questions that share that name into one column. Only one live question may
- * have a name: the database refuses a second, and the studio refuses a chosen name that is
- * taken instead of silently adding _2.
+ * NEW-10 / DAT-10. Only one live question may use a variable name. Deleting a question
+ * frees that name. Export does not collapse a removed question and a later question that
+ * reuse the name into one column.
  */
 require __DIR__ . '/support/bootstrap.php';
 
@@ -122,6 +121,22 @@ $saved = $form->saveFieldsFromPost([
 $fresh = FormField::find()->where(['form_id' => (int)$form->id, 'label' => 'Age'])->andWhere(['<>', 'id', (int)$live->id])->andWhere(['deleted_at' => null])->one();
 if (!$saved || !$fresh || strtolower((string)$fresh->variable) === 'age') {
     $failures[] = 'a generated name reused "age": ' . ($fresh->variable ?? 'missing');
+}
+
+// Deleting the live question frees "age" for a new question in the same save.
+$form = ReviewLib::reload($form);
+$form->clearErrors();
+$saved = $form->saveFieldsFromPost([
+    'reuse' => [
+        'type' => FormField::TYPE_NUMBER,
+        'label' => 'Age reused',
+        'variable' => 'age',
+        'sort_order' => 1,
+    ],
+]);
+$reused = FormField::find()->where(['form_id' => (int)$form->id, 'deleted_at' => null, 'variable' => 'age'])->one();
+if (!$saved || !$reused || (int)$reused->id === (int)$live->id) {
+    $failures[] = 'deleting a question did not free its variable: ' . json_encode($form->getErrors());
 }
 
 if ($failures) {

@@ -398,17 +398,16 @@ $fillRtl = TranslationService::isRtl($fillLang);
         <?php
         $enabledLangs = $formModel->getEnabledLanguages();
         if (count($enabledLangs) > 1):
-            $langLabels = TranslationService::languageLabels();
-            if (class_exists(\humhub\modules\thiscoveryTranslate\services\LocaleMap::class)) {
-                $langLabels = array_merge($langLabels, \humhub\modules\thiscoveryTranslate\services\LocaleMap::labels());
-            }
             $currentLang = $fillContext->language ?? $formModel->getSourceLanguage();
         ?>
             <div class="cf-lang-switch" role="navigation" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>">
                 <?php foreach ($enabledLangs as $code): ?>
+                    <?php
+                    $labelParts = explode('/', TranslationService::participantLanguageLabel($code), 2);
+                    ?>
                     <a class="cf-lang-switch__item<?= $code === $currentLang ? ' is-active' : '' ?>"
                        href="<?= Html::encode(Url::toFillLanguage($formModel, $code)) ?>">
-                        <?= Html::encode($langLabels[$code] ?? $code) ?>
+                        <?= Html::encode($labelParts[0]) ?><?php if (isset($labelParts[1])): ?>/<span lang="<?= Html::encode($code) ?>"><?= Html::encode($labelParts[1]) ?></span><?php endif; ?>
                     </a>
                 <?php endforeach; ?>
             </div>

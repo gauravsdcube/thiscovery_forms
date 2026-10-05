@@ -27,4 +27,4 @@ Suggested page tree:
    15. [Panels, waves, and email](creators-panels.md)
    16. [Form types](creators-form-types.md)
 
-Written for Thiscovery Forms **1.35.0**. Each setting in the studio and in module configuration has a **?** guide. These pages are the longer reference. Settings are grouped, and each group can be collapsed.
+Written for Thiscovery Forms **1.36.0**. Each setting in the studio and in module configuration has a **?** guide. These pages are the longer reference. Settings are grouped, and each group can be collapsed.

@@ -1,5 +1,6 @@
 <?php
 
+use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormField;
@@ -88,7 +89,10 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                     <?= Html::encode($labels[$code] ?? $code) ?>
                 </a>
             <?php endforeach; ?>
-            <span class="text-muted ms-2"><?= Yii::t('ThiscoveryFormsModule.base', '{pct}% translated', ['pct' => $pct]) ?></span>
+            <span class="text-muted ms-2"><?= Yii::t('ThiscoveryFormsModule.base', 'Questions {pct}%', ['pct' => $pct]) ?></span>
+            <?php if ($lang && !$isNew): ?>
+                <span class="text-muted ms-2"><?= Yii::t('ThiscoveryFormsModule.base', 'Messages {pct}%', ['pct' => \humhub\modules\thiscoveryForms\services\ParticipantMessages::messageCompleteness($formModel, $lang)]) ?></span>
+            <?php endif; ?>
         </p>
 
         <?php if (
@@ -133,7 +137,7 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                 <?= Html::endForm() ?>
             </p>
             <p class="cf-hint text-muted">
-                <?= Yii::t('ThiscoveryFormsModule.base', 'After editing a translated field manually, save to lock it. Generate only updates unlocked machine overlays for changed source text.') ?>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'After editing a translated question, save it. Generate fills messages as well. A message you have edited is kept.') ?>
             </p>
         <?php endif; ?>
 
@@ -202,9 +206,32 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                                 <textarea name="field_i18n[<?= (int)$field->id ?>][options]" class="form-control" dir="<?= $targetDir ?>" rows="4"><?= Html::encode($optText) ?></textarea>
                             </div>
                         <?php endif; ?>
+                        <?php if ($field->type === FormField::TYPE_RICH_TEXT): ?>
+                            <?php
+                            $richSource = RichHtml::forTranslation($field->getRichTextContent());
+                            $richTranslated = RichHtml::forTranslation((string)($overlay['rich_content'] ?? ''));
+                            ?>
+                            <?php if ($richSource !== '' || $richTranslated !== ''): ?>
+                                <div>
+                                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Rich text') ?></label>
+                                    <div class="form-control-plaintext richtext-output"><?= RichHtml::toHtml($field->getRichTextContent()) ?></div>
+                                </div>
+                                <div>
+                                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translated rich text') ?></label>
+                                    <textarea name="field_i18n[<?= (int)$field->id ?>][rich_content]" class="form-control" dir="<?= $targetDir ?>" rows="8"><?= Html::encode($richTranslated) ?></textarea>
+                                </div>
+                            <?php endif; ?>
+                        <?php endif; ?>
                     </div>
                 </div>
             <?php endforeach; ?>
+
+            <?= $this->render('_studio_messages', [
+                'formModel' => $formModel,
+                'lang' => $lang,
+                'targetDir' => $targetDir,
+                'formI18n' => $formI18n,
+            ]) ?>
 
             <button type="submit" class="btn btn-primary mt-3"><?= Yii::t('ThiscoveryFormsModule.base', 'Save translations') ?></button>
         <?= Html::endForm() ?>

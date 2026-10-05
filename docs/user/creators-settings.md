@@ -120,6 +120,8 @@ Enter the translated strings on **Settings → Translations** (Quality & style).
 
 Leave a language incomplete and people will see the default language for missing strings — finish the overlay before you go live in that language.
 
+**Translations** has a **Messages** section for everything that is not a question: Next, Submit, required and limit sentences, captcha, save and resume, thank-you, already submitted, screen-out, not consented, quota text, and the email templates attached to this form. Generate writes those sentences. The first time a language is generated, the buttons and checks are kept for the whole site, and later forms start from that wording. Edit a line to change it on this form only. A blank line uses the site wording, or the source sentence when the site has none yet. A second percentage shows how much of Messages is filled.
+
 ## Actions and functions
 
 **Custom functions** are named formulas you reuse across this form. Give each a **name** (letters, numbers, underscore — for example `riskBand`) and a **formula**. Actions can run a custom function by name. Emails and later text can insert `{{var:name}}`.
