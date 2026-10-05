@@ -39,6 +39,46 @@ class TranslationService
     }
 
     /**
+     * Studio save notice. Older Thiscovery Translate builds do not have noticeAfterSave(),
+     * so those keep the previous queue-and-warn behaviour instead of failing the save.
+     *
+     * @return array{level:string, message:string, block:bool}|null
+     */
+    public static function noticeAfterSave(CustomForm $form): ?array
+    {
+        $hook = \humhub\modules\thiscoveryTranslate\services\FormsHook::class;
+        if (!class_exists($hook)) {
+            return null;
+        }
+        if (method_exists($hook, 'noticeAfterSave')) {
+            $notice = $hook::noticeAfterSave($form);
+            return is_array($notice) ? $notice : null;
+        }
+        if (!method_exists($hook, 'checkPublishReady')) {
+            return null;
+        }
+        if (method_exists($hook, 'queueFormTranslation')) {
+            $hook::queueFormTranslation((int)$form->id);
+        }
+        $pub = $hook::checkPublishReady($form);
+        if (!is_array($pub) || empty($pub['message'])) {
+            return null;
+        }
+        if (empty($pub['ok'])) {
+            return [
+                'level' => 'error',
+                'block' => true,
+                'message' => $pub['message'] . ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form kept as draft until translations are ready.'),
+            ];
+        }
+        return [
+            'level' => 'warning',
+            'block' => false,
+            'message' => $pub['message'],
+        ];
+    }
+
+    /**
      * Participant language switch: English name, then the name in that language.
      * English stays "English (UK)" when the two names are the same.
      */

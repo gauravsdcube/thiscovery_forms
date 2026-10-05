@@ -173,20 +173,18 @@ class GlobalController extends Controller
                         $this->view->success($savedMessage);
                         Yii::$app->session->setFlash('success', $savedMessage);
                     }
-                    if (class_exists(\humhub\modules\thiscoveryTranslate\services\FormsHook::class)) {
-                        $notice = \humhub\modules\thiscoveryTranslate\services\FormsHook::noticeAfterSave($form);
-                        if ($notice && !empty($notice['block'])) {
-                            $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
-                            $form->save(false, ['status']);
-                            $this->view->error($notice['message']);
-                            Yii::$app->session->setFlash('error', $notice['message']);
-                        } elseif ($notice && ($notice['level'] ?? '') === 'warning') {
-                            $this->view->warn($notice['message']);
-                            Yii::$app->session->setFlash('warning', $notice['message']);
-                        } elseif ($notice) {
-                            $this->view->info($notice['message']);
-                            Yii::$app->session->setFlash('info', $notice['message']);
-                        }
+                    $notice = \humhub\modules\thiscoveryForms\services\TranslationService::noticeAfterSave($form);
+                    if ($notice && !empty($notice['block'])) {
+                        $form->status = \humhub\modules\thiscoveryForms\models\CustomForm::STATUS_DRAFT;
+                        $form->save(false, ['status']);
+                        $this->view->error($notice['message']);
+                        Yii::$app->session->setFlash('error', $notice['message']);
+                    } elseif ($notice && ($notice['level'] ?? '') === 'warning') {
+                        $this->view->warn($notice['message']);
+                        Yii::$app->session->setFlash('warning', $notice['message']);
+                    } elseif ($notice) {
+                        $this->view->info($notice['message']);
+                        Yii::$app->session->setFlash('info', $notice['message']);
                     }
                     return $this->redirectAfterStudioSave($form);
                 }

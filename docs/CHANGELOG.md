@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.36.1 (October 5, 2026)
+
+- Fix: Saving a form no longer fails when Thiscovery Translate does not yet have the newer translation notice. Update Translate to 2.1.3 for the queued-language message.
+
 ## 1.36.0 (October 5, 2026)
 
 - Messages on a translated form: buttons, checks, captcha, save and resume, endings, quota text, and the email templates attached to the form. Questions stay on the existing translation. The first generate for a language is kept as the site wording. A form can replace any line. Apply migration `m261005_150000_participant_messages`.
