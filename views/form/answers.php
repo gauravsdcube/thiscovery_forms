@@ -16,6 +16,8 @@ use yii\widgets\LinkPager;
 /** @var array $filters */
 /** @var $contentContainer */
 /** @var int $selectedAnswerId */
+/** @var string $tab */
+/** @var yii\data\ActiveDataProvider|null $downloadProvider */
 
 ThiscoveryFormsAsset::register($this);
 $filters = array_merge([
@@ -27,17 +29,26 @@ $filters = array_merge([
 ], $filters ?? []);
 $selectedAnswerId = (int)($selectedAnswerId ?? 0);
 $canManage = $formModel->canManage();
+$canExport = $formModel->canExportAnswers();
+$tab = ($tab ?? 'answers') === 'downloads' ? 'downloads' : 'answers';
 $hasFilters = $filters['q'] !== '' || $filters['status'] !== '' || $filters['integrity'] !== '' || $filters['minScore'] !== null;
-$exportParams = array_filter([
+$includeInProgress = \humhub\modules\thiscoveryForms\services\ExportSettings::get($formModel)['include_in_progress'];
+if ($filters['status'] === 'progress') {
+    $includeInProgress = true;
+} elseif ($filters['status'] === 'complete') {
+    $includeInProgress = false;
+}
+$exportHidden = array_filter([
     'integrity' => $filters['integrity'] !== '' ? $filters['integrity'] : null,
     'min_score' => $filters['minScore'] !== null ? $filters['minScore'] : null,
-    'header_mode' => Yii::$app->request->get('header_mode') ?: null,
+    'q' => $filters['q'] !== '' ? $filters['q'] : null,
+    'status' => $filters['status'] !== '' ? $filters['status'] : null,
 ], static fn($v) => $v !== null && $v !== '');
-$headerMode = (string)($exportParams['header_mode'] ?? \humhub\modules\thiscoveryForms\services\ExportService::HEADER_LABEL);
+$headerMode = (string)Yii::$app->request->get('header_mode', \humhub\modules\thiscoveryForms\services\ExportService::HEADER_LABEL);
 if (!isset(\humhub\modules\thiscoveryForms\services\ExportService::headerModeLabels()[$headerMode])) {
     $headerMode = \humhub\modules\thiscoveryForms\services\ExportService::HEADER_LABEL;
 }
-$exportParams['header_mode'] = $headerMode;
+$scrubExport = \humhub\modules\thiscoveryForms\services\ExportSettings::isPiiScrub($formModel);
 $sort = $dataProvider->sort;
 $total = (int)$dataProvider->getTotalCount();
 $clearUrl = Url::toAnswers($formModel);
@@ -92,33 +103,33 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
                     ->icon('folder-open')
                     ->loader(false) ?>
             <?php endif; ?>
-            <?= $this->render('_export_csv_button', [
-                'formModel' => $formModel,
-                'exportParams' => $exportParams,
-                'style' => 'primary',
-                'showIcon' => true,
-            ]) ?>
-            <div class="dropdown d-inline-block">
-                <button class="btn btn-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'Export headers') ?>
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                    <?php foreach (\humhub\modules\thiscoveryForms\services\ExportService::headerModeLabels() as $mode => $label): ?>
-                        <li>
-                            <?= Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'd-inline']) ?>
-                            <?php foreach (array_merge($exportParams, ['header_mode' => $mode]) as $key => $value): ?>
-                                <?= Html::hiddenInput((string)$key, (string)$value) ?>
-                            <?php endforeach; ?>
-                            <?= Html::submitButton($label, ['class' => 'dropdown-item' . ($headerMode === $mode ? ' active' : '')]) ?>
-                            <?= Html::endForm() ?>
-                        </li>
-                    <?php endforeach; ?>
-                </ul>
-            </div>
         </div>
     </div>
 
+    <?php if ($canExport): ?>
+        <nav class="cf-answers-tabs" role="tablist" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Submissions')) ?>">
+            <a role="tab" href="<?= Html::encode(Url::toAnswers($formModel)) ?>"
+               class="<?= $tab === 'answers' ? 'is-active' : '' ?>"
+               aria-selected="<?= $tab === 'answers' ? 'true' : 'false' ?>">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Answers') ?>
+            </a>
+            <a role="tab" href="<?= Html::encode(Url::toAnswers($formModel, ['tab' => 'downloads'])) ?>"
+               class="<?= $tab === 'downloads' ? 'is-active' : '' ?>"
+               aria-selected="<?= $tab === 'downloads' ? 'true' : 'false' ?>">
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Downloads') ?>
+            </a>
+        </nav>
+    <?php endif; ?>
+
+    <?php if ($tab === 'downloads'): ?>
+        <?= $this->render('_download_log', [
+            'formModel' => $formModel,
+            'downloadProvider' => $downloadProvider,
+        ]) ?>
+    <?php else: ?>
+
     <form method="get" class="cf-list-filters" action="<?= Html::encode($clearUrl) ?>">
+        <?= Html::hiddenInput('id', (int)$formModel->id) ?>
         <?php if (!empty(Yii::$app->request->get('sort'))): ?>
             <?= Html::hiddenInput('sort', Yii::$app->request->get('sort')) ?>
         <?php endif; ?>
@@ -178,13 +189,65 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
         <?php if ($hasFilters): ?>
             <a class="btn btn-link btn-sm" href="<?= Html::encode($clearUrl) ?>"><?= Yii::t('ThiscoveryFormsModule.base', 'Clear') ?></a>
         <?php endif; ?>
-        <?= Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'd-inline']) ?>
-        <?php foreach ($exportParams + ['include_excluded' => 1] as $key => $value): ?>
-            <?= Html::hiddenInput((string)$key, (string)$value) ?>
-        <?php endforeach; ?>
-        <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Export including excluded'), ['class' => 'btn btn-link btn-sm']) ?>
-        <?= Html::endForm() ?>
     </form>
+
+    <?= Html::beginForm(Url::toExport($formModel), 'post', ['class' => 'cf-export-bar']) ?>
+    <?php foreach ($exportHidden as $key => $value): ?>
+        <?= Html::hiddenInput((string)$key, (string)$value) ?>
+    <?php endforeach; ?>
+    <label class="cf-export-bar__field">
+        <span><?= Yii::t('ThiscoveryFormsModule.base', 'Column headings') ?></span>
+        <?= Html::dropDownList(
+            'header_mode',
+            $headerMode,
+            \humhub\modules\thiscoveryForms\services\ExportService::headerModeLabels(),
+            ['class' => 'form-control']
+        ) ?>
+    </label>
+    <div class="cf-export-bar__checks">
+        <label>
+            <?= Html::hiddenInput('include_in_progress', '0') ?>
+            <?= Html::checkbox('include_in_progress', $includeInProgress, [
+                'value' => '1',
+                'uncheck' => null,
+                'disabled' => $filters['status'] !== '',
+            ]) ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Include unfinished responses') ?>
+        </label>
+        <label>
+            <?= Html::hiddenInput('include_excluded', '0') ?>
+            <?= Html::checkbox('include_excluded', false, ['value' => '1', 'uncheck' => null]) ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Include responses excluded from analysis') ?>
+        </label>
+    </div>
+    <div class="cf-export-bar__action">
+        <?= Html::submitButton(
+            $scrubExport
+                ? Yii::t('ThiscoveryFormsModule.base', 'Download CSV (personal data removed)')
+                : Yii::t('ThiscoveryFormsModule.base', 'Download CSV'),
+            ['class' => 'btn btn-primary']
+        ) ?>
+        <?php if ($canManage && \humhub\modules\thiscoveryForms\Module::secureSendEnabled()): ?>
+            <?= Html::submitButton(Yii::t('ThiscoveryFormsModule.base', 'Prepare a secure file from these choices'), [
+                'class' => 'btn btn-default',
+                'formaction' => \yii\helpers\Url::to(['/thiscovery-forms/secure/prepare-draft', 'id' => (int)$formModel->id]),
+            ]) ?>
+        <?php endif; ?>
+    </div>
+    <p class="cf-export-bar__hint">
+        <?php if ($filters['status'] === 'complete'): ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'The status filter is Complete, so this download has finished responses only.') ?>
+        <?php elseif ($filters['status'] === 'progress'): ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'The status filter is In progress, so this download has unfinished responses only.') ?>
+        <?php else: ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Unfinished responses are left out unless you tick Include unfinished responses.') ?>
+        <?php endif; ?>
+        <?php if ($hasFilters): ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Search and the filters above are applied.') ?>
+        <?php endif; ?>
+        <?= Yii::t('ThiscoveryFormsModule.base', 'Columns and personal-data removal are set under Settings → Export.') ?>
+    </p>
+    <?= Html::endForm() ?>
 
     <?php if (!$dataProvider->getCount()): ?>
         <div class="cf-list-empty">
@@ -292,6 +355,7 @@ if (class_exists(\humhub\modules\thiscoveryMapping\assets\MappingAsset::class)
         <div class="cf-list-pager">
             <?= LinkPager::widget(['pagination' => $dataProvider->pagination]) ?>
         </div>
+    <?php endif; ?>
     <?php endif; ?>
 
     <div class="cf-answer-overlay" data-cf-answer-overlay></div>

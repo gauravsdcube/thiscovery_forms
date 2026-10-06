@@ -43,19 +43,23 @@ Polls can show a simple result chart where you have enabled poll results.
 
 ## CSV export
 
-On the Answers export, choose **Export headers**:
+On Answers, one **Download CSV** panel holds the choices:
 
-- **Participant labels** — question text (default)
-- **Variable names** — the field variable ids
-- **Variable and label** — both
+- **Column headings** — question text (the default), variable names, or both
+- **Include unfinished responses** — leave unticked for finished responses only
+- **Include responses excluded from analysis** — leave unticked to omit rows marked excluded
 
-Which columns appear, whether personal data is scrubbed, and how empty answers are coded, is set once under **Settings → Export**. Every **Export CSV** button (Answers, Dashboard, Response integrity) uses that set.
+Search, status, and quality filters on the page are applied to that download. If status is Complete or In progress, that choice replaces the unfinished-responses tick.
 
-**Ready for analysis** can add a 0/1 column per multiple-choice option, code empty answers (`-99` shown but not answered, `-98` hidden by logic, `-97` not reached), and include responses still in progress. Off, the CSV matches the dashboard and contains complete responses only.
+**Downloads**, the tab beside Answers, lists each CSV download: who, when, how many rows, and whether personal data was removed. Only people who can export see that tab. Downloads from the dashboard and Response integrity are included.
+
+When secure send is on, the same panel has **Prepare a secure file from these choices**. That keeps the column headings, unfinished and excluded choices, and the current filters, then opens **Settings → Secure send** so you can name the contact.
+
+Which columns appear, whether personal data is removed, and how empty answers are coded, is set once under **Settings → Export**. **Ready for analysis** there can add a 0/1 column per multiple-choice option and code empty answers (`-99` shown but not answered, `-98` hidden by logic, `-97` not reached). Dashboard and Response integrity use that saved set.
 
 **Scrub PII** (off by default) omits identity and PII-tagged columns and replaces emails, phone numbers, and IP addresses in remaining cells with `[redacted]`. The file is named `*-scrubbed.csv`. Answers in the database are unchanged.
 
-CSV export adds quality score, integrity status, analysis status, and flags when Response integrity is in use. Incomplete rows are included only when you kept incomplete responses. Preview answers are not included. Excluded responses are omitted from CSV unless you choose **Export including excluded**. Filter the Answers list (Trusted only, minimum score, flag type) before export if you want a subset.
+CSV export adds quality score, integrity status, analysis status, and flags when Response integrity is in use. Preview answers are not included. Tick **Include unfinished responses** or **Include responses excluded from analysis** on the download panel when you want those rows. Filter the Answers list (Trusted only, minimum score, flag type) before you download if you want a subset.
 
 Files uploaded on the form are not the CSV itself; they are stored as HumHub files and referenced from the response. If a file question is tagged as personal data and scrubbing is on, the file **name** column is omitted.
 

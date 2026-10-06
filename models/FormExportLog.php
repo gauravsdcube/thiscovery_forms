@@ -3,6 +3,7 @@
 namespace humhub\modules\thiscoveryForms\models;
 
 use humhub\components\ActiveRecord;
+use humhub\modules\user\models\User;
 
 /**
  * @property int $id
@@ -17,6 +18,11 @@ class FormExportLog extends ActiveRecord
     public static function tableName()
     {
         return 'custom_form_export_log';
+    }
+
+    public function getUser()
+    {
+        return $this->hasOne(User::class, ['id' => 'user_id']);
     }
 
     public function rules()

@@ -2,6 +2,12 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.38.0 (October 6, 2026)
+
+- Answers has one **Download CSV** panel. Column headings can be the question text, the variable name, or both. Unfinished responses and responses excluded from analysis are left out unless those boxes are ticked. Search and the filters on the page are applied to that download. A Complete or In progress filter overrides the unfinished-responses tick.
+- **Downloads**, beside Answers, lists each CSV download: who, when, how many rows, and whether personal data was removed. People who can export see the tab. Downloads from the dashboard and Response integrity are included.
+- When secure send is on, the same panel has **Prepare a secure file from these choices**. That stores the choices and opens Secure send, where the contact is entered.
+
 ## 1.37.0 (October 6, 2026)
 
 - **Build visually** next to a formula box opens a window for the same formula. Pick a question, equals or is one of, and join the rows with all of these or any of these. A group is a bracket. **Use this formula** writes the text into the box. The box stays editable, and opening the window again loads what is in the box. Show/hide, calculated questions, answer checks, and page-break branches all have the button. Sums, dates, and other functions stay in the box until you replace them.

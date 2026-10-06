@@ -2880,6 +2880,89 @@ body.cf-fill-standalone #topbar-second {
     gap: .5rem;
 }
 
+.cf-answers-tabs {
+    display: flex;
+    gap: 0;
+    margin: 0 0 1rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.cf-answers-tabs a {
+    display: inline-block;
+    padding: .7rem 1rem .6rem;
+    margin-bottom: -1px;
+    color: #64748b;
+    font-weight: 600;
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+}
+
+.cf-answers-tabs a:hover {
+    color: #0f172a;
+    text-decoration: none;
+}
+
+.cf-answers-tabs a.is-active {
+    color: #2563eb;
+    border-bottom-color: #2563eb;
+}
+
+.cf-download-log__intro {
+    margin: 0 0 1rem;
+    color: #64748b;
+}
+
+.cf-export-bar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: .85rem 1.25rem;
+    margin: 0 0 1rem;
+    padding: .9rem 1rem;
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+}
+
+.cf-export-bar__field {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    margin: 0;
+    min-width: 16rem;
+}
+
+.cf-export-bar__field span {
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.cf-export-bar__checks {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+    padding-bottom: .15rem;
+}
+
+.cf-export-bar__checks label {
+    margin: 0;
+    font-weight: 500;
+}
+
+.cf-export-bar__action {
+    margin-left: auto;
+}
+
+.cf-export-bar__hint {
+    flex-basis: 100%;
+    margin: 0;
+    color: #64748b;
+    font-size: .85rem;
+}
+
 .cf-cms {
     display: grid;
     grid-template-columns: 280px minmax(0, 1fr);

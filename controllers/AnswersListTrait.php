@@ -4,9 +4,11 @@ namespace humhub\modules\thiscoveryForms\controllers;
 
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
+use humhub\modules\thiscoveryForms\models\FormExportLog;
 use humhub\modules\thiscoveryForms\services\AnswerListService;
 use humhub\modules\thiscoveryForms\services\ErasureService;
 use Yii;
+use yii\data\ActiveDataProvider;
 use yii\web\ForbiddenHttpException;
 use yii\web\NotFoundHttpException;
 
@@ -21,7 +23,27 @@ trait AnswersListTrait
             throw new ForbiddenHttpException();
         }
 
+        $tab = (string)Yii::$app->request->get('tab', 'answers');
+        if ($tab !== 'downloads') {
+            $tab = 'answers';
+        }
+        if ($tab === 'downloads' && !$form->canExportAnswers()) {
+            throw new ForbiddenHttpException();
+        }
+
         [$provider, $filters] = AnswerListService::provider($form, Yii::$app->request->queryParams);
+
+        $downloads = null;
+        if ($tab === 'downloads') {
+            $downloads = new ActiveDataProvider([
+                'query' => FormExportLog::find()
+                    ->where(['form_id' => (int)$form->id])
+                    ->with('user')
+                    ->orderBy(['created_at' => SORT_DESC, 'id' => SORT_DESC]),
+                'pagination' => ['pageSize' => 50],
+                'sort' => false,
+            ]);
+        }
 
         $container = property_exists($this, 'contentContainer') ? $this->contentContainer : null;
 
@@ -31,6 +53,8 @@ trait AnswersListTrait
             'filters' => $filters,
             'contentContainer' => $container,
             'selectedAnswerId' => (int)Yii::$app->request->get('answer', 0),
+            'tab' => $tab,
+            'downloadProvider' => $downloads,
         ]);
     }
 

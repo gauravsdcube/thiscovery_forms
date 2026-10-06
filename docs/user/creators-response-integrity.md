@@ -114,7 +114,7 @@ From **Answers** or the form dashboard, open **Response integrity**. Totals for 
 
 Filter Answers by integrity status, flag type, or minimum score. Click **Score** or **Analysis** in the table header to sort.
 
-CSV export adds quality score, integrity status, analysis status, and a flags column. **Excluded** rows are omitted unless you choose **Export including excluded**. You can also export only Trusted responses, or only scores above a threshold, using the same filters as the list.
+CSV export adds quality score, integrity status, analysis status, and a flags column. **Excluded** rows are omitted unless you tick **Include responses excluded from analysis** on the Answers download panel. You can also download only Trusted responses, or only scores above a threshold, by filtering the list first.
 
 ## Attention checks on the Builder
 

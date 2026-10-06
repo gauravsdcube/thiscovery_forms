@@ -17,9 +17,9 @@ class ExportService
     public static function headerModeLabels(): array
     {
         return [
-            self::HEADER_LABEL => Yii::t('ThiscoveryFormsModule.base', 'Participant labels'),
+            self::HEADER_LABEL => Yii::t('ThiscoveryFormsModule.base', 'Question text'),
             self::HEADER_VARIABLE => Yii::t('ThiscoveryFormsModule.base', 'Variable names'),
-            self::HEADER_BOTH => Yii::t('ThiscoveryFormsModule.base', 'Variable and label'),
+            self::HEADER_BOTH => Yii::t('ThiscoveryFormsModule.base', 'Question text and variable name'),
         ];
     }
 
@@ -68,11 +68,16 @@ class ExportService
     private function writeWideCsv($fh, CustomForm $form, array $params): int
     {
         $params['forExport'] = 1;
-        // Complete responses only unless the form or the request asks for in-progress too, so
-        // totals match the dashboard (SCO-12).
-        if (($params['status'] ?? '') === '' && !ExportSettings::get($form)['include_in_progress']
-            && (string)($params['include_in_progress'] ?? '') !== '1') {
-            $params['status'] = 'complete';
+        // Complete responses only unless this download, or the form's export setting, asks for
+        // in-progress too. An explicit status filter (complete or in progress) wins.
+        if ((string)($params['status'] ?? '') === '') {
+            $flag = $params['include_in_progress'] ?? null;
+            $include = ($flag === null || $flag === '')
+                ? ExportSettings::get($form)['include_in_progress']
+                : (string)$flag === '1';
+            if (!$include) {
+                $params['status'] = 'complete';
+            }
         }
         [$query] = AnswerListService::query($form, $params);
         $query->with(['answerFields', 'user', 'wave', 'round', 'panelMember', 'integrityMeta']);
