@@ -2,6 +2,14 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.37.0 (October 6, 2026)
+
+- **Build visually** next to a formula box opens a window for the same formula. Pick a question, equals or is one of, and join the rows with all of these or any of these. A group is a bracket. **Use this formula** writes the text into the box. The box stays editable, and opening the window again loads what is in the box. Show/hide, calculated questions, answer checks, and page-break branches all have the button. Sums, dates, and other functions stay in the box until you replace them.
+- On a dropdown, radio, or checkbox, a choice named Other opens a text box on the fill page. **Ask for extra text when Other is selected** is under the choices for all three. **Extra text is required** is on by default. Untick it to let someone select Other and continue without typing. CSV import and export use `other_specify_required`. A file without that column still requires the text.
+- In Microsoft Edge, Add fields in the studio scrolls inside its own list.
+- A translated button is at least as wide as the English label.
+- Urdu field text on the fill page uses a smaller size. Titles are unchanged. Arabic is unchanged.
+
 ## 1.36.1 (October 5, 2026)
 
 - Fix: Saving a form no longer fails when Thiscovery Translate does not yet have the newer translation notice. Update Translate to 2.1.3 for the queued-language message.

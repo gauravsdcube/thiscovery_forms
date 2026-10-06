@@ -2953,6 +2953,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
                 if (array_key_exists('other_specify', $row)) {
                     $field->setAllowsOtherSpecify(!in_array($row['other_specify'], [0, '0', false, 'false', ''], true));
                 }
+                if (array_key_exists('other_specify_required', $row)) {
+                    $field->setRequiresOtherText(!in_array($row['other_specify_required'], [0, '0', false, 'false', ''], true));
+                }
             } elseif ($type === FormField::TYPE_NUMBER) {
                 $field->setNumberRange($row['number_min'] ?? null, $row['number_max'] ?? null);
             } elseif ($type === FormField::TYPE_FILE) {

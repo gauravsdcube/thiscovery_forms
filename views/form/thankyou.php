@@ -1,6 +1,7 @@
 <?php
 
 use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
+use humhub\modules\thiscoveryForms\helpers\ButtonLabel;
 use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
@@ -112,9 +113,11 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
 
             <?php if ($formModel->isProject() && $answer): ?>
                 <div class="cf-thankyou__actions">
-                    <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'View your project'))
+                    <?= Button::primary(ButtonLabel::html('View your project'))
+                        ->encodeLabel(false)
                         ->link(Url::toProject($formModel, $answer)) ?>
-                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Catalogue'))
+                    <?= Button::light(ButtonLabel::html('Catalogue'))
+                        ->encodeLabel(false)
                         ->link(Url::toCatalogue($formModel)) ?>
                 </div>
             <?php elseif ($showButton): ?>

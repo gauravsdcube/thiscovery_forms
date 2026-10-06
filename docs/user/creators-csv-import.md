@@ -56,6 +56,8 @@ Download **Sample CSV** from Share if you want a working file to copy.
 | `min_select` | Minimum number of checkbox ticks. |
 | `min_select_all` | `1` to require every checkbox option (except an exclusive choice). |
 | `randomize` | `1` to shuffle choice order. |
+| `other_specify` | Dropdown, radio, and checkbox. `1` (the default when the column is missing) shows a text box when an option named Other is selected. `0` leaves Other as a normal choice. |
+| `other_specify_required` | `1` (the default when the column is missing) so Next waits for that extra text. `0` lets someone select Other and continue with the box empty. |
 | `rich_content` | HTML for a rich text section. |
 | `html_content` | Markup for an HTML block. |
 | `html_collect` | `1` if the HTML block also collects a value. |
@@ -87,9 +89,9 @@ Put the **code** in the `type` column.
 | `number` | Number | — |
 | `email` | Email | Optional `prefill_profile` |
 | `date` | Date | — |
-| `dropdown` | Dropdown | `options` |
-| `radio` | Radio | `options` |
-| `checkbox` | Checkbox | `options`, optional `exclusive_option`, `max_select`, `min_select`, `min_select_all`, `randomize` |
+| `dropdown` | Dropdown | `options`, optional `other_specify`, `other_specify_required` |
+| `radio` | Radio | `options`, optional `other_specify`, `other_specify_required` |
+| `checkbox` | Checkbox | `options`, optional `exclusive_option`, `max_select`, `min_select`, `min_select_all`, `randomize`, `other_specify`, `other_specify_required` |
 | `rating` | Rating scale | `rating_min`, `rating_max`, `rating_step`, labels, `rating_display` |
 | `ranking` | Ranking (drag & drop) | `options` or `items` |
 | `file` | File upload | — |
@@ -106,7 +108,7 @@ Put the **code** in the `type` column.
 | `image_area` | Image area | `image_url`, optional regions JSON |
 | `respondent_meta` | Respondent metadata | Invisible. Set `meta_key` to the value to store (`ip`, `browser`, `os`, `device`, `screen`, `language`, `timezone`, `userAgent`). One row per value. |
 
-If an option is named exactly `Other`, the fill page shows a box for a typed answer.
+If an option is named exactly `Other`, the fill page shows a box for a typed answer. That applies to dropdown, radio, and checkbox. `other_specify` `0` turns the box off. `other_specify_required` `0` keeps the box and lets it stay empty. When that column is missing, the extra text is required.
 
 ## Page breaks
 

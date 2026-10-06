@@ -50,7 +50,18 @@ Each question can also have:
 
 **Choices:** in the studio, each option has an optional **Internal code** and a required **Participant label**. Respondents only see the label. Answers, logic, and CSV export use the code when you set one. If you set a code on any choice, every choice on that question needs a code. In CSV import you can still write `code | Label` on one line.
 
-**Other:** if a dropdown, radio, or checkbox option is named exactly `Other` (the label), the fill page shows a text box so the person can type their own answer. Untick **Ask for extra text when Other is ticked** if a later question already collects that detail — otherwise Next is blocked until they fill the inline box.
+**Other:** on a dropdown, a radio, or a checkbox, name one choice `Other`. That can be the participant label or the internal code. The fill page then opens a text box when that choice is selected. The box is not shown in the studio; it appears while someone is answering.
+
+The choice counts as Other when the label or the code is exactly `Other`, or a phrase such as `Other (please specify)`, `Other, please describe`, or `Other - please state`. `Something else` does not open the box.
+
+Under the choices, for dropdown, radio, and checkbox:
+
+- **Ask for extra text when Other is selected** is on by default. Untick it when a later question already collects that detail. Other can still be selected, and no box opens.
+- **Extra text is required** is on by default, and only while the box is on. Next and Submit wait until the person types something. Untick it to let them select Other and continue with the box empty.
+
+A typed answer is stored as the choice plus the text, for example `Other: my own answer`. If the extra text is not required and the box is left empty, the stored answer is the choice on its own.
+
+Ranking, grids, MaxDiff, and best-worst do not open this box.
 
 **Checkboxes:** set **Maximum selections** (for example 3) and an **Exclusive option** such as `None of these`. Exclusive choices clear the others when ticked.
 
@@ -87,6 +98,8 @@ You can show, hide, skip, or jump based on earlier answers.
 To show several questions only when an earlier answer matches, add a **Question group**, put those questions inside it, and click **Logic** on the group (for example **Show this group if** the screening question equals `Yes`). You do not need the same rule on every question in the group. A page break cannot sit inside a group.
 
 Typical operators include equals, does not equal, contains, and similar comparisons. Combine conditions with **AND** or **OR**.
+
+**Build visually**, next to the formula box, opens a window for the same rule. Pick each question, choose equals, is one of, or a number comparison, and join the rows with **All of these** (`and`) or **Any of these** (`or`). **Add group** is a bracket. **Use this formula** writes the text into the box. You can edit that text by hand, or open the window again and it loads what is in the box. The same button is on show/hide rules, calculated questions, answer checks, and page-break branches. Sums, dates, and other functions stay in the box until you choose to replace them. See [Formulas](creators-formulas.md).
 
 Actions on a question or page often include:
 

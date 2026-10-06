@@ -1,5 +1,6 @@
 <?php
 
+use humhub\modules\thiscoveryForms\helpers\ButtonLabel;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
 use humhub\modules\thiscoveryForms\models\FormAnswer;
@@ -28,7 +29,8 @@ $panelToken = $panelToken ?? '';
             <p><?= Yii::t('ThiscoveryFormsModule.base', 'Enter the code you were given when you saved your progress.') ?></p>
             <?php if ($ownDraft): ?>
                 <p>
-                    <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Continue your saved response'))
+                    <?= Button::primary(ButtonLabel::html('Continue your saved response'))
+                        ->encodeLabel(false)
                         ->link(Url::toContinueOwn($formModel)) ?>
                 </p>
             <?php endif; ?>
@@ -47,7 +49,7 @@ $panelToken = $panelToken ?? '';
                         'autocomplete' => 'off',
                         'required' => true,
                     ]) ?>
-                    <?= Button::light(Yii::t('ThiscoveryFormsModule.base', 'Continue'))->submit() ?>
+                    <?= Button::light(ButtonLabel::html('Continue'))->encodeLabel(false)->submit() ?>
                 </div>
             <?= Html::endForm() ?>
         </div>
@@ -55,7 +57,8 @@ $panelToken = $panelToken ?? '';
         <div class="cf-resume-gate__card">
             <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Submit a new response') ?></h3>
             <p><?= Yii::t('ThiscoveryFormsModule.base', 'Start this form from the beginning.') ?></p>
-            <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Start a new response'))
+            <?= Button::primary(ButtonLabel::html('Start a new response'))
+                ->encodeLabel(false)
                 ->link(Url::toStartNew($formModel)) ?>
         </div>
     </div>

@@ -1,6 +1,7 @@
 <?php
 
 use humhub\modules\thiscoveryForms\assets\ThiscoveryFormsAsset;
+use humhub\modules\thiscoveryForms\helpers\ButtonLabel;
 use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
@@ -482,7 +483,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 <div class="cf-resume-code-row">
                     <code class="cf-resume-code" data-cf-resume-code><?= Html::encode($savedDraftCode) ?></code>
                     <button type="button" class="btn btn-light btn-sm" data-cf-copy-code>
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Copy code') ?>
+                        <?= ButtonLabel::html('Copy code') ?>
                     </button>
                 </div>
                 <?= Html::beginForm(Url::toEmailResume($formModel), 'post', ['class' => 'cf-resume-email-form']) ?>
@@ -497,7 +498,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                             'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'you@example.com'),
                             'required' => true,
                         ]) ?>
-                        <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Send email'))->submit()->sm() ?>
+                        <?= Button::primary(ButtonLabel::html('Send email'))->encodeLabel(false)->submit()->sm() ?>
                     </div>
                 <?= Html::endForm() ?>
             </div>
@@ -629,11 +630,11 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 <div hidden data-cf-roster-confirm>
                                     <p><?= Html::encode((string)$page['roster']['confirm']) ?></p>
                                     <button type="button" class="btn btn-default" data-cf-roster-remove-confirm data-cf-roster-key="<?= Html::encode((string)$page['roster']['key']) ?>"><?= Html::encode((string)$page['roster']['removeLabel']) ?></button>
-                                    <button type="button" class="btn btn-link" data-cf-roster-remove-cancel><?= Yii::t('ThiscoveryFormsModule.base', 'Cancel') ?></button>
+                                    <button type="button" class="btn btn-link" data-cf-roster-remove-cancel><?= ButtonLabel::html('Cancel') ?></button>
                                 </div>
                             <?php endif; ?>
                             <?php if (!empty($page['roster']['canAdd'])): ?>
-                                <button type="button" class="btn btn-default" data-cf-roster-add data-cf-roster-variable="<?= Html::encode((string)$page['roster']['variable']) ?>" data-cf-roster-parent="<?= Html::encode((string)$page['roster']['parent']) ?>"><?= Html::encode((string)$page['roster']['addLabel']) ?></button>
+                                <button type="button" class="btn btn-default" data-cf-roster-add data-cf-roster-variable="<?= Html::encode((string)$page['roster']['variable']) ?>" data-cf-roster-parent="<?= Html::encode((string)$page['roster']['parent']) ?>"><?= ButtonLabel::html('Add another') ?></button>
                             <?php endif; ?>
                         </div>
                     <?php endif; ?>
@@ -714,6 +715,9 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         }
                         if (FormField::isChoiceType($field->type)) {
                             $attrs['data-cf-choice-pairs'] = Json::encode($field->getChoicePairs());
+                            if ($field->allowsOtherSpecify() && !$field->requiresOtherText()) {
+                                $attrs['data-cf-other-optional'] = '1';
+                            }
                         }
                         if ($field->collectsAnswer()) {
                             $attrs['data-cf-answerable'] = '1';
@@ -771,19 +775,19 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 <div class="cf-fill-nav__start">
                     <?php if ($multiPage): ?>
                         <button type="button" class="btn btn-light" data-cf-page-back style="display:none">
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Back') ?>
+                            <?= ButtonLabel::html('Back') ?>
                         </button>
                     <?php endif; ?>
                 </div>
                 <div class="cf-fill-nav__end">
                     <?php if ($resumeEnabled && $canSaveProgress): ?>
                         <button type="button" class="btn btn-light" data-cf-save-progress>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Save & continue later') ?>
+                            <?= ButtonLabel::html('Save & continue later') ?>
                         </button>
                     <?php endif; ?>
                     <?php if ($multiPage): ?>
                         <button type="button" class="btn btn-primary" data-cf-page-next>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Next') ?>
+                            <?= ButtonLabel::html('Next') ?>
                         </button>
                     <?php endif; ?>
                     <div class="cf-fill-submit<?= !empty($showCaptcha) ? ' cf-fill-submit--captcha' : '' ?>" <?= $multiPage ? 'style="display:none"' : '' ?> data-cf-submit-wrap>
@@ -820,11 +824,12 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 <p class="help-block"><?= Yii::t('ThiscoveryFormsModule.base', 'Kept in the response\'s change history with your name.') ?></p>
                             </div>
                         <?php endif; ?>
-                        <?= Button::save($existing && !$isDraft
-                            ? Yii::t('ThiscoveryFormsModule.base', 'Update submission')
+                        <?= Button::save(ButtonLabel::html($existing && !$isDraft
+                            ? 'Update submission'
                             : ($formModel->isProject()
-                                ? Yii::t('ThiscoveryFormsModule.base', 'Submit for review')
-                                : Yii::t('ThiscoveryFormsModule.base', 'Submit')))
+                                ? 'Submit for review'
+                                : 'Submit')))
+                            ->encodeLabel(false)
                             ->submit()
                             ->loader(false)
                             ->cssClass('btn-lg')
@@ -855,10 +860,10 @@ $fillRtl = TranslationService::isRtl($fillLang);
                         </label>
                         <div class="cf-save-panel__actions">
                             <button type="button" class="btn btn-light" data-cf-save-cancel>
-                                <?= Yii::t('ThiscoveryFormsModule.base', 'Cancel') ?>
+                                <?= ButtonLabel::html('Cancel') ?>
                             </button>
                             <button type="button" class="btn btn-primary" data-cf-save-confirm>
-                                <?= Yii::t('ThiscoveryFormsModule.base', 'Save progress') ?>
+                                <?= ButtonLabel::html('Save progress') ?>
                             </button>
                         </div>
                     </div>
@@ -874,7 +879,8 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 <?php endif; ?>
                 <div class="cf-fill-done__actions">
                     <?php if ($formModel->canEditOwnAnswer($existing)): ?>
-                        <?= Button::primary(Yii::t('ThiscoveryFormsModule.base', 'Edit your submission'))
+                        <?= Button::primary(ButtonLabel::html('Edit your submission'))
+                            ->encodeLabel(false)
                             ->link(Url::toEditAnswer($formModel, $existing)) ?>
                     <?php endif; ?>
                     <?php if ($formModel->showsAlreadySubmittedButton()): ?>

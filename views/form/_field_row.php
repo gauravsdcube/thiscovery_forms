@@ -694,6 +694,39 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Randomize choice order per respondent') ?>
                 </label>
             </div>
+            <?php $showOtherSpecify = in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true); ?>
+            <div class="mt-2<?= $showOtherSpecify ? '' : ' d-none' ?>" data-cf-other-specify-wrap>
+                <div class="cf-switch">
+                    <label>
+                        <?= Html::hiddenInput($namePrefix . '[other_specify]', '0') ?>
+                        <?= Html::checkbox($namePrefix . '[other_specify]', $field->allowsOtherSpecify(), [
+                            'value' => '1',
+                            'uncheck' => null,
+                            'data-cf-other-specify' => true,
+                        ]) ?>
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Ask for extra text when Other is selected') ?>
+                    </label>
+                </div>
+                <p class="cf-hint text-muted mb-2">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'A choice labelled Other opens a text box. Turn this off if a later question already collects the detail.') ?>
+                </p>
+                <div class="<?= $field->allowsOtherSpecify() ? '' : ' d-none' ?>" data-cf-other-required-wrap>
+                    <div class="cf-switch">
+                        <label>
+                            <?= Html::hiddenInput($namePrefix . '[other_specify_required]', '0') ?>
+                            <?= Html::checkbox($namePrefix . '[other_specify_required]', $field->requiresOtherText(), [
+                                'value' => '1',
+                                'uncheck' => null,
+                                'data-cf-other-required' => true,
+                            ]) ?>
+                            <?= Yii::t('ThiscoveryFormsModule.base', 'Extra text is required') ?>
+                        </label>
+                    </div>
+                    <p class="cf-hint text-muted mb-0">
+                        <?= Yii::t('ThiscoveryFormsModule.base', 'Leave this off to let someone select Other and continue without typing.') ?>
+                    </p>
+                </div>
+            </div>
             <div class="row g-3 mt-1<?= $type === FormField::TYPE_CHECKBOX ? '' : ' d-none' ?>" data-cf-max-select-wrap>
                 <div class="col-md-4">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Minimum selections') ?>
@@ -740,21 +773,6 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                     </div>
                     <p class="cf-hint text-muted mb-0">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Use a minimum to require some ticks, or require every option. An exclusive choice such as “None of these” still counts as a complete answer on its own.') ?>
-                    </p>
-                </div>
-                <div class="col-12">
-                    <div class="cf-switch">
-                        <label>
-                            <?= Html::hiddenInput($namePrefix . '[other_specify]', '0') ?>
-                            <?= Html::checkbox($namePrefix . '[other_specify]', $field->allowsOtherSpecify(), [
-                                'value' => '1',
-                                'uncheck' => null,
-                            ]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Ask for extra text when Other is ticked') ?>
-                        </label>
-                    </div>
-                    <p class="cf-hint text-muted mb-0">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Turn this off if a later question already collects the detail, so Other does not block Next.') ?>
                     </p>
                 </div>
             </div>

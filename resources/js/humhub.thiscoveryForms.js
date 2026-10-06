@@ -300,6 +300,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-ranking-note]').toggleClass('d-none', !isRanking);
             $own.find('[data-cf-choice-note]').toggleClass('d-none', !isChoice);
             $own.find('[data-cf-max-select-wrap]').toggleClass('d-none', type !== 'checkbox');
+            $own.find('[data-cf-other-specify-wrap]').toggleClass('d-none', !isChoice);
+            $own.find('[data-cf-other-required-wrap]').toggleClass('d-none', !$own.find('[data-cf-other-specify]').is(':checked'));
             $own.find('[data-cf-options-hint-ranking]').toggleClass('d-none', !isRanking);
             $own.find('[data-cf-options-hint-choice]').toggleClass('d-none', isRanking);
             $own.find('[data-cf-required-wrap]').toggleClass('d-none', hideRequired);
@@ -804,6 +806,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
         };
 
+        var ensureFormulaButtons = function () {};
+
         var createFieldRow = function (type, opts) {
             type = type || 'text';
             opts = opts || {};
@@ -845,6 +849,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
             refreshTypeUi($row);
             applyDefaultPii($row);
+            ensureFormulaButtons();
             return $row;
         };
 
@@ -2530,6 +2535,876 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         });
 
+        (function initFormulaBuilder() {
+            var cfg = module.config || {};
+            var t = function (key, fallback) {
+                return cfg[key] || fallback;
+            };
+            var OPS = [
+                ['=', t('formulaEquals', 'equals')],
+                ['!=', t('formulaNotEquals', 'does not equal')],
+                ['in', t('formulaOneOf', 'is one of')],
+                ['not_in', t('formulaNotOneOf', 'is not one of')],
+                ['>', t('formulaGt', 'is greater than')],
+                ['>=', t('formulaGte', 'is at least')],
+                ['<', t('formulaLt', 'is less than')],
+                ['<=', t('formulaLte', 'is at most')]
+            ];
+            var formulaTarget = null;
+
+            var studioQuestions = function () {
+                var seen = {};
+                var out = [];
+                $root.find('[data-cf-variable]').each(function () {
+                    var name = $.trim($(this).val() || '');
+                    if (!name || seen[name]) {
+                        return;
+                    }
+                    seen[name] = true;
+                    var $row = $(this).closest('.thiscovery-forms-field-row');
+                    var $card = ownCard($row);
+                    var label = $.trim($card.find('[data-cf-field-label]').first().val() || '') || name;
+                    var options = [];
+                    var optSeen = {};
+                    $card.find('[data-cf-option-item]').each(function () {
+                        var code = $.trim($(this).find('[data-cf-option-code]').val() || '');
+                        var lab = $.trim($(this).find('[data-cf-option-label]').val() || '');
+                        if (!code && !lab) {
+                            return;
+                        }
+                        var value = code || lab;
+                        if (optSeen[value]) {
+                            return;
+                        }
+                        optSeen[value] = true;
+                        options.push({ value: value, label: lab || value });
+                    });
+                    out.push({ name: name, label: label, options: options });
+                });
+                return out;
+            };
+
+            var quote = function (value) {
+                return '"' + String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"') + '"';
+            };
+            var isNumber = function (value) {
+                return /^-?\d+(\.\d+)?$/.test(String(value));
+            };
+            var literalText = function (value, op) {
+                if (['>', '>=', '<', '<='].indexOf(op) !== -1 && isNumber(value)) {
+                    return String(value);
+                }
+                return quote(value);
+            };
+
+            var lexFormula = function (text) {
+                var tokens = [];
+                var i = 0;
+                var length = text.length;
+                while (i < length) {
+                    var ch = text.charAt(i);
+                    if (ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r') {
+                        i++;
+                        continue;
+                    }
+                    var last = tokens.length ? tokens[tokens.length - 1] : null;
+                    if (ch === '[' && last && last.t === 'ident' && (last.v === 'in' || last.v === 'not_in')) {
+                        tokens.push({ t: '[', v: '[' });
+                        i++;
+                        continue;
+                    }
+                    if (ch === '[') {
+                        i++;
+                        var body = '';
+                        var depth = 1;
+                        while (i < length && depth > 0) {
+                            if (text.charAt(i) === '[') {
+                                depth++;
+                            } else if (text.charAt(i) === ']') {
+                                depth--;
+                                if (depth === 0) {
+                                    i++;
+                                    break;
+                                }
+                            }
+                            body += text.charAt(i);
+                            i++;
+                        }
+                        if (depth !== 0) {
+                            throw new Error('unclosed');
+                        }
+                        tokens.push({ t: 'ref', v: body });
+                        continue;
+                    }
+                    if (ch === '"') {
+                        i++;
+                        var value = '';
+                        while (i < length && text.charAt(i) !== '"') {
+                            if (text.charAt(i) === '\\' && i + 1 < length) {
+                                value += text.charAt(i + 1);
+                                i += 2;
+                                continue;
+                            }
+                            value += text.charAt(i);
+                            i++;
+                        }
+                        if (i >= length || text.charAt(i) !== '"') {
+                            throw new Error('quote');
+                        }
+                        i++;
+                        tokens.push({ t: 'string', v: value });
+                        continue;
+                    }
+                    if (ch >= '0' && ch <= '9') {
+                        var num = '';
+                        while (i < length && ((text.charAt(i) >= '0' && text.charAt(i) <= '9') || text.charAt(i) === '.')) {
+                            num += text.charAt(i);
+                            i++;
+                        }
+                        tokens.push({ t: 'number', v: num });
+                        continue;
+                    }
+                    if (/[A-Za-z_]/.test(ch)) {
+                        var ident = '';
+                        while (i < length && /[A-Za-z0-9_]/.test(text.charAt(i))) {
+                            ident += text.charAt(i);
+                            i++;
+                        }
+                        tokens.push({ t: 'ident', v: ident });
+                        continue;
+                    }
+                    var two = text.substr(i, 2);
+                    if (two === '!=' || two === '>=' || two === '<=') {
+                        tokens.push({ t: two, v: two });
+                        i += 2;
+                        continue;
+                    }
+                    tokens.push({ t: ch, v: ch });
+                    i++;
+                }
+                tokens.push({ t: 'eof', v: '' });
+                return tokens;
+            };
+
+            var parseFormula = function (text) {
+                var tokens = lexFormula(text);
+                var index = 0;
+                var peek = function () {
+                    return tokens[index];
+                };
+                var eat = function (type) {
+                    if (peek().t === type) {
+                        index++;
+                        return true;
+                    }
+                    return false;
+                };
+                var keyword = function (word) {
+                    if (peek().t === 'ident' && peek().v === word) {
+                        index++;
+                        return true;
+                    }
+                    return false;
+                };
+                var parseOr = function () {
+                    var left = parseAnd();
+                    while (keyword('or')) {
+                        left = { type: 'or', args: [left, parseAnd()] };
+                    }
+                    return left;
+                };
+                var parseAnd = function () {
+                    var left = parseNot();
+                    while (keyword('and')) {
+                        left = { type: 'and', args: [left, parseNot()] };
+                    }
+                    return left;
+                };
+                var parseNot = function () {
+                    if (keyword('not')) {
+                        return { type: 'not', args: [parseNot()] };
+                    }
+                    return parseCmp();
+                };
+                var parseList = function () {
+                    if (!eat('[')) {
+                        throw new Error('list');
+                    }
+                    var args = [];
+                    if (peek().t !== ']') {
+                        args.push(parseOr());
+                        while (eat(',')) {
+                            args.push(parseOr());
+                        }
+                    }
+                    if (!eat(']')) {
+                        throw new Error('list');
+                    }
+                    return { type: 'list', args: args };
+                };
+                var parsePrimary = function () {
+                    if (eat('(')) {
+                        var inner = parseOr();
+                        if (!eat(')')) {
+                            throw new Error('paren');
+                        }
+                        return inner;
+                    }
+                    if (peek().t === '-' && tokens[index + 1] && tokens[index + 1].t === 'number') {
+                        index++;
+                        var neg = peek().v;
+                        index++;
+                        return { type: 'num', v: '-' + neg };
+                    }
+                    if (peek().t === 'ref') {
+                        var ref = peek().v;
+                        index++;
+                        return { type: 'ref', name: ref };
+                    }
+                    if (peek().t === 'string') {
+                        var str = peek().v;
+                        index++;
+                        return { type: 'str', v: str };
+                    }
+                    if (peek().t === 'number') {
+                        var num = peek().v;
+                        index++;
+                        return { type: 'num', v: num };
+                    }
+                    throw new Error('primary');
+                };
+                var parseCmp = function () {
+                    var left = parsePrimary();
+                    if (keyword('not_in')) {
+                        return { type: 'in', op: 'not_in', left: left, list: parseList() };
+                    }
+                    if (keyword('in')) {
+                        return { type: 'in', op: 'in', left: left, list: parseList() };
+                    }
+                    var cmp = ['=', '!=', '>', '>=', '<', '<='];
+                    if (cmp.indexOf(peek().t) !== -1) {
+                        var op = peek().t;
+                        index++;
+                        return { type: 'cmp', op: op, left: left, right: parsePrimary() };
+                    }
+                    return left;
+                };
+                var tree = parseOr();
+                if (peek().t !== 'eof') {
+                    throw new Error('trailing');
+                }
+                return tree;
+            };
+
+            var literalOf = function (node) {
+                if (node && (node.type === 'str' || node.type === 'num')) {
+                    return String(node.v);
+                }
+                throw new Error('literal');
+            };
+            var condFrom = function (tree, notFlag) {
+                if (tree.type !== 'cmp' && tree.type !== 'in') {
+                    throw new Error('cond');
+                }
+                if (!tree.left || tree.left.type !== 'ref' || !tree.left.name) {
+                    throw new Error('left');
+                }
+                var values = [];
+                var valueKind = 'literal';
+                if (tree.type === 'in') {
+                    if (!tree.list || tree.list.type !== 'list') {
+                        throw new Error('in');
+                    }
+                    tree.list.args.forEach(function (item) {
+                        values.push(literalOf(item));
+                    });
+                } else if (tree.right && tree.right.type === 'ref') {
+                    valueKind = 'question';
+                    values = [tree.right.name];
+                } else {
+                    values = [literalOf(tree.right)];
+                }
+                return {
+                    kind: 'cond',
+                    not: notFlag,
+                    variable: tree.left.name,
+                    op: tree.type === 'in' ? tree.op : tree.op,
+                    valueKind: valueKind,
+                    values: values
+                };
+            };
+            var absorbNot = function (node) {
+                var not = false;
+                while (node && node.type === 'not') {
+                    not = !not;
+                    node = node.args[0];
+                }
+                return { not: not, node: node };
+            };
+            var flatten = function (tree) {
+                var absorbed = absorbNot(tree);
+                tree = absorbed.node;
+                if (tree && (tree.type === 'and' || tree.type === 'or')) {
+                    var items = [];
+                    var collect = function (node) {
+                        var part = absorbNot(node);
+                        if (!part.not && part.node && part.node.type === tree.type) {
+                            collect(part.node.args[0]);
+                            collect(part.node.args[1]);
+                            return;
+                        }
+                        items.push(flatten(node));
+                    };
+                    collect(tree);
+                    return { kind: 'group', not: absorbed.not, joinInside: tree.type, items: items };
+                }
+                if (tree && (tree.type === 'cmp' || tree.type === 'in')) {
+                    return condFrom(tree, absorbed.not);
+                }
+                throw new Error('shape');
+            };
+            var toVisual = function (text) {
+                var trimmed = $.trim(text || '');
+                if (!trimmed) {
+                    return { model: emptyGroup(), unsupported: false };
+                }
+                var model = flatten(parseFormula(trimmed));
+                if (model.kind === 'cond') {
+                    model = { kind: 'group', not: false, joinInside: 'and', items: [model] };
+                }
+                return { model: model, unsupported: false };
+            };
+            var emptyCond = function () {
+                return { kind: 'cond', not: false, variable: '', op: '=', valueKind: 'literal', values: [''] };
+            };
+            var emptyGroup = function () {
+                return { kind: 'group', not: false, joinInside: 'and', items: [emptyCond()] };
+            };
+
+            var questionByName = function (questions, name) {
+                for (var i = 0; i < questions.length; i++) {
+                    if (questions[i].name === name) {
+                        return questions[i];
+                    }
+                }
+                return null;
+            };
+            var fillQuestionSelect = function ($select, questions, selected, extras) {
+                $select.empty();
+                $select.append($('<option>').val('').text(t('formulaChoose', 'Choose a question')));
+                var seen = {};
+                questions.forEach(function (q) {
+                    seen[q.name] = true;
+                    var text = q.label === q.name ? q.name : (q.label + ' (' + q.name + ')');
+                    $select.append($('<option>').val(q.name).text(text));
+                });
+                (extras || []).forEach(function (name) {
+                    if (!name || seen[name]) {
+                        return;
+                    }
+                    seen[name] = true;
+                    $select.append($('<option>').val(name).text(name));
+                });
+                if (selected && !seen[selected]) {
+                    $select.append($('<option>').val(selected).text(selected));
+                }
+                $select.val(selected || '');
+            };
+
+            var renderValue = function ($row, questions, seed, kindOverride) {
+                var op = String($row.find('[data-cf-fb-op]').val() || '=');
+                var kind = kindOverride || String($row.find('[data-cf-fb-kind]').val() || 'literal');
+                var variable = String($row.find('[data-cf-fb-var]').val() || '');
+                var question = questionByName(questions, variable);
+                var options = question ? question.options : [];
+                var $slot = $row.find('[data-cf-fb-value]');
+                var previous = seed || readValues($row);
+                if (op === 'in' || op === 'not_in') {
+                    kind = 'literal';
+                }
+                $slot.empty();
+                if (op !== 'in' && op !== 'not_in') {
+                    var $kind = $('<select class="form-select form-select-sm" data-cf-fb-kind>').append(
+                        $('<option>').val('literal').text(t('formulaAnswer', 'An answer')),
+                        $('<option>').val('question').text(t('formulaAnother', 'Another question'))
+                    );
+                    $kind.val(kind === 'question' ? 'question' : 'literal');
+                    $slot.append($kind);
+                }
+                if ((op === 'in' || op === 'not_in')) {
+                    var $checks = $('<div class="cf-fb__checks" data-cf-fb-checks>');
+                    var known = {};
+                    options.forEach(function (opt) {
+                        known[opt.value] = true;
+                        var $label = $('<label>');
+                        var $box = $('<input type="checkbox">').val(opt.value);
+                        if (previous.indexOf(opt.value) !== -1) {
+                            $box.prop('checked', true);
+                        }
+                        $label.append($box).append($('<span>').text(opt.label === opt.value ? opt.label : (opt.label + ' (' + opt.value + ')')));
+                        $checks.append($label);
+                    });
+                    $slot.append($checks);
+                    var extras = previous.filter(function (value) {
+                        return value !== '' && !known[value];
+                    });
+                    $row.attr('data-cf-fb-extra', JSON.stringify(extras));
+                    var $extra = $('<div class="cf-fb__extra" data-cf-fb-extra-list>');
+                    extras.forEach(function (value) {
+                        $extra.append(extraChip(value));
+                    });
+                    var $add = $('<div class="cf-fb__addval">');
+                    $add.append($('<input type="text" class="form-control form-control-sm" data-cf-fb-new>').attr('placeholder', t('formulaTypeValue', 'Type a value')));
+                    $add.append($('<button type="button" class="btn btn-default btn-sm" data-cf-fb-add-value>').text(t('formulaAddValue', 'Add value')));
+                    $slot.append($extra).append($add);
+                    return;
+                }
+                $row.removeAttr('data-cf-fb-extra');
+                if (kind === 'question') {
+                    var $other = $('<select class="form-select form-select-sm" data-cf-fb-other>');
+                    fillQuestionSelect($other, questions, previous[0] || '', []);
+                    $slot.append($other);
+                    return;
+                }
+                if (options.length) {
+                    var $pick = $('<select class="form-select form-select-sm" data-cf-fb-pick>');
+                    $pick.append($('<option>').val('').text(t('formulaTypeValue', 'Type a value')));
+                    var matched = false;
+                    options.forEach(function (opt) {
+                        var text = opt.label === opt.value ? opt.label : (opt.label + ' (' + opt.value + ')');
+                        $pick.append($('<option>').val(opt.value).text(text));
+                        if (previous[0] === opt.value) {
+                            matched = true;
+                        }
+                    });
+                    $slot.append($pick);
+                    var $custom = $('<input type="text" class="form-control form-control-sm" data-cf-fb-custom>').attr('placeholder', t('formulaTypeValue', 'Type a value'));
+                    if (matched) {
+                        $pick.val(previous[0]);
+                        $custom.addClass('d-none');
+                    } else if (previous[0]) {
+                        $custom.val(previous[0]);
+                    } else {
+                        $custom.addClass('d-none');
+                    }
+                    $slot.append($custom);
+                    return;
+                }
+                $slot.append($('<input type="text" class="form-control form-control-sm" data-cf-fb-custom>').val(previous[0] || '').attr('placeholder', t('formulaTypeValue', 'Type a value')));
+            };
+            var extraChip = function (value) {
+                var $chip = $('<span class="cf-fb__chip">');
+                $chip.append($('<span>').text(value));
+                $chip.append($('<button type="button" data-cf-fb-drop-value>').text('×').attr('data-value', value));
+                return $chip;
+            };
+            var readValues = function ($row) {
+                var op = String($row.find('[data-cf-fb-op]').val() || '=');
+                if (op === 'in' || op === 'not_in') {
+                    var values = [];
+                    $row.find('[data-cf-fb-checks] input:checked').each(function () {
+                        values.push(String($(this).val() || ''));
+                    });
+                    var extras = [];
+                    try {
+                        extras = JSON.parse($row.attr('data-cf-fb-extra') || '[]');
+                    } catch (e) {
+                        extras = [];
+                    }
+                    extras.forEach(function (value) {
+                        if (values.indexOf(value) === -1) {
+                            values.push(value);
+                        }
+                    });
+                    return values;
+                }
+                if (String($row.find('[data-cf-fb-kind]').val() || '') === 'question') {
+                    return [String($row.find('[data-cf-fb-other]').val() || '')];
+                }
+                var picked = String($row.find('[data-cf-fb-pick]').val() || '');
+                if (picked) {
+                    return [picked];
+                }
+                return [String($row.find('[data-cf-fb-custom]').val() || '')];
+            };
+            var readShownValues = function ($row) {
+                if ($row.find('[data-cf-fb-checks]').length) {
+                    var values = [];
+                    $row.find('[data-cf-fb-checks] input:checked').each(function () {
+                        values.push(String($(this).val() || ''));
+                    });
+                    var extras = [];
+                    try {
+                        extras = JSON.parse($row.attr('data-cf-fb-extra') || '[]');
+                    } catch (e) {
+                        extras = [];
+                    }
+                    extras.forEach(function (value) {
+                        if (values.indexOf(value) === -1) {
+                            values.push(value);
+                        }
+                    });
+                    return values;
+                }
+                if ($row.find('[data-cf-fb-other]').length) {
+                    return [String($row.find('[data-cf-fb-other]').val() || '')];
+                }
+                var picked = String($row.find('[data-cf-fb-pick]').val() || '');
+                if (picked) {
+                    return [picked];
+                }
+                if ($row.find('[data-cf-fb-custom]').length) {
+                    return [String($row.find('[data-cf-fb-custom]').val() || '')];
+                }
+                return [];
+            };
+
+            var renderCond = function (cond, questions) {
+                var $row = $('<div class="cf-fb__row" data-cf-fb-item data-cf-fb-cond>');
+                var $var = $('<select class="form-select form-select-sm" data-cf-fb-var>');
+                fillQuestionSelect($var, questions, cond.variable, [cond.variable]);
+                var $op = $('<select class="form-select form-select-sm" data-cf-fb-op>');
+                OPS.forEach(function (pair) {
+                    $op.append($('<option>').val(pair[0]).text(pair[1]));
+                });
+                $op.val(cond.op || '=');
+                var $not = $('<label class="cf-fb__not">').append(
+                    $('<input type="checkbox" data-cf-fb-not>').prop('checked', !!cond.not),
+                    $('<span>').text(t('formulaNot', 'Not'))
+                );
+                var $remove = $('<button type="button" class="btn btn-default btn-sm" data-cf-fb-remove>').text(t('formulaRemove', 'Remove'));
+                $row.append($var, $op, $('<div class="cf-fb__value" data-cf-fb-value>'), $not, $remove);
+                renderValue($row, questions, cond.values || [], cond.valueKind === 'question' ? 'question' : 'literal');
+                return $row;
+            };
+            var renderGroup = function (group, questions, isRoot) {
+                var $group = $('<div class="cf-fb__group" data-cf-fb-group>').attr('data-cf-fb-item', isRoot ? null : '');
+                if (!isRoot) {
+                    $group.attr('data-cf-fb-item', '');
+                }
+                var $bar = $('<div class="cf-fb__bar">');
+                var $join = $('<select class="form-select form-select-sm" data-cf-fb-join>');
+                $join.append($('<option>').val('and').text(t('formulaAll', 'All of these')));
+                $join.append($('<option>').val('or').text(t('formulaAny', 'Any of these')));
+                $join.val(group.joinInside === 'or' ? 'or' : 'and');
+                var $not = $('<label class="cf-fb__not">').append(
+                    $('<input type="checkbox" data-cf-fb-group-not>').prop('checked', !!group.not),
+                    $('<span>').text(t('formulaNot', 'Not'))
+                );
+                $bar.append($join, $not);
+                if (!isRoot) {
+                    $bar.append($('<button type="button" class="btn btn-default btn-sm" data-cf-fb-remove>').text(t('formulaRemove', 'Remove')));
+                }
+                var $items = $('<div class="cf-fb__items">');
+                (group.items || []).forEach(function (item) {
+                    if (item.kind === 'group') {
+                        $items.append(renderGroup(item, questions, false));
+                    } else {
+                        $items.append(renderCond(item, questions));
+                    }
+                });
+                var $tools = $('<div class="cf-fb__tools">');
+                $tools.append($('<button type="button" class="btn btn-default btn-sm" data-cf-fb-add-cond>').text(t('formulaAddCondition', 'Add condition')));
+                $tools.append($('<button type="button" class="btn btn-default btn-sm" data-cf-fb-add-group>').text(t('formulaAddGroup', 'Add group')));
+                $group.append($bar, $items, $tools);
+                return $group;
+            };
+
+            var writeCond = function (cond) {
+                var ref = '[' + cond.variable + ']';
+                var body;
+                if (cond.op === 'in' || cond.op === 'not_in') {
+                    body = ref + ' ' + cond.op + ' [' + (cond.values || []).map(function (value) {
+                        return literalText(value, '=');
+                    }).join(', ') + ']';
+                } else if (cond.valueKind === 'question') {
+                    body = ref + ' ' + cond.op + ' [' + cond.values[0] + ']';
+                } else {
+                    body = ref + ' ' + cond.op + ' ' + literalText(cond.values[0] || '', cond.op);
+                }
+                return cond.not ? ('not (' + body + ')') : body;
+            };
+            var writeGroup = function (group, isRoot) {
+                var parts = [];
+                (group.items || []).forEach(function (item) {
+                    if (item.kind === 'group') {
+                        var inner = writeGroup(item, false);
+                        if (inner) {
+                            parts.push(inner);
+                        }
+                        return;
+                    }
+                    if (!item.variable) {
+                        return;
+                    }
+                    parts.push(writeCond(item));
+                });
+                if (!parts.length) {
+                    return '';
+                }
+                var joiner = group.joinInside === 'or' ? ' or ' : ' and ';
+                var body = parts.join(joiner);
+                if (!isRoot && parts.length > 1) {
+                    body = '(' + body + ')';
+                }
+                if (group.not) {
+                    body = 'not (' + body + ')';
+                }
+                return body;
+            };
+            var readCond = function ($row) {
+                var op = String($row.find('[data-cf-fb-op]').val() || '=');
+                var kind = (op === 'in' || op === 'not_in') ? 'literal' : String($row.find('[data-cf-fb-kind]').val() || 'literal');
+                return {
+                    kind: 'cond',
+                    not: $row.find('[data-cf-fb-not]').is(':checked'),
+                    variable: String($row.find('[data-cf-fb-var]').val() || ''),
+                    op: op,
+                    valueKind: kind,
+                    values: readValues($row)
+                };
+            };
+            var readGroup = function ($group) {
+                var items = [];
+                $group.children('.cf-fb__items').children('[data-cf-fb-item]').each(function () {
+                    var $item = $(this);
+                    if ($item.is('[data-cf-fb-group]')) {
+                        items.push(readGroup($item));
+                    } else {
+                        items.push(readCond($item));
+                    }
+                });
+                return {
+                    kind: 'group',
+                    not: $group.children('.cf-fb__bar').find('[data-cf-fb-group-not]').is(':checked'),
+                    joinInside: String($group.children('.cf-fb__bar').find('[data-cf-fb-join]').val() || 'and'),
+                    items: items
+                };
+            };
+            var groupError = function (group) {
+                var seen = false;
+                var missingValue = false;
+                var walk = function (node) {
+                    (node.items || []).forEach(function (item) {
+                        if (item.kind === 'group') {
+                            walk(item);
+                            return;
+                        }
+                        if (!item.variable) {
+                            return;
+                        }
+                        seen = true;
+                        var values = (item.values || []).filter(function (value) { return String(value) !== ''; });
+                        if ((item.op === 'in' || item.op === 'not_in') && !values.length) {
+                            missingValue = true;
+                        }
+                        if (item.valueKind === 'question' && !values.length) {
+                            missingValue = true;
+                        }
+                    });
+                };
+                walk(group);
+                if (!seen) {
+                    return t('formulaNeedCondition', 'Add at least one complete condition.');
+                }
+                if (missingValue) {
+                    return t('formulaNeedValue', 'Choose at least one value.');
+                }
+                return '';
+            };
+
+            var $dialog = $('<div class="cf-fb" hidden>');
+            var $panel = $('<div class="cf-fb__panel" role="dialog" aria-modal="true">');
+            $panel.append($('<h3 class="cf-fb__title">').text(t('formulaBuildTitle', 'Build a formula')));
+            $panel.append($('<p class="cf-hint">').text(t('formulaBuildHelp', 'Pick questions and answers. Use this formula to put the result in the box. You can change it here or in the box.')));
+            $panel.append($('<p class="cf-fb__warn" data-cf-fb-warn hidden>'));
+            $panel.append($('<div data-cf-fb-body>'));
+            $panel.append($('<pre class="cf-fb__preview" data-cf-fb-preview>'));
+            $panel.append($('<p class="cf-fb__error" data-cf-fb-error hidden>'));
+            var $actions = $('<div class="cf-fb__actions">');
+            $actions.append($('<button type="button" class="btn btn-default" data-cf-fb-cancel>').text(t('formulaCancel', 'Cancel')));
+            $actions.append($('<button type="button" class="btn btn-primary" data-cf-fb-apply>').text(t('formulaUse', 'Use this formula')));
+            $panel.append($actions);
+            $dialog.append($('<div class="cf-fb__backdrop" data-cf-fb-close>'), $panel);
+            $('body').append($dialog);
+
+            var questionsNow = function () {
+                return studioQuestions();
+            };
+            var paint = function (model, unsupported) {
+                var questions = questionsNow();
+                $dialog.find('[data-cf-fb-body]').empty().append(renderGroup(model, questions, true));
+                var $warn = $dialog.find('[data-cf-fb-warn]');
+                if (unsupported) {
+                    $warn.text(t('formulaBuildUnsupported', 'This formula uses something the builder cannot show, so the box is left as it is until you use a formula from here.')).prop('hidden', false);
+                } else {
+                    $warn.prop('hidden', true).text('');
+                }
+                $dialog.find('[data-cf-fb-error]').prop('hidden', true).text('');
+                refreshPreview();
+            };
+            var refreshPreview = function () {
+                var $rootGroup = $dialog.find('[data-cf-fb-body] > [data-cf-fb-group]').first();
+                if (!$rootGroup.length) {
+                    return;
+                }
+                var text = writeGroup(readGroup($rootGroup), true);
+                $dialog.find('[data-cf-fb-preview]').text(text);
+            };
+            var closeBuilder = function () {
+                $dialog.prop('hidden', true);
+                formulaTarget = null;
+            };
+            var openBuilder = function ($input) {
+                formulaTarget = $input;
+                var loaded;
+                var unsupported = false;
+                try {
+                    loaded = toVisual($input.val());
+                } catch (e) {
+                    loaded = { model: emptyGroup(), unsupported: true };
+                    unsupported = true;
+                }
+                if (loaded.unsupported) {
+                    unsupported = true;
+                }
+                paint(loaded.model, unsupported);
+                $dialog.prop('hidden', false);
+                var title = $dialog.find('.cf-fb__title').get(0);
+                if (title && title.focus) {
+                    title.setAttribute('tabindex', '-1');
+                    title.focus();
+                }
+            };
+
+            ensureFormulaButtons = function () {
+                $root.find('[data-cf-formula-text]').each(function () {
+                    var $input = $(this);
+                    if ($input.next('[data-cf-formula-build]').length || $input.nextAll('[data-cf-formula-build]').first().length && $input.parent().children('[data-cf-formula-build]').length) {
+                        if ($input.parent().find('[data-cf-formula-build]').length) {
+                            return;
+                        }
+                    }
+                    if ($input.parent().find('[data-cf-formula-build]').length) {
+                        return;
+                    }
+                    var $btn = $('<button type="button" class="btn btn-default btn-sm mt-2 me-2 cf-fb-open" data-cf-formula-build>')
+                        .text(t('formulaBuild', 'Build visually'));
+                    $input.after($btn);
+                });
+            };
+            ensureFormulaButtons();
+
+            $root.on('click', '[data-cf-formula-build]', function (e) {
+                e.preventDefault();
+                var $input = $(this).siblings('[data-cf-formula-text]').first();
+                if (!$input.length) {
+                    $input = $(this).parent().find('[data-cf-formula-text]').first();
+                }
+                if ($input.length) {
+                    openBuilder($input);
+                }
+            });
+            $dialog.on('click', '[data-cf-fb-close], [data-cf-fb-cancel]', function () {
+                closeBuilder();
+            });
+            $dialog.on('change', '[data-cf-fb-var], [data-cf-fb-op], [data-cf-fb-kind]', function () {
+                var $row = $(this).closest('[data-cf-fb-cond]');
+                if ($row.length) {
+                    var seed = $(this).is('[data-cf-fb-kind]') ? null : readShownValues($row);
+                    var kind = $(this).is('[data-cf-fb-kind]') ? String($(this).val() || 'literal') : null;
+                    renderValue($row, questionsNow(), seed, kind);
+                }
+                refreshPreview();
+            });
+            $dialog.on('change', '[data-cf-fb-pick]', function () {
+                var $row = $(this).closest('[data-cf-fb-cond]');
+                $row.find('[data-cf-fb-custom]').toggleClass('d-none', !!$(this).val());
+                refreshPreview();
+            });
+            $dialog.on('input change', '[data-cf-fb-custom], [data-cf-fb-other], [data-cf-fb-checks] input, [data-cf-fb-not], [data-cf-fb-group-not], [data-cf-fb-join]', function () {
+                refreshPreview();
+            });
+            $dialog.on('click', '[data-cf-fb-add-cond]', function () {
+                var questions = questionsNow();
+                $(this).closest('[data-cf-fb-group]').children('.cf-fb__items').append(renderCond(emptyCond(), questions));
+                refreshPreview();
+            });
+            $dialog.on('click', '[data-cf-fb-add-group]', function () {
+                var questions = questionsNow();
+                $(this).closest('[data-cf-fb-group]').children('.cf-fb__items').append(renderGroup(emptyGroup(), questions, false));
+                refreshPreview();
+            });
+            $dialog.on('click', '[data-cf-fb-remove]', function () {
+                var $item = $(this).closest('[data-cf-fb-item]');
+                var $items = $item.parent();
+                $item.remove();
+                if (!$items.children('[data-cf-fb-item]').length && $items.closest('[data-cf-fb-body]').length) {
+                    $items.append(renderCond(emptyCond(), questionsNow()));
+                }
+                refreshPreview();
+            });
+            $dialog.on('click', '[data-cf-fb-add-value]', function () {
+                var $row = $(this).closest('[data-cf-fb-cond]');
+                var value = $.trim(String($row.find('[data-cf-fb-new]').val() || ''));
+                if (!value) {
+                    return;
+                }
+                var extras = [];
+                try {
+                    extras = JSON.parse($row.attr('data-cf-fb-extra') || '[]');
+                } catch (e) {
+                    extras = [];
+                }
+                if (extras.indexOf(value) === -1) {
+                    extras.push(value);
+                    $row.attr('data-cf-fb-extra', JSON.stringify(extras));
+                    $row.find('[data-cf-fb-extra-list]').append(extraChip(value));
+                }
+                $row.find('[data-cf-fb-new]').val('');
+                refreshPreview();
+            });
+            $dialog.on('click', '[data-cf-fb-drop-value]', function () {
+                var value = String($(this).attr('data-value') || '');
+                var $row = $(this).closest('[data-cf-fb-cond]');
+                var extras = [];
+                try {
+                    extras = JSON.parse($row.attr('data-cf-fb-extra') || '[]');
+                } catch (e) {
+                    extras = [];
+                }
+                extras = extras.filter(function (item) { return item !== value; });
+                $row.attr('data-cf-fb-extra', JSON.stringify(extras));
+                $(this).closest('.cf-fb__chip').remove();
+                refreshPreview();
+            });
+            $dialog.on('click', '[data-cf-fb-apply]', function () {
+                if (!formulaTarget) {
+                    return;
+                }
+                var $rootGroup = $dialog.find('[data-cf-fb-body] > [data-cf-fb-group]').first();
+                var group = readGroup($rootGroup);
+                var problem = groupError(group);
+                var $error = $dialog.find('[data-cf-fb-error]');
+                if (problem) {
+                    $error.text(problem).prop('hidden', false);
+                    return;
+                }
+                var text = writeGroup(group, true);
+                if (text.length > 4000) {
+                    $error.text(t('formulaTooLong', 'A formula can be at most 4,000 characters.')).prop('hidden', false);
+                    return;
+                }
+                formulaTarget.val(text).trigger('input');
+                closeBuilder();
+            });
+            $(document).on('keydown', function (e) {
+                if (e.key === 'Escape' && !$dialog.prop('hidden')) {
+                    closeBuilder();
+                }
+            });
+        })();
+
         $root.on('change', '[data-cf-field-type]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
             var type = String($(this).val() || '');
@@ -2664,6 +3539,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             refreshTypeUi($(this).closest('.thiscovery-forms-field-row'));
         });
 
+        $root.on('change', '[data-cf-other-specify]', function () {
+            $(this).closest('[data-cf-other-specify-wrap]').find('[data-cf-other-required-wrap]').toggleClass('d-none', !$(this).is(':checked'));
+        });
+
         $root.on('change', '[data-cf-hidden-field]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
             if ($(this).is(':checked')) {
@@ -2718,10 +3597,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var layoutStudioPanes = function () {
             var $workspace = $root.find('.cf-studio__workspace');
+            var $scroll = $workspace.find('.cf-palette__scroll');
             if (!$workspace.length) {
                 return;
             }
             $workspace.css('height', '');
+            $scroll.css('max-height', '');
             if (!$root.find('[data-cf-panel="builder"]').hasClass('is-active')) {
                 return;
             }
@@ -2741,6 +3622,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 height = 280;
             }
             $workspace.css('height', height + 'px');
+            // Edge sizes a flex child from its content unless the scroll box has a
+            // pixel max-height, so the page scrolls and Add fields has no bar.
+            var tabs = $workspace.find('.cf-palette__tabs').get(0);
+            var tabsH = tabs ? tabs.offsetHeight : 0;
+            $scroll.css('max-height', Math.max(120, height - tabsH) + 'px');
         };
 
         $(window).off('resize.cfStudioPanes').on('resize.cfStudioPanes', layoutStudioPanes);
@@ -2775,6 +3661,25 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         if (!$root.length) {
             return;
         }
+        var fillButtonLabel = function ($btn) {
+            var $label = $btn.find('[data-cf-btn-label]');
+            if ($label.length) {
+                return $.trim($label.text());
+            }
+            return $.trim($btn.is('input') ? $btn.val() : $btn.text());
+        };
+        var setFillButtonLabel = function ($btn, text) {
+            var $label = $btn.find('[data-cf-btn-label]');
+            if ($label.length) {
+                $label.text(text);
+                return;
+            }
+            if ($btn.is('input')) {
+                $btn.val(text);
+            } else {
+                $btn.text(text);
+            }
+        };
         $root.find('[data-cf-consent-must-read]').each(function () {
             var box = this;
             var scrolled = box.querySelector('[data-cf-consent-scrolled]');
@@ -3582,6 +4487,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         var otherSpecifyMissing = function ($field) {
             var missing = false;
             $field.find('[data-cf-other-wrap]').not('.d-none').each(function () {
+                if (String($(this).attr('data-cf-other-optional') || '') === '1') {
+                    return;
+                }
                 var $input = $(this).find('[data-cf-other-text]');
                 if ($input.length && $.trim(String($input.val() || '')) === '') {
                     missing = true;
@@ -3643,13 +4551,16 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         };
 
-        var makeOtherSpecifyWrap = function (opt, fieldId, savedText) {
+        var makeOtherSpecifyWrap = function (opt, fieldId, savedText, optional) {
             var id = 'cf-input-' + fieldId + '-other';
             var label = (module.config && module.config.specifyLabel) || 'Please specify';
             var placeholder = (module.config && module.config.specifyPlaceholder) || 'Type your answer';
             var $wrap = $('<div class="cf-other-specify d-none"/>')
                 .attr('data-cf-other-wrap', true)
                 .attr('data-cf-other-option', opt);
+            if (optional) {
+                $wrap.attr('data-cf-other-optional', '1');
+            }
             $wrap.append($('<label class="cf-other-specify__label"/>').attr('for', id).text(label));
             $wrap.append($('<input type="text" class="form-control cf-input"/>').attr({
                 id: id,
@@ -4546,7 +5457,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     $q.find('[data-cf-other-wrap]').remove();
                     if (otherOpt) {
                         $el.attr('data-cf-other-select', otherOpt);
-                        $el.after(makeOtherSpecifyWrap(otherOpt, fieldId, savedOther));
+                        $el.after(makeOtherSpecifyWrap(otherOpt, fieldId, savedOther, String($q.attr('data-cf-other-optional') || '') === '1'));
                     } else {
                         $el.removeAttr('data-cf-other-select');
                     }
@@ -4573,7 +5484,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     $lab.append($input).append($('<span/>').text(opt.label));
                     $el.append($lab);
                     if (otherPair && opt.code === otherPair.code) {
-                        $el.append(makeOtherSpecifyWrap(opt.code, fieldId, savedOther));
+                        $el.append(makeOtherSpecifyWrap(opt.code, fieldId, savedOther, String($q.attr('data-cf-other-optional') || '') === '1'));
                     }
                 });
             });
@@ -4998,12 +5909,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $submitBtn.each(function () {
                 var $btn = $(this);
                 if (!$btn.data('cfDefaultSubmit')) {
-                    $btn.data('cfDefaultSubmit', $.trim($btn.text()) || defaultSubmit);
+                    $btn.data('cfDefaultSubmit', fillButtonLabel($btn) || defaultSubmit);
                 }
                 if (this.tagName === 'INPUT') {
                     this.value = screenedOut ? finishLabel : $btn.data('cfDefaultSubmit');
                 } else {
-                    $btn.text(screenedOut ? finishLabel : $btn.data('cfDefaultSubmit'));
+                    setFillButtonLabel($btn, screenedOut ? finishLabel : $btn.data('cfDefaultSubmit'));
                 }
             });
             $root.find('[data-cf-current-page]').val(String(idx));
@@ -5574,11 +6485,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var code = $.trim(String($root.find('[data-cf-resume-code]').first().text() || ''));
             var $btn = $(this);
             var done = function (ok) {
-                var original = $btn.text();
-                $btn.text(ok
+                var original = fillButtonLabel($btn);
+                setFillButtonLabel($btn, ok
                     ? (module.config.copiedLabel || 'Copied')
                     : (module.config.copyFailedLabel || 'Could not copy'));
-                setTimeout(function () { $btn.text(original); }, 1600);
+                setTimeout(function () { setFillButtonLabel($btn, original); }, 1600);
             };
             if (!code) {
                 done(false);

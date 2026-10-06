@@ -902,6 +902,9 @@ class FormField extends ActiveRecord
 
     public function otherSpecifyIncomplete($value): bool
     {
+        if (!$this->requiresOtherText()) {
+            return false;
+        }
         $label = $this->findOtherOption();
         $items = is_array($value) ? $value : [$value];
         foreach ($items as $item) {
@@ -1105,6 +1108,39 @@ class FormField extends ActiveRecord
             unset($decoded['otherSpecify']);
         } else {
             $decoded['otherSpecify'] = false;
+        }
+        $this->writeDecodedOptions($decoded);
+    }
+
+    /**
+     * Selecting Other asks for text, and that text must be filled in before Next.
+     * Turn this off to keep the box and allow it to stay empty.
+     */
+    public function requiresOtherText(): bool
+    {
+        if (!$this->allowsOtherSpecify()) {
+            return false;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && !array_is_list($decoded) && array_key_exists('otherSpecifyRequired', $decoded)) {
+            return !empty($decoded['otherSpecifyRequired']);
+        }
+        return true;
+    }
+
+    public function setRequiresOtherText(bool $required): void
+    {
+        if (!self::isChoiceType($this->type)) {
+            return;
+        }
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => $decoded];
+        }
+        if ($required) {
+            unset($decoded['otherSpecifyRequired']);
+        } else {
+            $decoded['otherSpecifyRequired'] = false;
         }
         $this->writeDecodedOptions($decoded);
     }
@@ -1404,13 +1440,14 @@ class FormField extends ActiveRecord
         $hidden = !empty($prev['hidden']);
         $defaultValue = trim((string)($prev['defaultValue'] ?? ''));
         $otherSpecify = array_key_exists('otherSpecify', $prev) ? !empty($prev['otherSpecify']) : true;
+        $otherSpecifyRequired = array_key_exists('otherSpecifyRequired', $prev) ? !empty($prev['otherSpecifyRequired']) : true;
 
-        if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '' && $otherSpecify) {
+        if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '' && $otherSpecify && $otherSpecifyRequired) {
             $this->options_json = null;
             return;
         }
 
-        if ($randomize || $maxSelect !== null || $minSelect !== null || $minSelectAll || $exclusiveOption !== null || $carryFrom !== '' || $justification !== '' || $instrumentRole !== '' || $hidden || $defaultValue !== '' || !$otherSpecify || (isset($options[0]) && is_array($options[0]))) {
+        if ($randomize || $maxSelect !== null || $minSelect !== null || $minSelectAll || $exclusiveOption !== null || $carryFrom !== '' || $justification !== '' || $instrumentRole !== '' || $hidden || $defaultValue !== '' || !$otherSpecify || !$otherSpecifyRequired || (isset($options[0]) && is_array($options[0]))) {
             $payload = ['options' => $options];
             if ($randomize) {
                 $payload['randomize'] = true;
@@ -1445,6 +1482,9 @@ class FormField extends ActiveRecord
             }
             if (!$otherSpecify) {
                 $payload['otherSpecify'] = false;
+            }
+            if (!$otherSpecifyRequired) {
+                $payload['otherSpecifyRequired'] = false;
             }
             // Highest numeric code ever used on this question (DAT-9).
             $seq = (int)($prev['codeSeq'] ?? 0);
@@ -2851,6 +2891,7 @@ class FormField extends ActiveRecord
             'min_select_all' => $this->isMinSelectAll() ? '1' : '',
             'exclusive_option' => implode('|', $this->getExclusiveOptions()),
             'other_specify' => $this->allowsOtherSpecify() ? '1' : '0',
+            'other_specify_required' => $this->requiresOtherText() ? '1' : '0',
             'formula' => $this->getFormulaConfig()['formula'],
             'formula_result' => $this->getFormulaConfig()['result'],
             'formula_display' => $this->getFormulaConfig()['display'],
@@ -2990,6 +3031,9 @@ class FormField extends ActiveRecord
             'exclusive_option' => (string)($payload['exclusive_option'] ?? $payload['exclusiveOption'] ?? ''),
             'other_specify' => array_key_exists('other_specify', $payload) || array_key_exists('otherSpecify', $payload)
                 ? $payload['other_specify'] ?? $payload['otherSpecify']
+                : '1',
+            'other_specify_required' => array_key_exists('other_specify_required', $payload) || array_key_exists('otherSpecifyRequired', $payload)
+                ? ($payload['other_specify_required'] ?? $payload['otherSpecifyRequired'])
                 : '1',
             'formula' => (string)($payload['formula'] ?? ''),
             'formula_result' => (string)($payload['formula_result'] ?? 'number'),
@@ -3176,6 +3220,10 @@ class FormField extends ActiveRecord
             if (array_key_exists('other_specify', $row) || array_key_exists('otherSpecify', $row)) {
                 $rawOther = $row['other_specify'] ?? $row['otherSpecify'];
                 $field->setAllowsOtherSpecify(!in_array($rawOther, [0, '0', false, 'false', ''], true));
+            }
+            if (array_key_exists('other_specify_required', $row) || array_key_exists('otherSpecifyRequired', $row)) {
+                $rawRequired = $row['other_specify_required'] ?? $row['otherSpecifyRequired'];
+                $field->setRequiresOtherText(!in_array($rawRequired, [0, '0', false, 'false', ''], true));
             }
             $field->setCarryForward((string)($row['carry_from'] ?? ''), (string)($row['carry_mode'] ?? self::CARRY_SELECTED));
         } elseif ($field->type === self::TYPE_NUMBER) {

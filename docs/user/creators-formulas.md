@@ -18,7 +18,27 @@ Loop checks use `any_eq([symptom[*]], "wheeze")`, `all_eq`, `count_answered`, an
 
 Named formulas are written `fn:name`. The starter formulas are body mass index, age, a PHQ-9 total and band, a GAD-7 total and band, and an EQ-5D profile string plus a level sum. There is no EQ-5D index.
 
-In the studio, Test formula asks the server to calculate the expression and shows which calendar date `today()` used.
+Test formula asks the server to calculate the expression and shows which calendar date `today()` used.
+
+## Build visually
+
+**Build visually** sits next to every formula box: show or hide, a calculated question, an answer check, and a page-break branch. The box itself stays. The window is another way to write the same text.
+
+Each row is one question, a comparison, and a value:
+
+- **equals** or **does not equal**
+- **is one of** or **is not one of** — tick the choices. Several values are separated by commas, for example `[support] in ["Received some but not enough", "Received none"]`. Do not write `or` inside the list.
+- **is greater than**, **is at least**, **is less than**, **is at most** — for numbers, or for another question such as `[end_date] >= [start_date]`
+
+**All of these** joins the rows with `and`. **Any of these** joins them with `or`. **Add group** puts a bracket around its own rows, so you can mix the two: all of “question A equals Yes” and a group that is any of “question B is one of Yes or Maybe”.
+
+**Not** on a row or a group wraps that part in `not (...)`.
+
+The line at the bottom of the window is the formula that will be saved. **Use this formula** puts it in the box and replaces what was there. You can then change the text by hand. Open **Build visually** again and the window reads the box, so either place can edit the formula.
+
+A formula the window cannot show — a sum, a date, `selected`, or `or` written inside a list — is left in the box. The window says so, and the text changes only if you use a formula from the window.
+
+Choice values are the option codes. The window lists each question by its label and its variable name, such as `Supported (c3a_supported)`.
 
 ## Writing rules
 

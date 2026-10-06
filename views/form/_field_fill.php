@@ -1,5 +1,6 @@
 <?php
 
+use humhub\modules\thiscoveryForms\helpers\ButtonLabel;
 use humhub\modules\thiscoveryForms\helpers\RichHtml;
 use humhub\modules\thiscoveryForms\helpers\Url;
 use humhub\modules\thiscoveryForms\models\CustomForm;
@@ -31,6 +32,7 @@ if ($instanceKey !== '' && is_array($value)) {
 $inputId = 'cf-input-' . $field->id . ($instanceKey !== '' ? '-' . preg_replace('/[^a-z0-9_-]/i', '', str_replace('/', '__', $instanceKey)) . '-' . substr(md5($instanceKey), 0, 6) : '');
 // Each loop repeat has its own "Please specify" text (V3-45).
 $otherName = 'SubmitForm[other_text][' . $field->id . ']' . ($instanceKey !== '' ? '[' . $instanceKey . ']' : '');
+$otherOptionalAttr = ($field->allowsOtherSpecify() && !$field->requiresOtherText()) ? ' data-cf-other-optional="1"' : '';
 $labelId = 'cf-label-' . $inputId;
 $choiceGroup = in_array($field->type, [
     FormField::TYPE_RADIO,
@@ -159,7 +161,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 <?php if ($consentCfg['signature'] === 'drawn'): ?>
                     <div class="cf-consent__draw-wrap" data-cf-consent-draw>
                         <canvas class="cf-consent__draw" width="320" height="120" role="img" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Draw a signature, or type your name instead')) ?>"></canvas>
-                        <button type="button" class="btn btn-default btn-sm" data-cf-consent-clear><?= Yii::t('ThiscoveryFormsModule.base', 'Clear signature') ?></button>
+                        <button type="button" class="btn btn-default btn-sm" data-cf-consent-clear><?= ButtonLabel::html('Clear signature') ?></button>
                     </div>
                     <input type="hidden" name="consent[<?= (int)$field->id ?>][signature_image]" data-cf-consent-image>
                 <?php endif; ?>
@@ -391,7 +393,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             <?php if ($otherLabel): ?>
                 <div class="cf-other-specify<?= $otherState['selected'] ? '' : ' d-none' ?>"
                      data-cf-other-wrap
-                     data-cf-other-option="<?= Html::encode($otherLabel) ?>">
+                     data-cf-other-option="<?= Html::encode($otherLabel) ?>"<?= $otherOptionalAttr ?>>
                     <label class="cf-other-specify__label" for="<?= Html::encode($inputId) ?>-other">
                         <?= Yii::t('ThiscoveryFormsModule.base', 'Please specify') ?>
                     </label>
@@ -437,7 +439,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                     <?php if ($isOther): ?>
                         <div class="cf-other-specify<?= $otherState['selected'] ? '' : ' d-none' ?>"
                              data-cf-other-wrap
-                             data-cf-other-option="<?= Html::encode($otherLabel) ?>">
+                             data-cf-other-option="<?= Html::encode($otherLabel) ?>"<?= $otherOptionalAttr ?>>
                             <label class="cf-other-specify__label" for="<?= Html::encode($inputId) ?>-other">
                                 <?= Yii::t('ThiscoveryFormsModule.base', 'Please specify') ?>
                             </label>
@@ -502,7 +504,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                     <?php if ($isOther): ?>
                         <div class="cf-other-specify<?= $otherState['selected'] ? '' : ' d-none' ?>"
                              data-cf-other-wrap
-                             data-cf-other-option="<?= Html::encode($otherLabel) ?>">
+                             data-cf-other-option="<?= Html::encode($otherLabel) ?>"<?= $otherOptionalAttr ?>>
                             <label class="cf-other-specify__label" for="<?= Html::encode($inputId) ?>-other">
                                 <?= Yii::t('ThiscoveryFormsModule.base', 'Please specify') ?>
                             </label>
@@ -734,7 +736,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 ]) ?>
                 <?= UploadButton::widget([
                     'id' => $uploadId,
-                    'label' => Yii::t('ThiscoveryFormsModule.base', 'Upload file'),
+                    'label' => ButtonLabel::html('Upload file'),
                     'tooltip' => false,
                     'cssButtonClass' => 'btn-primary btn-sm',
                     'single' => true,

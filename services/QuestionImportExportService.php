@@ -67,6 +67,7 @@ class QuestionImportExportService
         'maxdiff_set_count',
         'exclusive_option',
         'other_specify',
+        'other_specify_required',
         'max_select',
         'min_select',
         'min_select_all',
@@ -303,6 +304,7 @@ class QuestionImportExportService
                 'logic_formula' => (string)($map['logic_formula'] ?? ''),
                 'logic_rules' => $this->decodeJsonCell($map['logic_rules'] ?? ''),
                 'other_specify' => $map['other_specify'] ?? '1',
+                'other_specify_required' => $map['other_specify_required'] ?? '1',
                 'number_min' => $map['number_min'] ?? '',
                 'number_max' => $map['number_max'] ?? '',
             ];
