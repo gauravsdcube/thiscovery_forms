@@ -97,5 +97,14 @@
             "help_text": "Optional.",
             "required": ""
         }
-    ]
+    ],
+    "settings": {
+        "description": "A short sample survey about a service.",
+        "thank_you_content": "Thank you. Your answers have been recorded.",
+        "allow_anonymous": 1,
+        "allow_resume": 1,
+        "values": {
+            "keep_partials": false
+        }
+    }
 }

@@ -35,7 +35,52 @@ class TranslationService
             // Forms must work without Translate installed.
         }
 
-        return $labels;
+        return self::englishFirstLabels($labels);
+    }
+
+    public static function isEnglishCode(string $code): bool
+    {
+        $base = strtolower(explode('-', str_replace('_', '-', trim($code)))[0] ?? '');
+        return $base === 'en';
+    }
+
+    /**
+     * English stays first. The other languages keep the order they already had.
+     *
+     * @param string[] $codes
+     * @return string[]
+     */
+    public static function englishFirstCodes(array $codes): array
+    {
+        $english = [];
+        $rest = [];
+        foreach ($codes as $code) {
+            $code = (string)$code;
+            if (self::isEnglishCode($code)) {
+                $english[] = $code;
+            } else {
+                $rest[] = $code;
+            }
+        }
+        return array_merge($english, $rest);
+    }
+
+    /**
+     * @param array<string, string> $labels
+     * @return array<string, string>
+     */
+    public static function englishFirstLabels(array $labels): array
+    {
+        $english = [];
+        $rest = [];
+        foreach ($labels as $code => $label) {
+            if (self::isEnglishCode((string)$code)) {
+                $english[$code] = $label;
+            } else {
+                $rest[$code] = $label;
+            }
+        }
+        return $english + $rest;
     }
 
     /**
@@ -230,7 +275,7 @@ class TranslationService
         foreach ($codes as $code) {
             $out[$code] = $all[$code] ?? $code;
         }
-        return $out;
+        return self::englishFirstLabels($out);
     }
 
     /**
@@ -285,14 +330,11 @@ class TranslationService
 
         $requested = self::normalizeLanguage((string)Yii::$app->request->get('lang', ''));
         if ($requested !== null && in_array($requested, $enabled, true)) {
-            Yii::$app->session->set($this->sessionKey($form), $requested);
             return $requested;
         }
 
-        $sessionLang = self::normalizeLanguage((string)Yii::$app->session->get($this->sessionKey($form), ''));
-        if ($sessionLang !== null && in_array($sessionLang, $enabled, true)) {
-            return $sessionLang;
-        }
+        // A later visit uses the form link, not the language chosen on an earlier attempt.
+        Yii::$app->session->remove($this->sessionKey($form));
 
         $user = Yii::$app->user->getIdentity();
         if ($user && !empty($user->language)) {

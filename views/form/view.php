@@ -191,6 +191,60 @@ foreach ($pages as $page) {
     $previousBreak = $page['break'] ?? null;
 }
 
+// A language switch reloads this page. The link carries the page the person was on
+// so the new language opens there. A posted page (failed submit) and a fresh start win.
+$fillStartPage = (function () use ($existing, $pages): int {
+    $request = Yii::$app->request;
+    $startNew = (string)$request->get('start', '') === 'new';
+    $postedPage = $request->post('current_page');
+    $usePostedPage = $request->isPost && $postedPage !== null && $postedPage !== '';
+    $holdPage = $request->get('cfpage');
+    $useHold = !$usePostedPage && $holdPage !== null && $holdPage !== '';
+    if ($startNew && !$usePostedPage && !$useHold) {
+        return 0;
+    }
+    if ($usePostedPage) {
+        $start = (int)$postedPage;
+        $savedKey = (string)$request->post('current_page_key', '');
+        $instance = trim((string)$request->post('current_instance_key', ''));
+    } elseif ($useHold) {
+        $start = (int)$holdPage;
+        $savedKey = (string)$request->get('cfpagekey', '');
+        $instance = trim((string)$request->get('cfinstance', ''));
+    } else {
+        $start = ($existing && $existing->isInProgress() && $existing->current_page !== null)
+            ? (int)$existing->current_page
+            : 0;
+        $savedKey = ($existing && $existing->isInProgress() && $existing->hasAttribute('current_page_key'))
+            ? (string)$existing->current_page_key
+            : '';
+        $instance = ($existing && $existing->isInProgress()) ? trim((string)$existing->current_instance_key) : '';
+    }
+    $start = \humhub\modules\thiscoveryForms\services\FormPager::resumeIndex($pages, $start, $savedKey);
+    $useInstance = $instance !== '' && ($usePostedPage || $useHold || ($existing && $existing->isInProgress()));
+    if ($useInstance) {
+        // Two loops can share repeat codes, so the saved page wins when it is that repeat;
+        // otherwise the nearest page for the repeat (V3-45).
+        $best = null;
+        foreach ($pages as $page) {
+            if ((string)($page['instanceKey'] ?? '') !== $instance) {
+                continue;
+            }
+            $index = (int)$page['index'];
+            if ($index === $start) {
+                return $start;
+            }
+            if ($best === null || abs($index - $start) < abs($best - $start)) {
+                $best = $index;
+            }
+        }
+        if ($best !== null) {
+            return $best;
+        }
+    }
+    return $start;
+})();
+
 $this->registerJsConfig('thiscoveryForms', [
     'pages' => $pagePayload,
     'pageKeyIndex' => $pageKeyIndex,
@@ -226,45 +280,7 @@ $this->registerJsConfig('thiscoveryForms', [
     'runActionsUrl' => Url::toRunActions($formModel),
     'fillFileDeleteUrl' => Url::toFillDeleteFile($formModel),
     'pipeVars' => $pipe->tokenMap($user ?? Yii::$app->user->identity, $formModel, $fillContext->member ?? null),
-    'startPage' => (function () use ($existing, $pages): int {
-        $postedPage = Yii::$app->request->post('current_page');
-        $usePostedPage = Yii::$app->request->isPost && $postedPage !== null && $postedPage !== '';
-        $start = $usePostedPage
-            ? (int)$postedPage
-            : (($existing && $existing->isInProgress() && $existing->current_page !== null)
-                ? (int)$existing->current_page
-                : 0);
-        $savedKey = $usePostedPage
-            ? (string)Yii::$app->request->post('current_page_key', '')
-            : (($existing && $existing->isInProgress() && $existing->hasAttribute('current_page_key'))
-                ? (string)$existing->current_page_key
-                : '');
-        $start = \humhub\modules\thiscoveryForms\services\FormPager::resumeIndex($pages, $start, $savedKey);
-        $instance = $usePostedPage
-            ? trim((string)Yii::$app->request->post('current_instance_key', ''))
-            : ($existing ? trim((string)$existing->current_instance_key) : '');
-        if ($instance !== '' && ($usePostedPage || ($existing && $existing->isInProgress()))) {
-            // Two loops can share repeat codes, so the saved page wins when it is that repeat;
-            // otherwise the nearest page for the repeat (V3-45).
-            $best = null;
-            foreach ($pages as $page) {
-                if ((string)($page['instanceKey'] ?? '') !== $instance) {
-                    continue;
-                }
-                $index = (int)$page['index'];
-                if ($index === $start) {
-                    return $start;
-                }
-                if ($best === null || abs($index - $start) < abs($best - $start)) {
-                    $best = $index;
-                }
-            }
-            if ($best !== null) {
-                return $best;
-            }
-        }
-        return $start;
-    })(),
+    'startPage' => $fillStartPage,
     'questionTiming' => $integrityEnabled && !empty($integritySettings['question_timing']),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initFill("#cf-fill");', \yii\web\View::POS_READY);
@@ -331,6 +347,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
 <div class="cf-fill-page" id="cf-fill"
      dir="<?= $fillRtl ? 'rtl' : 'ltr' ?>"
      lang="<?= Html::encode($fillLang) ?>"
+     data-cf-form-id="<?= (int)$formModel->id ?>"
      data-cf-multipage="<?= $multiPage ? '1' : '0' ?>">
     <?php if ($customCss !== ''): ?>
         <style type="text/css"><?= $customCss ?></style>
@@ -400,16 +417,58 @@ $fillRtl = TranslationService::isRtl($fillLang);
         $enabledLangs = $formModel->getEnabledLanguages();
         if (count($enabledLangs) > 1):
             $currentLang = $fillContext->language ?? $formModel->getSourceLanguage();
+            $langChange = $formModel->getLanguageChange();
+            $langStarted = false;
+            if ($langChange === CustomForm::LANG_CHANGE_LOCK) {
+                if ((int)$fillStartPage > 0) {
+                    $langStarted = true;
+                } else {
+                    $answerFieldIds = [];
+                    foreach ($formModel->fields as $langField) {
+                        if (!$langField->collectsAnswer() || $langField->isHiddenFromRespondent()) {
+                            continue;
+                        }
+                        if (in_array($langField->type, [FormField::TYPE_CALCULATED, FormField::TYPE_RESPONDENT_META, FormField::TYPE_PANEL_ATTR], true)) {
+                            continue;
+                        }
+                        $answerFieldIds[(int)$langField->id] = true;
+                    }
+                    foreach ($submit->values as $heldKey => $heldValue) {
+                        if (!isset($answerFieldIds[(int)$heldKey])) {
+                            continue;
+                        }
+                        $heldText = is_array($heldValue) ? implode('', array_map('strval', $heldValue)) : trim((string)$heldValue);
+                        if ($heldText !== '') {
+                            $langStarted = true;
+                            break;
+                        }
+                    }
+                }
+            }
         ?>
-            <div class="cf-lang-switch" role="navigation" aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>">
+            <div class="cf-lang-switch" role="navigation"
+                 aria-label="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Language')) ?>"
+                 data-cf-lang-change="<?= Html::encode($langChange) ?>"
+                 data-cf-lang-started="<?= $langStarted ? '1' : '0' ?>">
                 <?php foreach ($enabledLangs as $code): ?>
                     <?php
                     $labelParts = explode('/', TranslationService::participantLanguageLabel($code), 2);
+                    $langLabel = Html::encode($labelParts[0]) . (isset($labelParts[1])
+                        ? '/<span lang="' . Html::encode($code) . '">' . Html::encode($labelParts[1]) . '</span>'
+                        : '');
+                    $isCurrentLang = $code === $currentLang;
                     ?>
-                    <a class="cf-lang-switch__item<?= $code === $currentLang ? ' is-active' : '' ?>"
-                       href="<?= Html::encode(Url::toFillLanguage($formModel, $code)) ?>">
-                        <?= Html::encode($labelParts[0]) ?><?php if (isset($labelParts[1])): ?>/<span lang="<?= Html::encode($code) ?>"><?= Html::encode($labelParts[1]) ?></span><?php endif; ?>
-                    </a>
+                    <?php if ($langStarted && !$isCurrentLang): ?>
+                        <span class="cf-lang-switch__item is-disabled" aria-disabled="true">
+                            <?= $langLabel ?>
+                        </span>
+                    <?php else: ?>
+                        <a class="cf-lang-switch__item<?= $isCurrentLang ? ' is-active' : '' ?>"
+                           href="<?= Html::encode(Url::toFillLanguage($formModel, $code)) ?>"
+                           data-pjax-prevent="1">
+                            <?= $langLabel ?>
+                        </a>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
         <?php endif; ?>
@@ -602,7 +661,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     ]);
                 }
                 ?>
-                <div class="cf-form-page<?= $page['index'] === 0 ? ' is-active' : '' ?>"
+                <div class="cf-form-page<?= (int)$page['index'] === (int)$fillStartPage ? ' is-active' : '' ?>"
                      data-cf-page="<?= (int)$page['index'] ?>"
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
                      <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '"'

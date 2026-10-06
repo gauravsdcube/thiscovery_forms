@@ -114,7 +114,13 @@ If no custom template is chosen, a default text is used where the action or invi
 
 ## Languages
 
-**Settings → Languages** chooses the **Source language** and which **Enabled languages** participants can switch to on the fill page.
+**Settings → Languages** chooses the **Source language** and which **Enabled languages** participants can switch to on the fill page. English stays first in that list.
+
+**Changing language during the survey** has three choices:
+
+- **Disable other languages once the survey has started** — someone can still pick a language on the first page before they answer. After they answer, or leave the first page, only the language they are using stays available.
+- **Keep the answers and stay on the current page** — changing language reloads the form in that language, with the answers and the page they were on.
+- **Start the survey again** — changing language opens the form from the first page with this attempt cleared. A saved resume code is still the way back to a saved response.
 
 Enter the translated strings on **Settings → Translations** (Quality & style). Arabic and Urdu use a right-to-left layout.
 

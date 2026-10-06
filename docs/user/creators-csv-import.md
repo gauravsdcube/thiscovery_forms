@@ -13,7 +13,9 @@ On **Settings → Share**, choose the CSV (or JSON) file, then:
 
 Save the form at least once before you import.
 
-**Export JSON** also includes the form settings, so a tested form can be copied onto a new one. Secure send is left out, as are share links and anything that belongs only to this site: panels, appearance themes, and email templates. Those settings are applied when **Replace all existing questions** is ticked, or when the form you import into has no questions yet. Adding questions to a form that already has some does not change that form’s settings. CSV does not include settings.
+**Export JSON** and **Export CSV** include the form settings, so a tested form can be copied onto a new one. Secure send is left out, as are share links and anything that belongs only to this site: panels, appearance themes, and email templates. Those settings are applied when **Replace all existing questions** is ticked, or when the form you import into has no questions yet. Adding questions to a form that already has some does not change that form’s settings.
+
+In a CSV the settings are one row, not a question. Set `type` to `form_settings` and put the settings in the `settings` column as JSON, the same object an export writes. Leave that cell empty on question rows.
 
 Download **Sample CSV** from Share if you want a working file to copy.
 
@@ -75,6 +77,7 @@ Download **Sample CSV** from Share if you want a working file to copy.
 | `logic_combinator` | `and` or `or`. |
 | `logic_goto` | Target `page_key` when the action is `goto_page`. |
 | `logic_rules` | JSON array of rules (see Skip logic below). |
+| `settings` | On a `form_settings` row only: the form settings as JSON. Empty on a question row. |
 
 Boolean columns also accept `true`, `yes`, and `y`.
 
@@ -96,6 +99,7 @@ Put the **code** in the `type` column.
 | `ranking` | Ranking (drag & drop) | `options` or `items` |
 | `file` | File upload | — |
 | `page_break` | Page break | `page_key`, `page_title`, optional `branches` |
+| `form_settings` | Form settings | Not a question. One row. `settings` holds the JSON. |
 | `question_group` | Question group | Label is optional. Place the grouped questions after this row. |
 | `group_end` | Group end | Closes the previous `question_group`. |
 | `rich_text` | Rich text section | `rich_content` (HTML). Not an answer. |

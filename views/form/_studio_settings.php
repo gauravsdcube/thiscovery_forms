@@ -873,6 +873,24 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     false,
                     Yii::t('ThiscoveryFormsModule.base', 'Languages people can switch to on the fill page.')
                 ) ?>
+                <?php ob_start(); ?>
+                <div class="cf-radio-stack">
+                    <?= Html::activeRadioList($formModel, 'language_change', CustomForm::languageChangeLabels(), [
+                        'item' => static function ($index, $label, $name, $checked, $value) {
+                            return '<label class="cf-radio-stack__item">'
+                                . Html::radio($name, $checked, ['value' => $value])
+                                . '<span>' . Html::encode($label) . '</span></label>';
+                        },
+                        'separator' => '',
+                        'unselect' => null,
+                    ]) ?>
+                </div>
+                <?= $fold(
+                    Yii::t('ThiscoveryFormsModule.base', 'Changing language during the survey'),
+                    ob_get_clean(),
+                    true,
+                    Yii::t('ThiscoveryFormsModule.base', 'Lock the language after someone starts, keep their place, or start again.')
+                ) ?>
             </section>
 
             <section class="cf-settings-pane<?= $activeSection === 'actions' ? ' is-active' : '' ?>" data-cf-settings-pane="actions" role="tabpanel"<?= $activeSection === 'actions' ? '' : ' hidden' ?>>

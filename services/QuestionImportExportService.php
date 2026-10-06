@@ -116,6 +116,8 @@ class QuestionImportExportService
         'consent_must_read',
         'consent_signature',
         'consent_witness',
+        // Form settings, on a form_settings row. Empty on question rows.
+        'settings',
     ];
 
     public function exportJson(CustomForm $form): array
@@ -159,6 +161,7 @@ class QuestionImportExportService
         foreach ($form->fields as $field) {
             fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvRowFromField($field, $aliases)));
         }
+        fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvSettingsRow($form, $aliases)));
         rewind($fh);
         $csv = stream_get_contents($fh);
         fclose($fh);
@@ -173,7 +176,7 @@ class QuestionImportExportService
         $this->settingsApplied = false;
         $decoded = json_decode($json, true);
         if (!is_array($decoded)) {
-            return Yii::t('ThiscoveryFormsModule.base', 'The file is not valid JSON.');
+            return Yii::t('ThiscoveryFormsModule.base', 'The file is not valid JSON/CSV.');
         }
 
         $fields = $decoded['fields'] ?? null;
@@ -200,6 +203,8 @@ class QuestionImportExportService
 
         $payloads = [];
         $header = null;
+        $settings = null;
+        $settingsError = null;
         while (($row = fgetcsv($fh)) !== false) {
             if ($row === [null] || $row === []) {
                 continue;
@@ -218,6 +223,18 @@ class QuestionImportExportService
 
             $first = trim((string)($row[0] ?? ''));
             if (str_starts_with($first, '#')) {
+                continue;
+            }
+
+            $typeCell = strtolower(trim((string)($row[0] ?? '')));
+            $typeCell = str_replace([' ', '-'], '_', $typeCell);
+            if ($typeCell === 'form_settings' || $typeCell === 'settings') {
+                $read = $this->settingsFromCsvRow($header, $row);
+                if ($read['error'] !== null) {
+                    $settingsError = $read['error'];
+                } elseif ($read['settings'] !== null) {
+                    $settings = $read['settings'];
+                }
                 continue;
             }
 
@@ -326,11 +343,14 @@ class QuestionImportExportService
         }
         fclose($fh);
 
+        if ($settingsError !== null) {
+            return $settingsError;
+        }
         if (!$payloads) {
             return Yii::t('ThiscoveryFormsModule.base', 'No questions found in the CSV file.');
         }
 
-        return $this->appendFieldPayloads($form, $payloads, $replace);
+        return $this->appendFieldPayloads($form, $payloads, $replace, $settings);
     }
 
     /**
@@ -345,7 +365,7 @@ class QuestionImportExportService
 
     /**
      * @param array $payloads export-style or post-row field arrays
-     * @param array<string,mixed>|null $settings form settings from a JSON export; CSV passes none
+     * @param array<string,mixed>|null $settings form settings from a JSON export or a CSV form_settings row
      */
     public function appendFieldPayloads(CustomForm $form, array $payloads, bool $replace = false, ?array $settings = null): ?string
     {
@@ -604,6 +624,65 @@ class QuestionImportExportService
             $values[] = $this->csvCellValue($column, $row, $field);
         }
         return $values;
+    }
+
+    /**
+     * One row that is not a question. The settings cell is the same object JSON export uses.
+     *
+     * @param array<string,string> $aliases
+     * @return list<string>
+     */
+    private function csvSettingsRow(CustomForm $form, array $aliases): array
+    {
+        $values = array_fill(0, count(self::CSV_COLUMNS), '');
+        $values[array_search('type', self::CSV_COLUMNS, true)] = 'form_settings';
+        $values[array_search('settings', self::CSV_COLUMNS, true)] = json_encode(
+            $this->exportSettings($form, $aliases),
+            JSON_UNESCAPED_UNICODE
+        );
+        return $values;
+    }
+
+    /**
+     * @param string[]|null $header
+     * @param string[] $row
+     * @return array{settings:?array,error:?string}
+     */
+    private function settingsFromCsvRow(?array $header, array $row): array
+    {
+        $cell = '';
+        if ($header !== null) {
+            foreach ($header as $idx => $name) {
+                if ($name === 'settings') {
+                    $cell = (string)($row[$idx] ?? '');
+                    break;
+                }
+            }
+        }
+        if (trim($cell) === '') {
+            foreach ($row as $idx => $value) {
+                if ($idx === 0) {
+                    continue;
+                }
+                $value = trim((string)$value);
+                if ($value !== '' && ($value[0] === '{' || $value[0] === '[')) {
+                    $cell = $value;
+                    break;
+                }
+            }
+        }
+        $cell = trim($cell);
+        if ($cell === '') {
+            return ['settings' => null, 'error' => null];
+        }
+        $decoded = json_decode($cell, true);
+        if (!is_array($decoded)) {
+            return [
+                'settings' => null,
+                'error' => Yii::t('ThiscoveryFormsModule.base', 'The settings in the CSV file are not valid JSON.'),
+            ];
+        }
+        return ['settings' => $decoded, 'error' => null];
     }
 
     /**

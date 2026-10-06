@@ -5583,6 +5583,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var pageHistory = [0];
         var currentPage = 0;
+        var languageTouched = false;
+        var languageWatch = false;
+        var noteLanguageProgress = function () {};
         var pagesConfig = module.config.pages || [];
         var pageKeyIndex = module.config.pageKeyIndex || {};
         var multiPage = $root.attr('data-cf-multipage') === '1' && pagesConfig.length > 1;
@@ -5945,6 +5948,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 } catch (e) {}
             }
             window.requestAnimationFrame(syncGridOverflow);
+            noteLanguageProgress();
         };
 
         var writeActionVars = function (vars) {
@@ -6431,10 +6435,18 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('input', 'textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="button"]):not([type="submit"]):not([type="hidden"]):not([type="reset"])', function () {
             scheduleEvaluate(false);
             scheduleAutosave();
+            if (languageWatch) {
+                languageTouched = true;
+                noteLanguageProgress();
+            }
         });
         $root.on('change', 'input, select, textarea', function () {
             scheduleEvaluate(true);
             scheduleAutosave();
+            if (languageWatch) {
+                languageTouched = true;
+                noteLanguageProgress();
+            }
         });
 
         // Mobile browsers sometimes miss change events on custom-styled radios
@@ -6563,6 +6575,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 setTimeout(resetFillButtons, 30);
                 return false;
             }
+            try {
+                if (fillHoldKey) {
+                    sessionStorage.removeItem(fillHoldKey());
+                }
+            } catch (err) {}
         });
 
         $root.find('[data-cf-grid-scroll]').on('scroll.cfGridOverflow', syncGridOverflow);
@@ -6624,8 +6641,341 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         }
         syncGridMobileInputs();
 
+        // A language link reloads the form. Keep the answers and the current page in
+        // this tab so the reload opens where the person was, instead of at the start.
+        var fillHoldKey = function () {
+            var id = String($root.attr('data-cf-form-id') || '');
+            return id ? ('cf-fill-hold:' + id) : '';
+        };
+        var fillHoldSkip = {
+            submit_token: true,
+            roster_add: true,
+            roster_parent: true,
+            roster_remove: true,
+            current_page: true,
+            current_page_key: true,
+            current_instance_key: true
+        };
+        var lastFocusField = '';
+        $root.on('focusin', 'input, textarea, select', function () {
+            var $q = $(this).closest('[data-cf-field-id]');
+            if ($q.length) {
+                lastFocusField = String($q.attr('data-cf-field-id') || '');
+            }
+        });
+        var questionInView = function () {
+            var bestId = '';
+            var best = Infinity;
+            var $scope = multiPage ? $root.find('.cf-form-page.is-active') : $root;
+            $scope.find('[data-cf-field-id]').each(function () {
+                if (!$(this).is(':visible')) {
+                    return;
+                }
+                var rect = this.getBoundingClientRect();
+                if (rect.bottom < 0 || rect.top > window.innerHeight) {
+                    return;
+                }
+                var score = rect.top < 0 ? Math.abs(rect.top) + 10000 : rect.top;
+                if (score < best) {
+                    best = score;
+                    bestId = String($(this).attr('data-cf-field-id') || '');
+                }
+            });
+            return bestId || lastFocusField;
+        };
+        var rememberFill = function () {
+            var key = fillHoldKey();
+            var $form = $root.find('[data-cf-fill-form]');
+            if (!key || !$form.length || !window.sessionStorage) {
+                return;
+            }
+            var fields = [];
+            $form.find('input, textarea, select').each(function () {
+                if (!this.name || this.type === 'file' || fillHoldSkip[this.name] || this.name.indexOf('_csrf') === 0) {
+                    return;
+                }
+                if (this.type === 'checkbox' || this.type === 'radio') {
+                    fields.push({ n: this.name, t: this.type, v: this.value, c: !!this.checked });
+                } else {
+                    fields.push({ n: this.name, t: 'text', v: this.value });
+                }
+            });
+            var ranks = [];
+            $form.find('[data-cf-ranking]').each(function () {
+                var order = [];
+                $(this).find('[data-cf-ranking-list]').children('[data-value]').each(function () {
+                    order.push(String($(this).attr('data-value') || ''));
+                });
+                var name = String($(this).find('[data-cf-ranking-value]').attr('name') || '');
+                if (name) {
+                    ranks.push({ n: name, order: order });
+                }
+            });
+            var page = multiPage && typeof currentPage === 'number' ? currentPage : 0;
+            try {
+                sessionStorage.setItem(key, JSON.stringify({
+                    pending: true,
+                    page: page,
+                    pageKey: multiPage ? String((pagesConfig[page] || {}).pageKey || '') : '',
+                    instance: String($form.find('[data-cf-current-instance]').val() || ''),
+                    history: (pageHistory || []).slice(),
+                    focusField: questionInView(),
+                    fields: fields,
+                    ranks: ranks
+                }));
+            } catch (err) {}
+        };
+        var restoreFillHold = function () {
+            var key = fillHoldKey();
+            if (!key || !window.sessionStorage) {
+                return false;
+            }
+            var params = new URLSearchParams(window.location.search);
+            // start=new means a fresh visit. A language link keeps that parameter, so a
+            // reload that also carries the current page is not a fresh start.
+            if (params.get('start') === 'new' && !params.has('cfpage')) {
+                try { sessionStorage.removeItem(key); } catch (err) {}
+                return false;
+            }
+            var raw = '';
+            try { raw = sessionStorage.getItem(key) || ''; } catch (err) { return false; }
+            if (!raw) {
+                return false;
+            }
+            var hold;
+            try { hold = JSON.parse(raw); } catch (err) { return false; }
+            if (!hold || !hold.pending) {
+                return false;
+            }
+            try {
+                sessionStorage.setItem(key, JSON.stringify($.extend({}, hold, { pending: false })));
+            } catch (err) {}
+            var $form = $root.find('[data-cf-fill-form]');
+            if (!$form.length) {
+                return false;
+            }
+            (hold.fields || []).forEach(function (field) {
+                if (!field || !field.n || fillHoldSkip[field.n]) {
+                    return;
+                }
+                var $els = $form.find('input, textarea, select').filter(function () {
+                    return this.name === field.n;
+                });
+                if (!$els.length) {
+                    return;
+                }
+                if (field.t === 'checkbox' || field.t === 'radio') {
+                    $els.each(function () {
+                        if (this.value !== String(field.v)) {
+                            return;
+                        }
+                        this.checked = !!field.c;
+                        if (field.c) {
+                            this.setAttribute('checked', 'checked');
+                            $(this).closest('.cf-rating-option').addClass('is-selected');
+                        } else {
+                            this.removeAttribute('checked');
+                            $(this).closest('.cf-rating-option').removeClass('is-selected');
+                        }
+                    });
+                } else {
+                    $els.val(field.v == null ? '' : field.v);
+                    $els.filter('select').each(function () {
+                        var chosen = String(field.v == null ? '' : field.v);
+                        Array.prototype.forEach.call(this.options, function (opt) {
+                            if (opt.value === chosen) {
+                                opt.setAttribute('selected', 'selected');
+                            } else {
+                                opt.removeAttribute('selected');
+                            }
+                        });
+                    });
+                }
+            });
+            (hold.ranks || []).forEach(function (rank) {
+                var $hidden = $form.find('[data-cf-ranking-value]').filter(function () {
+                    return this.name === rank.n;
+                }).first();
+                var $list = $hidden.closest('[data-cf-ranking]').find('[data-cf-ranking-list]');
+                if (!$list.length) {
+                    return;
+                }
+                (rank.order || []).forEach(function (value) {
+                    var $item = $list.children('[data-value]').filter(function () {
+                        return String($(this).attr('data-value') || '') === String(value);
+                    }).first();
+                    if ($item.length) {
+                        $list.append($item);
+                    }
+                });
+                $hidden.val(JSON.stringify(rank.order || []));
+            });
+            $root.find('[data-cf-consent-image]').each(function () {
+                var src = String(this.value || '');
+                if (src.indexOf('data:image') !== 0) {
+                    return;
+                }
+                var canvas = $(this).closest('[data-cf-consent]').find('canvas').get(0);
+                if (!canvas || !canvas.getContext) {
+                    return;
+                }
+                var img = new Image();
+                img.onload = function () {
+                    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+                };
+                img.src = src;
+            });
+            syncGridMobileInputs();
+            $form.find('[data-cf-vas-input]').trigger('blur');
+            var focusId = String(hold.focusField || '');
+            if (multiPage && typeof showPage === 'function') {
+                var page = null;
+                var pageKey = String(hold.pageKey || '');
+                var instance = String(hold.instance || '');
+                if (pageKey) {
+                    $root.find('[data-cf-page]').each(function () {
+                        if (page !== null) {
+                            return;
+                        }
+                        if (String($(this).attr('data-cf-page-key') || '') !== pageKey) {
+                            return;
+                        }
+                        if (String($(this).attr('data-cf-instance') || '') !== instance) {
+                            return;
+                        }
+                        page = parseInt($(this).attr('data-cf-page'), 10);
+                    });
+                }
+                if (page === null || isNaN(page)) {
+                    page = parseInt(hold.page, 10);
+                }
+                if (isNaN(page) || page < 0 || page >= pagesConfig.length) {
+                    page = parseInt(module.config.startPage, 10);
+                }
+                if (isNaN(page) || page < 0 || page >= pagesConfig.length) {
+                    page = 0;
+                }
+                var history = (hold.history || []).filter(function (idx) {
+                    return idx >= 0 && idx < pagesConfig.length;
+                });
+                if (!history.length || history[history.length - 1] !== page) {
+                    history.push(page);
+                }
+                pageHistory = history;
+                showPage(page, {scroll: !focusId});
+            }
+            if (focusId) {
+                var $focus = $root.find('[data-cf-field-id]').filter(function () {
+                    return String($(this).attr('data-cf-field-id') || '') === focusId;
+                }).first();
+                if ($focus.length) {
+                    window.requestAnimationFrame(function () {
+                        try {
+                            $focus.get(0).scrollIntoView({block: 'nearest'});
+                        } catch (err) {}
+                    });
+                }
+            }
+            return true;
+        };
+        noteLanguageProgress = function () {
+            var $switch = $root.find('.cf-lang-switch');
+            if (!$switch.length || $switch.attr('data-cf-lang-change') !== 'lock') {
+                return;
+            }
+            var started = $switch.attr('data-cf-lang-started') === '1'
+                || languageTouched
+                || (multiPage && currentPage > 0);
+            if (!started) {
+                return;
+            }
+            $switch.attr('data-cf-lang-started', '1');
+            $switch.find('a.cf-lang-switch__item').not('.is-active').each(function () {
+                this.removeAttribute('href');
+                this.setAttribute('aria-disabled', 'true');
+                this.setAttribute('tabindex', '-1');
+                $(this).addClass('is-disabled');
+            });
+        };
+        $root.on('click', 'a.cf-lang-switch__item', function (e) {
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.which === 2) {
+                return;
+            }
+            var mode = String($root.find('.cf-lang-switch').attr('data-cf-lang-change') || 'keep');
+            if (mode === 'lock') {
+                noteLanguageProgress();
+                if ($root.find('.cf-lang-switch').attr('data-cf-lang-started') === '1') {
+                    e.preventDefault();
+                    return;
+                }
+            }
+            if (mode !== 'keep') {
+                try { sessionStorage.removeItem(fillHoldKey()); } catch (err) {}
+                if (!this.href) {
+                    return;
+                }
+                e.preventDefault();
+                e.stopPropagation();
+                try {
+                    var fresh = new URL(this.href, window.location.href);
+                    fresh.searchParams.delete('cfpage');
+                    fresh.searchParams.delete('cfpagekey');
+                    fresh.searchParams.delete('cfinstance');
+                    fresh.searchParams.delete('resume');
+                    fresh.searchParams.delete('continue');
+                    if (mode === 'restart') {
+                        fresh.searchParams.set('start', 'new');
+                    }
+                    window.location.assign(fresh.toString());
+                } catch (err) {
+                    window.location.assign(this.href);
+                }
+                return;
+            }
+            rememberFill();
+            if (!this.href) {
+                return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+            try {
+                var url = new URL(this.href, window.location.href);
+                var page = multiPage && typeof currentPage === 'number' ? currentPage : 0;
+                var pageKey = multiPage ? String((pagesConfig[page] || {}).pageKey || '') : '';
+                var instance = String($root.find('[data-cf-current-instance]').val() || '');
+                url.searchParams.set('cfpage', String(page));
+                if (pageKey) {
+                    url.searchParams.set('cfpagekey', pageKey);
+                } else {
+                    url.searchParams.delete('cfpagekey');
+                }
+                if (instance) {
+                    url.searchParams.set('cfinstance', instance);
+                } else {
+                    url.searchParams.delete('cfinstance');
+                }
+                window.location.assign(url.toString());
+            } catch (err) {
+                window.location.assign(this.href);
+            }
+        });
+        noteLanguageProgress();
+        languageWatch = true;
+        var restoredHold = restoreFillHold();
+        try {
+            var cleanHoldUrl = new URL(window.location.href);
+            if (cleanHoldUrl.searchParams.has('cfpage') || cleanHoldUrl.searchParams.has('cfpagekey') || cleanHoldUrl.searchParams.has('cfinstance')) {
+                cleanHoldUrl.searchParams.delete('cfpage');
+                cleanHoldUrl.searchParams.delete('cfpagekey');
+                cleanHoldUrl.searchParams.delete('cfinstance');
+                window.history.replaceState(window.history.state, '', cleanHoldUrl.toString());
+            }
+        } catch (err) {}
+
         evaluate();
-        clearUnsavedChoicePrefill();
+        if (!restoredHold) {
+            clearUnsavedChoicePrefill();
+        }
         window.requestAnimationFrame(syncGridOverflow);
     };
 

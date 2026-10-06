@@ -79,6 +79,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public const IDENTITY_MANAGERS_ONLY = 'managers_only';
     public const IDENTITY_FULLY_ANONYMOUS = 'fully_anonymous';
 
+    /** Other languages close once someone has started answering or left the first page. */
+    public const LANG_CHANGE_LOCK = 'lock';
+    /** A language change keeps the answers and reopens the same page. */
+    public const LANG_CHANGE_KEEP = 'keep';
+    /** A language change drops this attempt and opens the survey from the start. */
+    public const LANG_CHANGE_RESTART = 'restart';
+
     public const ENROL_PANEL_NONE = 'none';
     public const ENROL_PANEL_EXISTING = 'existing';
     public const ENROL_PANEL_CREATE = 'create';
@@ -101,6 +108,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     /** @var string[] Enabled fill languages */
     public $enabled_languages = ['en-GB'];
+
+    /** What a language change does after someone has started the survey. */
+    public $language_change = self::LANG_CHANGE_KEEP;
 
     /** @var string Consensus identity mode */
     public $identity_mode = self::IDENTITY_IDENTIFIED;
@@ -254,7 +264,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['folder_id'], 'exist', 'skipOnEmpty' => true, 'targetClass' => FormFolder::class, 'targetAttribute' => 'id'],
             [['title'], 'validateOwnedReferences', 'skipOnEmpty' => false],
             [['consensus_threshold'], 'integer', 'min' => 1, 'max' => 100],
-            [['source_language', 'identity_mode'], 'string', 'max' => 32],
+            [['source_language', 'identity_mode', 'language_change'], 'string', 'max' => 32],
+            [['language_change'], 'in', 'range' => [self::LANG_CHANGE_LOCK, self::LANG_CHANGE_KEEP, self::LANG_CHANGE_RESTART]],
             [['consensus_agree_from', 'consensus_agree_to', 'consensus_disagree_from', 'consensus_disagree_to', 'consensus_exclude_codes'], 'safe'],
             [['identity_mode'], 'in', 'range' => array_keys(self::getIdentityModeLabels())],
             [['enabled_languages', 'style', 'enrol_panel_mode', 'enrol_panel_title', 'submit_actions', 'custom_functions'], 'safe'],
@@ -298,6 +309,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'answers_visibility' => Yii::t('ThiscoveryFormsModule.base', 'Who can view answers'),
             'source_language' => Yii::t('ThiscoveryFormsModule.base', 'Source language'),
             'enabled_languages' => Yii::t('ThiscoveryFormsModule.base', 'Languages'),
+            'language_change' => Yii::t('ThiscoveryFormsModule.base', 'Changing language during the survey'),
             'identity_mode' => Yii::t('ThiscoveryFormsModule.base', 'Identity'),
             'consensus_threshold' => Yii::t('ThiscoveryFormsModule.base', 'Consensus threshold (%)'),
             'freeze_on_consensus' => Yii::t('ThiscoveryFormsModule.base', 'Freeze items that reach consensus'),
@@ -434,7 +446,25 @@ class CustomForm extends ContentActiveRecord implements Searchable
         if (!in_array($source, $langs, true)) {
             array_unshift($langs, $source);
         }
-        return $langs;
+        return \humhub\modules\thiscoveryForms\services\TranslationService::englishFirstCodes($langs);
+    }
+
+    public function getLanguageChange(): string
+    {
+        $mode = (string)($this->language_change ?: $this->getSetting('language_change', self::LANG_CHANGE_KEEP));
+        return isset(self::languageChangeLabels()[$mode]) ? $mode : self::LANG_CHANGE_KEEP;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public static function languageChangeLabels(): array
+    {
+        return [
+            self::LANG_CHANGE_LOCK => Yii::t('ThiscoveryFormsModule.base', 'Disable other languages once the survey has started'),
+            self::LANG_CHANGE_KEEP => Yii::t('ThiscoveryFormsModule.base', 'Keep the answers and stay on the current page'),
+            self::LANG_CHANGE_RESTART => Yii::t('ThiscoveryFormsModule.base', 'Start the survey again'),
+        ];
     }
 
     public function getIdentityMode(): string
@@ -1184,6 +1214,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
         if (!in_array($this->source_language, $this->enabled_languages, true)) {
             array_unshift($this->enabled_languages, $this->source_language);
         }
+        $languageChange = (string)$this->getSetting('language_change', self::LANG_CHANGE_KEEP);
+        $this->language_change = isset(self::languageChangeLabels()[$languageChange])
+            ? $languageChange
+            : self::LANG_CHANGE_KEEP;
         $mode = (string)$this->getSetting('identity_mode', self::IDENTITY_IDENTIFIED);
         $this->identity_mode = isset(self::getIdentityModeLabels()[$mode]) ? $mode : self::IDENTITY_IDENTIFIED;
         $this->consensus_threshold = (int)$this->getSetting('consensus_threshold', 70) ?: 70;
@@ -2033,6 +2067,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
         }
         $this->enabled_languages = $enabled;
         $this->setSetting('enabled_languages', $enabled);
+
+        $languageChange = (string)$this->language_change;
+        if (!isset(self::languageChangeLabels()[$languageChange])) {
+            $languageChange = self::LANG_CHANGE_KEEP;
+        }
+        $this->language_change = $languageChange;
+        $this->setSetting('language_change', $languageChange);
 
         $mode = (string)$this->identity_mode;
         if (!isset(self::getIdentityModeLabels()[$mode])) {

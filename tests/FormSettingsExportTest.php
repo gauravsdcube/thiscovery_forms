@@ -99,6 +99,35 @@ $busy = ReviewLib::reload($busy);
 $check(!$service->settingsApplied, 'append onto a form that already has questions copied settings');
 $check((string)$busy->description === 'Leave this', 'append changed the form description');
 
+$csv = $service->exportCsv(ReviewLib::reload($source));
+$check(str_contains($csv, 'form_settings'), 'csv had no settings row');
+$check(str_contains($csv, 'Protocol copy'), 'csv did not include the description');
+$check(!str_contains($csv, 'secure_send_minutes'), 'csv exported secure send');
+$check(!str_contains($csv, 'secret-token'), 'csv exported the preview token');
+
+$csvTarget = ReviewLib::form(review_space(), 'EV settings export csv', ['allow_anonymous' => 0]);
+ReviewLib::clearFields($csvTarget);
+$csvTarget->description = 'CSV original';
+$csvTarget->setSetting('secure_send_minutes', 30);
+$csvTarget->save(false);
+$csvTarget = ReviewLib::reload($csvTarget);
+$csvError = $service->importCsv($csvTarget, $csv, true);
+$check($csvError === null, 'csv import failed: ' . (string)$csvError);
+$csvTarget = ReviewLib::reload($csvTarget);
+$check($service->settingsApplied, 'csv import did not apply settings');
+$check((string)$csvTarget->description === 'Protocol copy', 'csv import did not copy the description');
+$check((int)$csvTarget->allow_anonymous === 1, 'csv import did not copy anonymous');
+$check((int)$csvTarget->getSetting('secure_send_minutes') === 30, 'csv import replaced secure send');
+$csvFields = [];
+foreach ($csvTarget->fields as $field) {
+    $csvFields[(string)$field->variable] = (int)$field->id;
+}
+$csvRules = $csvTarget->getSetting('integrity', [])['consistency_rules'][0]['conditions'] ?? [];
+$check((int)($csvRules[0]['field_id'] ?? 0) === ($csvFields['age_export'] ?? 0), 'csv consistency rule was not pointed at the copied question');
+
+$bad = $service->importJson($csvTarget, 'not-a-file', true);
+$check($bad === 'The file is not valid JSON/CSV.', 'wrong file said: ' . (string)$bad);
+
 if ($failures) {
     fwrite(STDOUT, "FAIL " . count($failures) . "\n" . implode("\n", $failures) . "\n");
     exit(1);

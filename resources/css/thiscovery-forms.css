@@ -4672,6 +4672,11 @@ body.cf-fill-standalone #topbar-second {
     border-color: #1a5f4a;
     color: #fff;
 }
+.cf-lang-switch__item.is-disabled {
+    opacity: .45;
+    pointer-events: none;
+    cursor: default;
+}
 
 /* Fill page: Arabic / Urdu (and other RTL locales) */
 .cf-fill-page[dir="rtl"] {

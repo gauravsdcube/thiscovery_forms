@@ -2,6 +2,13 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.39.0 (October 6, 2026)
+
+- **Settings → Languages** has **Changing language during the survey**. Disable other languages once someone has answered or left the first page, keep the answers and stay on the current page, or start the survey again. Keeping the answers is the default. On the first page, before anyone has answered, the other languages stay available. Opening the survey again uses the source language, not the language chosen on an earlier attempt.
+- English stays first in the language list. The other languages keep their order.
+- **Export CSV** includes the form settings as well as the questions, in the same way as JSON. Secure send is left out, as are share links and records that belong only to this site. In the CSV those settings are one `form_settings` row. They are applied when the questions are replaced, or when the form has no questions yet. The sample JSON and sample CSV include settings.
+- A file that is neither JSON nor CSV says **The file is not valid JSON/CSV**.
+
 ## 1.38.0 (October 6, 2026)
 
 - Answers has one **Download CSV** panel. Column headings can be the question text, the variable name, or both. Unfinished responses and responses excluded from analysis are left out unless those boxes are ticked. Search and the filters on the page are applied to that download. A Complete or In progress filter overrides the unfinished-responses tick.

@@ -496,6 +496,8 @@ return [
     'Please choose a JSON or CSV file to import.' => 'Please choose a JSON or CSV file to import.',
     'Could not read the uploaded file.' => 'Could not read the uploaded file.',
     'The file is not valid JSON.' => 'The file is not valid JSON.',
+    'The file is not valid JSON/CSV.' => 'The file is not valid JSON/CSV.',
+    'The settings in the CSV file are not valid JSON.' => 'The settings in the CSV file are not valid JSON.',
     'JSON is missing a fields list.' => 'JSON is missing a fields list.',
     'No questions found in the CSV file.' => 'No questions found in the CSV file.',
     'No questions found in the import file.' => 'No questions found in the import file.',
