@@ -322,7 +322,7 @@ class SurveyDesignMapper
         $out = [
             'type' => $type,
             'key' => preg_replace('/[^a-zA-Z0-9_]/', '', (string)($row['key'] ?? '')) ?: '',
-            'label' => mb_substr($label !== '' ? $label : 'Page break', 0, 255),
+            'label' => mb_substr($label !== '' ? $label : 'Page break', 0, FormField::LABEL_MAX),
             'help_text' => $helpText,
             'required' => !empty($row['required']) ? '1' : '',
         ];

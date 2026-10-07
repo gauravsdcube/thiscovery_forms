@@ -28,7 +28,7 @@ class FormFieldI18n extends ActiveRecord
             [['field_id', 'language'], 'required'],
             [['field_id'], 'integer'],
             [['language'], 'string', 'max' => 16],
-            [['label'], 'string', 'max' => 255],
+            [['label'], 'string', 'max' => FormField::LABEL_MAX],
             [['help_text'], 'string', 'max' => 500],
             [['options_json'], 'string'],
         ];

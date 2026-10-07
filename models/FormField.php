@@ -70,6 +70,9 @@ class FormField extends ActiveRecord
     public const CARRY_UNSELECTED = 'unselected';
     public const CARRY_ALL = 'all';
 
+    /** Participant-facing question text. The studio name stays at 255. */
+    public const LABEL_MAX = 4000;
+
     public const JUSTIFY_NONE = '';
     public const JUSTIFY_OPTIONAL = 'optional';
     public const JUSTIFY_REQUIRED = 'required';
@@ -95,7 +98,8 @@ class FormField extends ActiveRecord
             [['form_id', 'type', 'label'], 'required'],
             [['form_id', 'sort_order'], 'integer'],
             [['required'], 'boolean'],
-            [['label', 'internal_label'], 'string', 'max' => 255],
+            [['label'], 'string', 'max' => self::LABEL_MAX],
+            [['internal_label'], 'string', 'max' => 255],
             [['variable'], 'string', 'max' => 120],
             [['variable'], 'match', 'pattern' => '/^[A-Za-z][A-Za-z0-9_]*$/', 'skipOnEmpty' => true,
                 'message' => Yii::t('ThiscoveryFormsModule.base', 'Variable must start with a letter and use only letters, numbers, and underscores.')],
@@ -156,7 +160,7 @@ class FormField extends ActiveRecord
         }
         $this->variable = $var;
         if (trim((string)$this->internal_label) === '') {
-            $this->internal_label = (string)$this->label;
+            $this->internal_label = mb_substr((string)$this->label, 0, 255);
         }
         return $var;
     }

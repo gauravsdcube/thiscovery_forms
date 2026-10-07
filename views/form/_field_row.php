@@ -145,8 +145,10 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
         <div class="row g-3">
             <div class="col-md-6" data-cf-label-wrap>
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Label') ?></label>
-                <?= Html::textInput($namePrefix . '[label]', $field->label, [
+                <?= Html::textarea($namePrefix . '[label]', $field->label, [
                     'class' => 'form-control',
+                    'rows' => 3,
+                    'maxlength' => FormField::LABEL_MAX,
                     'data-cf-field-label' => true,
                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Shown to participants'),
                 ]) ?>
@@ -237,6 +239,7 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                 </label>
                 <?= Html::textInput($namePrefix . '[internal_label]', $field->internal_label, [
                     'class' => 'form-control',
+                    'maxlength' => 255,
                     'data-cf-internal-label' => true,
                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Name used in the builder'),
                 ]) ?>

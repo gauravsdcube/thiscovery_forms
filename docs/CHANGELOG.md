@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.39.1 (October 7, 2026)
+
+- A question **Label**, and the translated label, can be up to 4,000 characters. The name used only in the studio stays at 255 characters. Installing this version widens the stored label.
+
 ## 1.39.0 (October 6, 2026)
 
 - **Settings → Languages** has **Changing language during the survey**. Disable other languages once someone has answered or left the first page, keep the answers and stay on the current page, or start the survey again. Keeping the answers is the default. On the first page, before anyone has answered, the other languages stay available. Opening the survey again uses the source language, not the language chosen on an earlier attempt.

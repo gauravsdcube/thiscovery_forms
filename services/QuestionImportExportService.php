@@ -559,7 +559,7 @@ class QuestionImportExportService
      */
     private function sanitizeImportRow(array $row, array $payload): array
     {
-        $row['label'] = mb_substr(trim((string)($row['label'] ?? '')), 0, 255);
+        $row['label'] = mb_substr(trim((string)($row['label'] ?? '')), 0, FormField::LABEL_MAX);
         $row['internal_label'] = mb_substr(trim((string)($row['internal_label'] ?? '')), 0, 255);
         $help = (string)($row['help_text'] ?? '');
         $type = (string)($row['type'] ?? '');

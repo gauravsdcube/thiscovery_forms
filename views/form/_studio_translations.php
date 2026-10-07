@@ -180,11 +180,11 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                     <div class="cf-i18n-grid">
                         <div>
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Label') ?></label>
-                            <div class="form-control-plaintext"><?= Html::encode($field->label) ?></div>
+                            <div class="form-control-plaintext" style="white-space: pre-wrap; overflow-wrap: anywhere;"><?= Html::encode($field->label) ?></div>
                         </div>
                         <div>
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translated label') ?></label>
-                            <input type="text" name="field_i18n[<?= (int)$field->id ?>][label]" class="form-control" dir="<?= $targetDir ?>" value="<?= Html::encode((string)$fi->label) ?>">
+                            <textarea name="field_i18n[<?= (int)$field->id ?>][label]" class="form-control" rows="3" maxlength="<?= (int)FormField::LABEL_MAX ?>" dir="<?= $targetDir ?>"><?= Html::encode((string)$fi->label) ?></textarea>
                         </div>
                         <?php if ($field->help_text): ?>
                             <div>

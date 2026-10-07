@@ -3445,7 +3445,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 var $internal = $own.find('[data-cf-internal-label]').first();
                 if ($internal.length && !$internal.attr('data-cf-internal-touched') && !$.trim($internal.val())) {
-                    $internal.val(label);
+                    $internal.val(label.length > 255 ? label.slice(0, 255) : label);
                 }
             });
         });
