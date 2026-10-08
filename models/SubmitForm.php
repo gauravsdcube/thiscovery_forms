@@ -344,14 +344,36 @@ class SubmitForm extends Model
                 continue;
             }
             $posted = $otherPost[(string)$field->id] ?? '';
+            $openEnds = $field->getOpenEndOptions();
             if ($loop) {
                 $texts = is_array($posted) ? $posted : [];
                 foreach ($current as $instance => $cell) {
-                    $text = trim((string)(is_scalar($texts[(string)$instance] ?? null) ? $texts[(string)$instance] : ''));
+                    $cellPost = $texts[(string)$instance] ?? '';
+                    if (is_array($cellPost)) {
+                        foreach ($openEnds as $code) {
+                            $text = trim((string)($cellPost[$code] ?? ''));
+                            if ($text !== '') {
+                                $cell = $this->withOtherText($field, $code, $cell, $text);
+                            }
+                        }
+                        $this->values[$field->id][(string)$instance] = $cell;
+                        continue;
+                    }
+                    $text = trim((string)(is_scalar($cellPost) ? $cellPost : ''));
                     if ($text !== '') {
                         $this->values[$field->id][(string)$instance] = $this->withOtherText($field, $otherLabel, $cell, $text);
                     }
                 }
+                continue;
+            }
+            if (is_array($posted)) {
+                foreach ($openEnds as $code) {
+                    $text = trim((string)($posted[$code] ?? ''));
+                    if ($text !== '') {
+                        $current = $this->withOtherText($field, $code, $current, $text);
+                    }
+                }
+                $this->values[$field->id] = $current;
                 continue;
             }
             $text = trim((string)(is_scalar($posted) ? $posted : ''));

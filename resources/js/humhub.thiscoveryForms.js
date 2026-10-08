@@ -207,6 +207,32 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         }
 
         var fieldIndex = 0;
+        var studioDirty = false;
+        var studioSaving = false;
+        var studioWatch = false;
+        var studioLeaveOpen = false;
+        var studioBeforeUnload = function (e) {
+            if (!studioDirty) {
+                return;
+            }
+            e.preventDefault();
+            e.returnValue = '';
+        };
+        var markStudioDirty = function () {
+            if (studioDirty || studioSaving) {
+                return;
+            }
+            studioDirty = true;
+            window.addEventListener('beforeunload', studioBeforeUnload);
+            try {
+                history.pushState({ cfStudioGuard: 1 }, '');
+            } catch (err) {}
+        };
+        var clearStudioDirty = function () {
+            studioSaving = true;
+            studioDirty = false;
+            window.removeEventListener('beforeunload', studioBeforeUnload);
+        };
 
         var refreshIndexes = function () {
             $root.find('.thiscovery-forms-field-row').each(function (i) {
@@ -229,11 +255,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var reindexOptionItems = function ($list) {
             $list.find('[data-cf-option-item]').each(function (i) {
-                $(this).find('[data-cf-option-code]').attr('name', function (_, name) {
-                    return String(name || '').replace(/\[option_items\]\[\d+\]/, '[option_items][' + i + ']');
-                });
-                $(this).find('[data-cf-option-label]').attr('name', function (_, name) {
-                    return String(name || '').replace(/\[option_items\]\[\d+\]/, '[option_items][' + i + ']');
+                $(this).find('input').each(function () {
+                    var name = String($(this).attr('name') || '');
+                    $(this).attr('name', name.replace(/\[option_items\]\[\d+\]/, '[option_items][' + i + ']'));
                 });
             });
         };
@@ -300,8 +324,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-ranking-note]').toggleClass('d-none', !isRanking);
             $own.find('[data-cf-choice-note]').toggleClass('d-none', !isChoice);
             $own.find('[data-cf-max-select-wrap]').toggleClass('d-none', type !== 'checkbox');
-            $own.find('[data-cf-other-specify-wrap]').toggleClass('d-none', !isChoice);
-            $own.find('[data-cf-other-required-wrap]').toggleClass('d-none', !$own.find('[data-cf-other-specify]').is(':checked'));
+            $own.find('[data-cf-option-items]').toggleClass('is-checkbox', type === 'checkbox').toggleClass('is-ranking', isRanking);
+            $own.find('[data-cf-option-open-col], [data-cf-option-flag-hint]').toggleClass('d-none', !isChoice);
+            $own.find('[data-cf-option-exclusive-col]').toggleClass('d-none', type !== 'checkbox');
             $own.find('[data-cf-options-hint-ranking]').toggleClass('d-none', !isRanking);
             $own.find('[data-cf-options-hint-choice]').toggleClass('d-none', isRanking);
             $own.find('[data-cf-required-wrap]').toggleClass('d-none', hideRequired);
@@ -615,6 +640,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var writeRegions = function ($row, regions) {
             $row.find('[data-cf-image-regions]').val(JSON.stringify(regions));
+            markStudioDirty();
         };
 
         var renderHotspotBuilder = function ($row) {
@@ -980,6 +1006,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     $row.find('[data-cf-field-label]').trigger('focus');
                 }
             }, 50);
+            markStudioDirty();
             return $row;
         };
 
@@ -1518,6 +1545,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 e.stopImmediatePropagation();
                 return false;
             }
+            clearStudioDirty();
             allowStudioSubmit = false;
             $(this).find('[data-cf-target]').filter('input, select, textarea').prop('disabled', true);
             refreshIndexes();
@@ -1957,6 +1985,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 });
                 $(document).off('.cfBuilderSort');
                 if (moved) {
+                    markStudioDirty();
                     remountRichEditors($moved);
                     setTimeout(function () {
                         initRichEditors($moved);
@@ -2078,6 +2107,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $row = $(this).closest('.thiscovery-forms-field-row');
                 var $prev = $row.prev('.thiscovery-forms-field-row');
                 if ($prev.length) {
+                    markStudioDirty();
                     remountRichEditors($row);
                     $row.insertBefore($prev);
                     refreshIndexes();
@@ -2093,6 +2123,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $row = $(this).closest('.thiscovery-forms-field-row');
                 var $next = $row.next('.thiscovery-forms-field-row');
                 if ($next.length) {
+                    markStudioDirty();
                     remountRichEditors($row);
                     $row.insertAfter($next);
                     refreshIndexes();
@@ -2126,6 +2157,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             $root.find('[data-cf-fields]').empty();
             $root.find('form.cf-studio__form').data('cf-clear-fields-confirmed', true);
+            markStudioDirty();
             refreshIndexes();
             refreshConditionOptions();
         });
@@ -2140,6 +2172,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             var $oldBody = $row.parent('[data-cf-group-body]');
             $row.remove();
+            markStudioDirty();
             if ($oldBody.length) {
                 refreshGroupEmpty($oldBody);
             }
@@ -3490,7 +3523,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             var $clone = $first.clone();
-            $clone.find('input').val('');
+            $clone.find('input[type="text"]').val('');
+            $clone.find('input[type="checkbox"]').prop('checked', false);
+            $clone.find('[data-cf-option-open-required-wrap]').addClass('d-none');
             $list.append($clone);
             reindexOptionItems($list);
         });
@@ -3500,7 +3535,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var $item = $(this).closest('[data-cf-option-item]');
             var $list = $item.closest('[data-cf-option-items]');
             if ($list.find('[data-cf-option-item]').length <= 1) {
-                $item.find('input').val('');
+                $item.find('input[type="text"], input:not([type])').val('');
+                $item.find('input[type="checkbox"]').prop('checked', false);
+                $item.find('[data-cf-option-open-required-wrap]').addClass('d-none');
                 return;
             }
             $item.remove();
@@ -3539,8 +3576,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             refreshTypeUi($(this).closest('.thiscovery-forms-field-row'));
         });
 
-        $root.on('change', '[data-cf-other-specify]', function () {
-            $(this).closest('[data-cf-other-specify-wrap]').find('[data-cf-other-required-wrap]').toggleClass('d-none', !$(this).is(':checked'));
+        $root.on('change', '[data-cf-option-open]', function () {
+            var on = $(this).is(':checked');
+            var $wrap = $(this).closest('[data-cf-option-item]').find('[data-cf-option-open-required-wrap]');
+            $wrap.toggleClass('d-none', !on);
+            if (on && !$wrap.find('[data-cf-option-open-required]').is(':checked')) {
+                $wrap.find('[data-cf-option-open-required]').prop('checked', true);
+            }
         });
 
         $root.on('change', '[data-cf-hidden-field]', function () {
@@ -3649,6 +3691,221 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         });
         layoutStudioPanes();
         initIntegritySettings();
+
+        var pendingLeave = null;
+        var studioBaseline = '';
+        var snapshotStudio = function () {
+            var $form = $root.find('form.cf-studio__form');
+            if (!$form.length) {
+                return '';
+            }
+            try {
+                syncRichEditors();
+            } catch (err) {}
+            return JSON.stringify($form.serializeArray().filter(function (item) {
+                var name = String(item.name || '');
+                return name !== 'studio_tab' && name !== 'studio_section' && name.indexOf('_csrf') !== 0;
+            }));
+        };
+        var studioIsDirty = function () {
+            if (studioSaving) {
+                return false;
+            }
+            if (!studioWatch) {
+                return studioDirty;
+            }
+            if (snapshotStudio() !== studioBaseline) {
+                markStudioDirty();
+            }
+            return studioDirty;
+        };
+        var leaveStudio = function () {
+            var pending = pendingLeave;
+            pendingLeave = null;
+            clearStudioDirty();
+            studioBaseline = snapshotStudio();
+            if (!pending) {
+                return;
+            }
+            if (pending.type === 'back') {
+                history.go(pending.steps || -2);
+                return;
+            }
+            if (pending.url) {
+                window.location.assign(pending.url);
+            }
+        };
+        var askStayOrLeave = function () {
+            if (studioLeaveOpen || !studioIsDirty()) {
+                return;
+            }
+            studioLeaveOpen = true;
+            var body = module.config.unsavedBody || 'You have changes that are not saved. Stay on this page if you want to save them yourself.';
+            var note = $('<p class="cf-unsaved-note"></p>').text(body);
+            require('ui.modal').confirm({
+                header: module.config.unsavedHeader || 'Unsaved changes',
+                body: note.prop('outerHTML'),
+                confirmText: module.config.unsavedLeave || 'Leave without saving',
+                cancelText: module.config.unsavedStay || 'Stay on this page'
+            }).then(function (confirmed) {
+                studioLeaveOpen = false;
+                if (confirmed) {
+                    leaveStudio();
+                } else {
+                    pendingLeave = null;
+                }
+            }).catch(function () {
+                studioLeaveOpen = false;
+                pendingLeave = null;
+            });
+        };
+        var sameStudioPage = function (url) {
+            try {
+                var next = new URL(url, window.location.href);
+                return next.origin === window.location.origin
+                    && next.pathname === window.location.pathname
+                    && next.search === window.location.search;
+            } catch (err) {
+                return false;
+            }
+        };
+        var destinationUrl = function (link) {
+            if (!link) {
+                return '';
+            }
+            var href = link.getAttribute('href') || '';
+            if (href === '' || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) {
+                return '';
+            }
+            var target = (link.getAttribute('target') || '').toLowerCase();
+            if (target === '_blank') {
+                return '';
+            }
+            if (link.getAttribute('data-bs-toggle') || link.getAttribute('data-bs-target')) {
+                return '';
+            }
+            if (sameStudioPage(link.href)) {
+                return '';
+            }
+            return link.href;
+        };
+        var holdStudioNavigation = function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.stopImmediatePropagation) {
+                e.stopImmediatePropagation();
+            }
+        };
+        var onStudioLeaveClick = function (e) {
+            if (studioSaving) {
+                return;
+            }
+            if (e.button && e.button !== 0) {
+                return;
+            }
+            if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) {
+                return;
+            }
+            var node = e.target;
+            if (node && node.nodeType === 3) {
+                node = node.parentElement;
+            }
+            if (!node || !node.closest) {
+                return;
+            }
+            var url = destinationUrl(node.closest('a[href]'));
+            if (!url) {
+                return;
+            }
+            if (studioLeaveOpen) {
+                holdStudioNavigation(e);
+                return;
+            }
+            if (!studioIsDirty()) {
+                return;
+            }
+            pendingLeave = { type: 'href', url: url };
+            holdStudioNavigation(e);
+            askStayOrLeave();
+        };
+        var onStudioPop = function () {
+            if (!studioIsDirty()) {
+                return;
+            }
+            try {
+                history.pushState({ cfStudioGuard: 1 }, '');
+            } catch (err) {}
+            pendingLeave = { type: 'back', steps: -2 };
+            askStayOrLeave();
+        };
+        var onStudioPjax = function (e, xhr, settings) {
+            if (studioSaving || !settings) {
+                return;
+            }
+            var container = settings.container;
+            var containerId = '';
+            if (typeof container === 'string') {
+                containerId = container;
+            } else if (container && container.id) {
+                containerId = '#' + container.id;
+            }
+            if (containerId && containerId.indexOf('layout-content') === -1) {
+                return;
+            }
+            var url = settings.url || '';
+            if (!url || sameStudioPage(url)) {
+                return;
+            }
+            if (!studioIsDirty()) {
+                return;
+            }
+            e.preventDefault();
+            if (studioLeaveOpen) {
+                return false;
+            }
+            pendingLeave = { type: 'href', url: url };
+            askStayOrLeave();
+            return false;
+        };
+        if (module._studioLeaveClick) {
+            window.removeEventListener('click', module._studioLeaveClick, true);
+            document.removeEventListener('click', module._studioLeaveClick, true);
+        }
+        if (module._studioPop) {
+            window.removeEventListener('popstate', module._studioPop);
+        }
+        module._studioLeaveClick = onStudioLeaveClick;
+        module._studioPop = onStudioPop;
+        window.addEventListener('click', onStudioLeaveClick, true);
+        window.addEventListener('popstate', onStudioPop);
+        $(document).off('pjax:beforeSend.cfStudioLeave').on('pjax:beforeSend.cfStudioLeave', onStudioPjax);
+        var noteStudioEdit = function (e) {
+            if (!studioWatch || studioSaving) {
+                return;
+            }
+            var field = e.target;
+            if (!field || !field.closest || !field.closest('form.cf-studio__form')) {
+                return;
+            }
+            if (field.isContentEditable) {
+                markStudioDirty();
+                return;
+            }
+            var name = field.getAttribute ? (field.getAttribute('name') || '') : '';
+            if (!name || name === 'studio_tab' || name === 'studio_section') {
+                return;
+            }
+            markStudioDirty();
+        };
+        var studioNode = $root.get(0);
+        if (studioNode) {
+            studioNode.addEventListener('input', noteStudioEdit, true);
+            studioNode.addEventListener('change', noteStudioEdit, true);
+        }
+        window.setTimeout(function () {
+            studioBaseline = snapshotStudio();
+            studioWatch = true;
+        }, 500);
     };
 
     // Smooth scrolling only when the person has not asked for less motion (A11Y-9).
@@ -4461,7 +4718,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var asChoicePair = function (opt) {
             if (opt && typeof opt === 'object' && opt.code !== undefined) {
-                return { code: String(opt.code), label: String(opt.label != null ? opt.label : opt.code) };
+                return { code: String(opt.code), label: String(opt.label != null ? opt.label : opt.code), openEnd: !!opt.openEnd };
             }
             return { code: String(opt), label: String(opt) };
         };
@@ -4541,7 +4798,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return true;
             }
             return keys.some(function (key) {
-                return isOtherOption(key, pairs) && value.indexOf(otherPrefix(key)) === 0;
+                var marked = pairs.some(function (p) {
+                    p = asChoicePair(p);
+                    return !!p.openEnd && (p.code === key || p.label === key);
+                });
+                return (marked || isOtherOption(key, pairs)) && value.indexOf(otherPrefix(key)) === 0;
             });
         };
 
@@ -4552,7 +4813,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         };
 
         var makeOtherSpecifyWrap = function (opt, fieldId, savedText, optional) {
-            var id = 'cf-input-' + fieldId + '-other';
+            var id = 'cf-input-' + fieldId + '-other-' + String(opt).replace(/[^a-z0-9_-]/gi, '');
             var label = (module.config && module.config.specifyLabel) || 'Please specify';
             var placeholder = (module.config && module.config.specifyPlaceholder) || 'Type your answer';
             var $wrap = $('<div class="cf-other-specify d-none"/>')
@@ -5441,7 +5702,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $q = $el.closest('[data-cf-field-id]');
                 var fieldId = String($q.attr('data-cf-field-id') || '');
                 var savedOther = String($q.find('[data-cf-other-text]').val() || '');
-                var otherPair = next.filter(function (o) { return isOtherOption(o.code, next) || isOtherOption(o.label, next); })[0];
+                var otherPair = next.filter(function (o) { return o.openEnd || isOtherOption(o.code, next) || isOtherOption(o.label, next); })[0];
                 var otherOpt = otherPair ? otherPair.code : '';
                 if ($el.is('select')) {
                     var cur = String($el.val() || '');
@@ -5483,7 +5744,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     }
                     $lab.append($input).append($('<span/>').text(opt.label));
                     $el.append($lab);
-                    if (otherPair && opt.code === otherPair.code) {
+                    if (opt.openEnd || (otherPair && opt.code === otherPair.code)) {
                         $el.append(makeOtherSpecifyWrap(opt.code, fieldId, savedOther, String($q.attr('data-cf-other-optional') || '') === '1'));
                     }
                 });

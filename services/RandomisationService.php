@@ -426,7 +426,7 @@ class RandomisationService
         $cfg = $field->getRandomiseConfig();
         $exclusive = $field->shufflePinnedLabels();
         foreach ($field->getChoicePairs() as $pair) {
-            if (FormField::isOtherOption($pair['code']) || FormField::isOtherOption($pair['label']) || in_array((string)$pair['code'], $exclusive, true)) {
+            if (FormField::isOtherOption($pair['code']) || FormField::isOtherOption($pair['label']) || $field->isOpenEndKey($pair['code']) || in_array((string)$pair['code'], $exclusive, true)) {
                 $cfg['pinLast'][] = (string)$pair['code'];
             }
         }

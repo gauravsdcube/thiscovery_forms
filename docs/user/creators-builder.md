@@ -50,20 +50,13 @@ Each question can also have:
 
 **Choices:** in the studio, each option has an optional **Internal code** and a required **Participant label**. Respondents only see the label. Answers, logic, and CSV export use the code when you set one. If you set a code on any choice, every choice on that question needs a code. In CSV import you can still write `code | Label` on one line.
 
-**Other:** on a dropdown, a radio, or a checkbox, name one choice `Other`. That can be the participant label or the internal code. The fill page then opens a text box when that choice is selected. The box is not shown in the studio; it appears while someone is answering.
-
-The choice counts as Other when the label or the code is exactly `Other`, or a phrase such as `Other (please specify)`, `Other, please describe`, or `Other - please state`. `Something else` does not open the box.
-
-Under the choices, for dropdown, radio, and checkbox:
-
-- **Ask for extra text when Other is selected** is on by default. Untick it when a later question already collects that detail. Other can still be selected, and no box opens.
-- **Extra text is required** is on by default, and only while the box is on. Next and Submit wait until the person types something. Untick it to let them select Other and continue with the box empty.
+**Open-ended:** on a dropdown, a radio, or a checkbox, tick **Open-ended** on that choice. The fill page then opens a text box when the choice is selected. **Required** on the same row means Next and Submit wait until the person types something. Untick Required to let them select the choice and continue with the box empty. A choice whose label or code is `Other`, or a phrase such as `Other (please specify)`, already has Open-ended ticked. `Something else` does not, until you tick it. More than one choice on the question can be open-ended.
 
 A typed answer is stored as the choice plus the text, for example `Other: my own answer`. If the extra text is not required and the box is left empty, the stored answer is the choice on its own.
 
 Ranking, grids, MaxDiff, and best-worst do not open this box.
 
-**Checkboxes:** set **Maximum selections** (for example 3) and an **Exclusive option** such as `None of these`. Exclusive choices clear the others when ticked.
+**Checkboxes:** set **Minimum selections** and **Maximum selections** on the question (for example a maximum of 3). Tick **Exclusive** on a choice such as `None of these`. Several choices can be exclusive. Ticking one clears the others, and it cannot be combined with any other choice. A list already saved with `|` stays ticked.
 
 **Page breaks** split the fill experience. Give each page a clear title. The **page key** is used by skip logic and “go to page” actions — keep keys stable once people have started filling. Logic or branch rules on a page break run when the person clicks **Next** on the page before that break.
 
@@ -83,7 +76,7 @@ Tick **Required** when the person must answer before they can continue or submit
 
 ## Options and grids
 
-For choice questions, add rows under **Choices** (internal code + participant label). Grids need row labels and column labels. Ranking and MaxDiff need a complete set of items.
+For choice questions, add rows under **Choices**. Each row has the code, the text respondents see, and the settings for that choice. Tick **Open-ended** to ask for extra text when that choice is selected. **Required** under it means the extra text cannot be left empty. On a checkbox, tick **Exclusive** for a choice such as “None of these” that cannot be combined with the others. A choice already named Other, or already set as exclusive, keeps that setting. Grids need row labels and column labels. Ranking and MaxDiff need a complete set of items.
 
 **Randomise options** gives each response its own order. There is no switch that shows every respondent the same shuffled order. Other and exclusive options stay at the end. The order stored is the order first shown.
 

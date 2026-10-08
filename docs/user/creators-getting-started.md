@@ -44,7 +44,7 @@ Save applies to the whole form from either top tab. A successful save shows **Fo
 
 ### Header and footer buttons
 
-- **Back to forms** — return to the list. Unsaved builder changes are lost if you have not saved.
+- **Back to forms** — return to the list. If the form builder or Settings have changes that are not saved, you can leave without saving or stay on the page and use **Save form**. The same choice appears for the top bar and for other links.
 - **Preview** — saves the form, then opens a **test** copy of the fill page. Test answers are stored separately. They do **not** count in dashboards, totals, or CSV.
 - **Save form** — saves and **stays in the studio**. Use this while you are still building. You will see **Form saved.**
 - **Delete form** — moves the form to the **trash**. Answers are kept and the form can be restored. Empty the trash only when you mean to remove it for good.

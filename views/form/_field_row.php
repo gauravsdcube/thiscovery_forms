@@ -653,36 +653,84 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                 $choicePairs = [['code' => '', 'label' => '']];
             }
             ?>
-            <div class="cf-option-items" data-cf-option-items>
-                <div class="row g-2 mb-1 text-muted small d-none d-md-flex">
-                    <div class="col-md-4"><?= Yii::t('ThiscoveryFormsModule.base', 'Internal code') ?></div>
-                    <div class="col-md-7"><?= Yii::t('ThiscoveryFormsModule.base', 'Participant label') ?></div>
+            <?php
+            $openEndCodes = $field->getOpenEndOptions();
+            $exclusiveCodes = $field->getExclusiveOptions();
+            $optionListClass = 'cf-option-items';
+            if ($type === FormField::TYPE_CHECKBOX) {
+                $optionListClass .= ' is-checkbox';
+            } elseif ($type === FormField::TYPE_RANKING) {
+                $optionListClass .= ' is-ranking';
+            }
+            ?>
+            <div class="<?= $optionListClass ?>" data-cf-option-items>
+                <div class="cf-option-row cf-option-row--head">
+                    <span><?= Yii::t('ThiscoveryFormsModule.base', 'Code') ?></span>
+                    <span><?= Yii::t('ThiscoveryFormsModule.base', 'Text') ?></span>
+                    <span class="cf-option-open-col<?= in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true) ? '' : ' d-none' ?>" data-cf-option-open-col><?= Yii::t('ThiscoveryFormsModule.base', 'Open-ended') ?></span>
+                    <span class="cf-option-exclusive-col<?= $type === FormField::TYPE_CHECKBOX ? '' : ' d-none' ?>" data-cf-option-exclusive-col><?= Yii::t('ThiscoveryFormsModule.base', 'Exclusive') ?></span>
+                    <span></span>
                 </div>
                 <?php foreach ($choicePairs as $oi => $pair): ?>
-                    <div class="row g-2 mb-2 align-items-center" data-cf-option-item>
-                        <div class="col-md-4">
-                            <?= Html::textInput($namePrefix . '[option_items][' . $oi . '][code]', $pair['code'] ?? '', [
-                                'class' => 'form-control',
-                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Code'),
-                                'data-cf-option-code' => true,
-                                'autocomplete' => 'off',
-                            ]) ?>
+                    <?php
+                    $pairCode = (string)($pair['code'] ?? '');
+                    $pairLabel = (string)($pair['label'] ?? '');
+                    $isOpen = in_array($pairCode, $openEndCodes, true) || ($pairLabel !== '' && in_array($pairLabel, $openEndCodes, true));
+                    $isExclusive = in_array($pairCode, $exclusiveCodes, true) || ($pairLabel !== '' && in_array($pairLabel, $exclusiveCodes, true));
+                    $openRequired = $isOpen && $field->openEndTextRequired($pairCode !== '' ? $pairCode : $pairLabel);
+                    ?>
+                    <div class="cf-option-row" data-cf-option-item>
+                        <?= Html::textInput($namePrefix . '[option_items][' . $oi . '][code]', $pairCode, [
+                            'class' => 'form-control',
+                            'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Code'),
+                            'data-cf-option-code' => true,
+                            'autocomplete' => 'off',
+                            'aria-label' => Yii::t('ThiscoveryFormsModule.base', 'Code'),
+                        ]) ?>
+                        <?= Html::textInput($namePrefix . '[option_items][' . $oi . '][label]', $pairLabel, [
+                            'class' => 'form-control',
+                            'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Text'),
+                            'data-cf-option-label' => true,
+                            'aria-label' => Yii::t('ThiscoveryFormsModule.base', 'Text'),
+                        ]) ?>
+                        <div class="cf-option-flag cf-option-open-col<?= in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true) ? '' : ' d-none' ?>" data-cf-option-open-col>
+                            <?= Html::hiddenInput($namePrefix . '[option_items][' . $oi . '][open_end]', '0') ?>
+                            <label title="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Ask for extra text when this choice is selected')) ?>">
+                                <?= Html::checkbox($namePrefix . '[option_items][' . $oi . '][open_end]', $isOpen, [
+                                    'value' => '1',
+                                    'uncheck' => null,
+                                    'data-cf-option-open' => true,
+                                ]) ?>
+                            </label>
+                            <label class="cf-option-flag__sub<?= $isOpen ? '' : ' d-none' ?>" data-cf-option-open-required-wrap title="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'Extra text is required')) ?>">
+                                <?= Html::hiddenInput($namePrefix . '[option_items][' . $oi . '][open_end_required]', '0') ?>
+                                <?= Html::checkbox($namePrefix . '[option_items][' . $oi . '][open_end_required]', $openRequired, [
+                                    'value' => '1',
+                                    'uncheck' => null,
+                                    'data-cf-option-open-required' => true,
+                                ]) ?>
+                                <span><?= Yii::t('ThiscoveryFormsModule.base', 'Required') ?></span>
+                            </label>
                         </div>
-                        <div class="col-md-7">
-                            <?= Html::textInput($namePrefix . '[option_items][' . $oi . '][label]', $pair['label'] ?? '', [
-                                'class' => 'form-control',
-                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Label'),
-                                'data-cf-option-label' => true,
-                            ]) ?>
+                        <div class="cf-option-flag cf-option-exclusive-col<?= $type === FormField::TYPE_CHECKBOX ? '' : ' d-none' ?>" data-cf-option-exclusive-col>
+                            <?= Html::hiddenInput($namePrefix . '[option_items][' . $oi . '][exclusive]', '0') ?>
+                            <label title="<?= Html::encode(Yii::t('ThiscoveryFormsModule.base', 'This choice cannot be combined with the others')) ?>">
+                                <?= Html::checkbox($namePrefix . '[option_items][' . $oi . '][exclusive]', $isExclusive, [
+                                    'value' => '1',
+                                    'uncheck' => null,
+                                    'data-cf-option-exclusive' => true,
+                                ]) ?>
+                            </label>
                         </div>
-                        <div class="col-md-1">
-                            <button type="button" class="btn btn-light btn-sm" data-cf-remove-option title="<?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?>">
-                                <i class="fa fa-times"></i>
-                            </button>
-                        </div>
+                        <button type="button" class="btn btn-light btn-sm" data-cf-remove-option title="<?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?>">
+                            <i class="fa fa-times"></i>
+                        </button>
                     </div>
                 <?php endforeach; ?>
             </div>
+            <p class="cf-hint text-muted mt-2 mb-0<?= in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true) ? '' : ' d-none' ?>" data-cf-option-flag-hint>
+                <?= Yii::t('ThiscoveryFormsModule.base', 'Tick Open-ended on a choice to ask for extra text. Tick Required when that text cannot be left empty. On a checkbox, tick Exclusive for a choice such as “None of these” that cannot be combined with the others.') ?>
+            </p>
             <button type="button" class="btn btn-light btn-sm" data-cf-add-option>
                 <i class="fa fa-plus"></i>
                 <?= Yii::t('ThiscoveryFormsModule.base', 'Add choice') ?>
@@ -697,41 +745,8 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Randomize choice order per respondent') ?>
                 </label>
             </div>
-            <?php $showOtherSpecify = in_array($type, [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX], true); ?>
-            <div class="mt-2<?= $showOtherSpecify ? '' : ' d-none' ?>" data-cf-other-specify-wrap>
-                <div class="cf-switch">
-                    <label>
-                        <?= Html::hiddenInput($namePrefix . '[other_specify]', '0') ?>
-                        <?= Html::checkbox($namePrefix . '[other_specify]', $field->allowsOtherSpecify(), [
-                            'value' => '1',
-                            'uncheck' => null,
-                            'data-cf-other-specify' => true,
-                        ]) ?>
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Ask for extra text when Other is selected') ?>
-                    </label>
-                </div>
-                <p class="cf-hint text-muted mb-2">
-                    <?= Yii::t('ThiscoveryFormsModule.base', 'A choice labelled Other opens a text box. Turn this off if a later question already collects the detail.') ?>
-                </p>
-                <div class="<?= $field->allowsOtherSpecify() ? '' : ' d-none' ?>" data-cf-other-required-wrap>
-                    <div class="cf-switch">
-                        <label>
-                            <?= Html::hiddenInput($namePrefix . '[other_specify_required]', '0') ?>
-                            <?= Html::checkbox($namePrefix . '[other_specify_required]', $field->requiresOtherText(), [
-                                'value' => '1',
-                                'uncheck' => null,
-                                'data-cf-other-required' => true,
-                            ]) ?>
-                            <?= Yii::t('ThiscoveryFormsModule.base', 'Extra text is required') ?>
-                        </label>
-                    </div>
-                    <p class="cf-hint text-muted mb-0">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Leave this off to let someone select Other and continue without typing.') ?>
-                    </p>
-                </div>
-            </div>
             <div class="row g-3 mt-1<?= $type === FormField::TYPE_CHECKBOX ? '' : ' d-none' ?>" data-cf-max-select-wrap>
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Minimum selections') ?>
                         <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                     </label>
@@ -742,7 +757,7 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                         'data-cf-min-select' => true,
                     ]) ?>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-6">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Maximum selections') ?>
                         <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
                     </label>
@@ -751,16 +766,6 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
                         'min' => 1,
                         'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'No limit'),
                         'data-cf-max-select' => true,
-                    ]) ?>
-                </div>
-                <div class="col-md-4">
-                    <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Exclusive option') ?>
-                        <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
-                    </label>
-                    <?= Html::textInput($namePrefix . '[exclusive_option]', implode('|', $field->getExclusiveOptions()), [
-                        'class' => 'form-control',
-                        'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'e.g. None of these'),
-                        'data-cf-exclusive-option' => true,
                     ]) ?>
                 </div>
                 <div class="col-12">

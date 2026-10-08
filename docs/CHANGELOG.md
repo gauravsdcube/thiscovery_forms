@@ -2,6 +2,12 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.40.0 (October 8, 2026)
+
+- On a dropdown, radio, or checkbox, each choice has **Open-ended**. Tick it to ask for extra text when that choice is selected. **Required** on that choice means the extra text cannot be left empty. A choice already named Other keeps that setting. More than one choice can ask for extra text.
+- On a checkbox, **Exclusive** is a tick on the choice. Several choices can be exclusive. A respondent can select only one of them, and it cannot be combined with any other choice. A list already saved with `|` shows those ticks. Minimum and maximum selections stay on the question.
+- Leaving the studio with unsaved changes in the form builder or in Settings asks **Leave without saving** or **Stay on this page**. Saving stays on **Save form**. The same warning covers the top bar, other links, **Back to forms**, and the browser Back button.
+
 ## 1.39.1 (October 7, 2026)
 
 - A question **Label**, and the translated label, can be up to 4,000 characters. The name used only in the studio stays at 255 characters. Installing this version widens the stored label.

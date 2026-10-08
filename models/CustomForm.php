@@ -2991,10 +2991,19 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     $minSelect,
                     $minSelectAll
                 );
-                if (array_key_exists('other_specify', $row)) {
+                $choiceTicks = false;
+                if (is_array($optionSource)) {
+                    foreach ($optionSource as $item) {
+                        if (is_array($item) && (array_key_exists('open_end', $item) || array_key_exists('exclusive', $item))) {
+                            $choiceTicks = true;
+                            break;
+                        }
+                    }
+                }
+                if (!$choiceTicks && array_key_exists('other_specify', $row)) {
                     $field->setAllowsOtherSpecify(!in_array($row['other_specify'], [0, '0', false, 'false', ''], true));
                 }
-                if (array_key_exists('other_specify_required', $row)) {
+                if (!$choiceTicks && array_key_exists('other_specify_required', $row)) {
                     $field->setRequiresOtherText(!in_array($row['other_specify_required'], [0, '0', false, 'false', ''], true));
                 }
             } elseif ($type === FormField::TYPE_NUMBER) {

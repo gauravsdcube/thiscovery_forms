@@ -768,37 +768,30 @@ class FormField extends ActiveRecord
 
     public function findOtherOption(?array $options = null): ?string
     {
-        if (!$this->allowsOtherSpecify()) {
+        $codes = $this->getOpenEndOptions();
+        if (!$codes) {
             return null;
+        }
+        if ($options === null) {
+            return $codes[0];
+        }
+        $wanted = [];
+        foreach ($options as $opt) {
+            if (is_array($opt)) {
+                $wanted[] = (string)($opt['code'] ?? $opt['label'] ?? '');
+            } else {
+                $wanted[] = (string)$opt;
+            }
         }
         $pairs = $this->getChoicePairs();
-        if ($options !== null) {
-            $wanted = [];
-            foreach ($options as $opt) {
-                if (is_array($opt)) {
-                    $wanted[] = (string)($opt['code'] ?? $opt['label'] ?? '');
-                } else {
-                    $wanted[] = (string)$opt;
-                }
+        foreach ($codes as $code) {
+            if (in_array($code, $wanted, true)) {
+                return $code;
             }
             foreach ($pairs as $pair) {
-                if (!in_array($pair['code'], $wanted, true) && !in_array($pair['label'], $wanted, true)) {
-                    continue;
+                if ($pair['code'] === $code && in_array($pair['label'], $wanted, true)) {
+                    return $code;
                 }
-                if (self::isOtherOption($pair['code']) || self::isOtherOption($pair['label'])) {
-                    return $pair['code'];
-                }
-            }
-            foreach ($wanted as $opt) {
-                if (self::isOtherOption($opt)) {
-                    return $opt;
-                }
-            }
-            return null;
-        }
-        foreach ($pairs as $pair) {
-            if (self::isOtherOption($pair['code']) || self::isOtherOption($pair['label'])) {
-                return $pair['code'];
             }
         }
         return null;
@@ -838,8 +831,8 @@ class FormField extends ActiveRecord
                 return true;
             }
             foreach ([$pair['code'], $pair['label']] as $key) {
-                // Only this question's own Other option, and only when it asks for text (SCO-15).
-                if (!self::isOtherOption($key) || !$this->allowsOtherSpecify()) {
+                // Only a choice marked open-ended, including an older choice named Other (SCO-15).
+                if (!$this->isOpenEndKey($key)) {
                     continue;
                 }
                 $prefix = self::otherSpecifyPrefix($key);
@@ -868,7 +861,7 @@ class FormField extends ActiveRecord
                     return true;
                 }
                 foreach ($keys as $key) {
-                    if (self::isOtherOption($key) && str_starts_with($value, self::otherSpecifyPrefix($key))) {
+                    if ($this->isOpenEndKey($key) && str_starts_with($value, self::otherSpecifyPrefix($key))) {
                         if ($expectedIsPair || $expected === $key) {
                             return true;
                         }
@@ -909,15 +902,23 @@ class FormField extends ActiveRecord
         if (!$this->requiresOtherText()) {
             return false;
         }
-        $label = $this->findOtherOption();
         $items = is_array($value) ? $value : [$value];
-        foreach ($items as $item) {
-            $item = (string)$item;
-            if ($label !== null && $item === $label) {
-                return true;
+        foreach ($this->getOpenEndOptions() as $code) {
+            if (!$this->openEndTextRequired($code)) {
+                continue;
             }
-            if ($label === null && self::isOtherOption($item)) {
-                return true;
+            $label = $code;
+            foreach ($this->getChoicePairs() as $pair) {
+                if ($pair['code'] === $code) {
+                    $label = $pair['label'];
+                    break;
+                }
+            }
+            foreach ($items as $item) {
+                $item = (string)$item;
+                if ($item === $code || $item === $label) {
+                    return true;
+                }
             }
         }
 
@@ -1081,7 +1082,148 @@ class FormField extends ActiveRecord
         if ($exclusive === '') {
             return [];
         }
-        return array_values(array_filter(array_map('trim', explode('|', $exclusive)), 'strlen'));
+        return $this->matchExclusiveTokens($exclusive, $this->getChoicePairs());
+    }
+
+    /**
+     * Exclusive choices are stored joined by | . Older questions used a comma, such as "1,12,13".
+     * A comma is only treated as a separator when every piece is a choice code or label, so a label
+     * that itself contains a comma stays one choice.
+     *
+     * @param array<int, array{code:string,label:string}> $pairs
+     * @return string[]
+     */
+    private function matchExclusiveTokens(string $raw, array $pairs): array
+    {
+        $match = static function (string $token) use ($pairs): ?string {
+            $token = trim($token);
+            if ($token === '') {
+                return null;
+            }
+            foreach ($pairs as $pair) {
+                if ($token === (string)$pair['code'] || $token === (string)$pair['label']) {
+                    return (string)$pair['code'];
+                }
+            }
+            return null;
+        };
+        $raw = trim($raw);
+        if ($raw === '') {
+            return [];
+        }
+        $whole = $match($raw);
+        if ($whole !== null) {
+            return [$whole];
+        }
+        $out = [];
+        foreach (explode('|', $raw) as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            $one = $match($part);
+            if ($one !== null) {
+                $out[] = $one;
+                continue;
+            }
+            $bits = array_map('trim', explode(',', $part));
+            $codes = [];
+            $ok = count(array_filter($bits, static fn($bit) => $bit !== '')) > 1;
+            foreach ($bits as $bit) {
+                if ($bit === '') {
+                    continue;
+                }
+                $code = $match($bit);
+                if ($code === null) {
+                    $ok = false;
+                    break;
+                }
+                $codes[] = $code;
+            }
+            if ($ok && $codes) {
+                array_push($out, ...$codes);
+            } else {
+                $out[] = $part;
+            }
+        }
+        return array_values(array_unique($out));
+    }
+
+    /**
+     * Choices that ask for extra text. An older form with no explicit list still uses a choice named Other.
+     *
+     * @return string[]
+     */
+    public function getOpenEndOptions(): array
+    {
+        if (!in_array($this->type, [self::TYPE_DROPDOWN, self::TYPE_RADIO, self::TYPE_CHECKBOX], true)) {
+            return [];
+        }
+        $decoded = $this->decodedOptions();
+        if (array_key_exists('openEndOptions', $decoded) && is_array($decoded['openEndOptions'])) {
+            return array_values(array_filter(array_map('strval', $decoded['openEndOptions']), 'strlen'));
+        }
+        if (!$this->allowsOtherSpecify()) {
+            return [];
+        }
+        $codes = [];
+        foreach ($this->getChoicePairs() as $pair) {
+            if (self::isOtherOption($pair['code']) || self::isOtherOption($pair['label'])) {
+                $codes[] = $pair['code'];
+            }
+        }
+        return $codes;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getOpenEndOptional(): array
+    {
+        $decoded = $this->decodedOptions();
+        if (!array_key_exists('openEndOptional', $decoded) || !is_array($decoded['openEndOptional'])) {
+            return [];
+        }
+        return array_values(array_filter(array_map('strval', $decoded['openEndOptional']), 'strlen'));
+    }
+
+    public function isOpenEndKey(string $key): bool
+    {
+        $key = trim($key);
+        if ($key === '') {
+            return false;
+        }
+        foreach ($this->getOpenEndOptions() as $code) {
+            if ($key === $code) {
+                return true;
+            }
+            foreach ($this->getChoicePairs() as $pair) {
+                if ($pair['code'] === $code && $key === $pair['label']) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public function openEndTextRequired(string $code): bool
+    {
+        if (!$this->isOpenEndKey($code)) {
+            return false;
+        }
+        $decoded = $this->decodedOptions();
+        if (array_key_exists('openEndOptional', $decoded) && is_array($decoded['openEndOptional'])) {
+            if (in_array($code, $decoded['openEndOptional'], true)) {
+                return false;
+            }
+            foreach ($this->getChoicePairs() as $pair) {
+                if ($pair['code'] === $code && in_array($pair['label'], $decoded['openEndOptional'], true)) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        return $this->requiresOtherText();
     }
 
     /**
@@ -1147,6 +1289,59 @@ class FormField extends ActiveRecord
             $decoded['otherSpecifyRequired'] = false;
         }
         $this->writeDecodedOptions($decoded);
+    }
+
+    /**
+     * Ticks on each choice row. Null when the save is an older import that has no per-choice ticks.
+     *
+     * @param array<int|string,mixed> $rows
+     * @return array{exclusive:string[],openEnd:string[],optional:string[]}|null
+     */
+    private function choiceFlagsFromRows(array $rows): ?array
+    {
+        $seen = false;
+        foreach ($rows as $row) {
+            if (is_array($row) && (array_key_exists('open_end', $row) || array_key_exists('exclusive', $row))) {
+                $seen = true;
+                break;
+            }
+        }
+        if (!$seen) {
+            return null;
+        }
+        $choice = in_array($this->type, [self::TYPE_DROPDOWN, self::TYPE_RADIO, self::TYPE_CHECKBOX], true);
+        $checkbox = $this->type === self::TYPE_CHECKBOX;
+        $exclusive = [];
+        $openEnd = [];
+        $optional = [];
+        foreach ($rows as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $code = trim((string)($row['code'] ?? ''));
+            $label = trim((string)($row['label'] ?? ''));
+            if ($code === '' && $label === '') {
+                continue;
+            }
+            if ($code === '') {
+                $code = $label;
+            }
+            $on = static fn ($value): bool => !in_array($value, [0, '0', false, 'false', '', null], true);
+            if ($checkbox && $on($row['exclusive'] ?? null)) {
+                $exclusive[] = $code;
+            }
+            if ($choice && $on($row['open_end'] ?? null)) {
+                $openEnd[] = $code;
+                if (!$on($row['open_end_required'] ?? '1')) {
+                    $optional[] = $code;
+                }
+            }
+        }
+        return [
+            'exclusive' => array_values(array_unique($exclusive)),
+            'openEnd' => array_values(array_unique($openEnd)),
+            'optional' => array_values(array_unique($optional)),
+        ];
     }
 
     /**
@@ -1357,8 +1552,10 @@ class FormField extends ActiveRecord
 
     public function setOptionsFromText($text, bool $randomize = false, ?int $maxSelect = null, ?string $exclusiveOption = null, ?int $minSelect = null, ?bool $minSelectAll = null): void
     {
+        $rowFlags = null;
         if (is_array($text)) {
             $text = $this->assignOptionCodes($text);
+            $rowFlags = $this->choiceFlagsFromRows($text);
             $items = ChoiceOptions::itemsFromDecoded(array_values($text));
             // Also accept already-normalized [{code,label}]
             if (!$items) {
@@ -1407,7 +1604,9 @@ class FormField extends ActiveRecord
         if ($minSelectAll === null) {
             $minSelectAll = !empty($prev['minSelectAll']);
         }
-        if ($exclusiveOption === null && !empty($prev['exclusiveOption'])) {
+        if ($rowFlags !== null) {
+            $exclusiveOption = $rowFlags['exclusive'] !== [] ? implode('|', $rowFlags['exclusive']) : '';
+        } elseif ($exclusiveOption === null && !empty($prev['exclusiveOption'])) {
             $exclusiveOption = (string)$prev['exclusiveOption'];
         }
 
@@ -1417,18 +1616,8 @@ class FormField extends ActiveRecord
         $exclusiveOption = trim((string)$exclusiveOption);
         $exclusiveOption = $exclusiveOption !== '' ? $exclusiveOption : null;
         if ($exclusiveOption !== null) {
-            $resolved = [];
-            foreach (array_filter(array_map('trim', explode('|', $exclusiveOption)), 'strlen') as $part) {
-                $code = $part;
-                foreach ($items as $item) {
-                    if ($part === $item['code'] || $part === $item['label']) {
-                        $code = $item['code'];
-                        break;
-                    }
-                }
-                $resolved[] = $code;
-            }
-            $exclusiveOption = $resolved ? implode('|', array_unique($resolved)) : null;
+            $resolved = $this->matchExclusiveTokens($exclusiveOption, $items);
+            $exclusiveOption = $resolved ? implode('|', $resolved) : null;
         }
 
         $carryFrom = trim((string)($prev['carryFrom'] ?? ''));
@@ -1445,6 +1634,14 @@ class FormField extends ActiveRecord
         $defaultValue = trim((string)($prev['defaultValue'] ?? ''));
         $otherSpecify = array_key_exists('otherSpecify', $prev) ? !empty($prev['otherSpecify']) : true;
         $otherSpecifyRequired = array_key_exists('otherSpecifyRequired', $prev) ? !empty($prev['otherSpecifyRequired']) : true;
+        $openEndOptions = null;
+        $openEndOptional = null;
+        if ($rowFlags !== null) {
+            $openEndOptions = $rowFlags['openEnd'];
+            $openEndOptional = $rowFlags['optional'];
+            $otherSpecify = $openEndOptions !== [];
+            $otherSpecifyRequired = $otherSpecify && count($openEndOptional) < count($openEndOptions);
+        }
 
         if (!$options && !$randomize && $maxSelect === null && $minSelect === null && !$minSelectAll && $exclusiveOption === null && $carryFrom === '' && $justification === '' && $instrumentRole === '' && !$hidden && $defaultValue === '' && $otherSpecify && $otherSpecifyRequired) {
             $this->options_json = null;
@@ -1489,6 +1686,12 @@ class FormField extends ActiveRecord
             }
             if (!$otherSpecifyRequired) {
                 $payload['otherSpecifyRequired'] = false;
+            }
+            if ($openEndOptions !== null) {
+                $payload['openEndOptions'] = array_values($openEndOptions);
+                if ($openEndOptional) {
+                    $payload['openEndOptional'] = array_values($openEndOptional);
+                }
             }
             // Highest numeric code ever used on this question (DAT-9).
             $seq = (int)($prev['codeSeq'] ?? 0);
@@ -1553,7 +1756,7 @@ class FormField extends ActiveRecord
         $pinned = [];
         $rest = [];
         foreach ($pairs as $pair) {
-            $isOther = self::isOtherOption($pair['code']) || self::isOtherOption($pair['label']);
+            $isOther = self::isOtherOption($pair['code']) || self::isOtherOption($pair['label']) || $this->isOpenEndKey($pair['code']);
             $isExclusive = in_array((string)$pair['code'], $exclusive, true)
                 || in_array((string)$pair['label'], $exclusive, true);
             if ($isOther || $isExclusive) {
@@ -3211,21 +3414,31 @@ class FormField extends ActiveRecord
             if (array_key_exists('min_select_all', $row) || array_key_exists('minSelectAll', $row)) {
                 $minSelectAll = !empty($row['min_select_all']) || !empty($row['minSelectAll']);
             }
+            $optionSource = !empty($row['option_items']) && is_array($row['option_items'])
+                ? $row['option_items']
+                : ($row['options'] ?? '');
             $field->setOptionsFromText(
-                !empty($row['option_items']) && is_array($row['option_items'])
-                    ? $row['option_items']
-                    : ($row['options'] ?? ''),
+                $optionSource,
                 !empty($row['randomize']),
                 $maxSelect,
                 (string)($row['exclusive_option'] ?? ''),
                 $minSelect,
                 $minSelectAll
             );
-            if (array_key_exists('other_specify', $row) || array_key_exists('otherSpecify', $row)) {
+            $choiceTicks = false;
+            if (is_array($optionSource)) {
+                foreach ($optionSource as $item) {
+                    if (is_array($item) && (array_key_exists('open_end', $item) || array_key_exists('exclusive', $item))) {
+                        $choiceTicks = true;
+                        break;
+                    }
+                }
+            }
+            if (!$choiceTicks && (array_key_exists('other_specify', $row) || array_key_exists('otherSpecify', $row))) {
                 $rawOther = $row['other_specify'] ?? $row['otherSpecify'];
                 $field->setAllowsOtherSpecify(!in_array($rawOther, [0, '0', false, 'false', ''], true));
             }
-            if (array_key_exists('other_specify_required', $row) || array_key_exists('otherSpecifyRequired', $row)) {
+            if (!$choiceTicks && (array_key_exists('other_specify_required', $row) || array_key_exists('otherSpecifyRequired', $row))) {
                 $rawRequired = $row['other_specify_required'] ?? $row['otherSpecifyRequired'];
                 $field->setRequiresOtherText(!in_array($rawRequired, [0, '0', false, 'false', ''], true));
             }
