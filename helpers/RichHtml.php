@@ -28,6 +28,18 @@ class RichHtml
         return trim((string) $content);
     }
 
+    public static function isEditorHtml(?string $content): bool
+    {
+        $content = trim((string)$content);
+        if ($content === '') {
+            return false;
+        }
+        if (class_exists(EditorHtml::class)) {
+            return EditorHtml::looksLikeHtml($content);
+        }
+        return (bool) preg_match('/<[^>]+>/', $content);
+    }
+
     public static function toHtml(?string $content): string
     {
         if (class_exists(EditorHtml::class)) {

@@ -144,7 +144,7 @@ class FormField extends ActiveRecord
     {
         $var = trim((string)$this->variable);
         if ($var === '') {
-            $var = self::slugVariable((string)$this->label, (string)$this->type);
+            $var = self::slugVariable($this->plainLabel(), (string)$this->type);
         }
         if (preg_match('/^id\d+$/i', $var)) {
             // id5 is how formulas address question 5 by id; a variable of that name collided (V3-52).
@@ -160,9 +160,57 @@ class FormField extends ActiveRecord
         }
         $this->variable = $var;
         if (trim((string)$this->internal_label) === '') {
-            $this->internal_label = mb_substr((string)$this->label, 0, 255);
+            $plain = $this->plainLabel();
+            $this->internal_label = mb_substr($plain !== '' ? $plain : (string)$this->label, 0, 255);
         }
         return $var;
+    }
+
+    /**
+     * Drop an empty editor paragraph. Keep a plain stored label when the editor
+     * only wrapped the same words in a paragraph.
+     */
+    public static function keepUnformattedLabel(string $existing, string $posted): string
+    {
+        $posted = self::normalizeLabelHtml($posted);
+        $existing = trim($existing);
+        if ($existing === '' || $posted === $existing || preg_match('/<[^>]+>/', $existing)) {
+            return $posted;
+        }
+        if (!preg_match('/^<p>(.*)<\/p>$/s', $posted, $match)) {
+            return $posted;
+        }
+        $inner = trim(html_entity_decode($match[1], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        if (preg_match('/<[^>]+>/', $inner)) {
+            return $posted;
+        }
+        $inner = preg_replace('/\s+/u', ' ', $inner) ?? $inner;
+        $old = preg_replace('/\s+/u', ' ', $existing) ?? $existing;
+        return $inner === $old ? $existing : $posted;
+    }
+
+    public static function normalizeLabelHtml(string $posted): string
+    {
+        $posted = trim($posted);
+        if ($posted === '') {
+            return '';
+        }
+        $plain = trim(html_entity_decode(strip_tags($posted), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+        $plain = preg_replace('/\s+/u', ' ', $plain) ?? $plain;
+        return $plain === '' ? '' : $posted;
+    }
+
+    /**
+     * The label as words, for titles, variables, and messages.
+     * A formatted label keeps its wording without the tags.
+     */
+    public function plainLabel(): string
+    {
+        $label = trim((string)$this->label);
+        if ($label === '' || !preg_match('/<[^>]+>/', $label)) {
+            return $label;
+        }
+        return \humhub\modules\thiscoveryForms\helpers\RichHtml::forTranslation($label);
     }
 
     public static function getTypeLabels(): array

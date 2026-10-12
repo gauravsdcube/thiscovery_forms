@@ -743,12 +743,27 @@ $fillRtl = TranslationService::isRtl($fillLang);
                             if (!empty($groupLogic['when'])) {
                                 $groupAttrs['data-cf-logic'] = Json::encode($groupLogic);
                             }
-                            $groupTitle = $pipe->substitutePlain((string)$field->label, $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null);
+                            $groupRaw = (string)$field->label;
+                            $groupPlain = $field->plainLabel();
+                            $groupRich = RichHtml::isEditorHtml($groupRaw);
+                            if ($groupRich) {
+                                $groupSource = RichHtml::toHtml($groupRaw);
+                                $groupTitle = $pipe->substitute($groupSource, $user, $formModel, $submit->values, $formModel->fields, true, [], $fillContext->member ?? null);
+                            } else {
+                                $groupSource = $groupRaw;
+                                $groupTitle = $pipe->substitutePlain($groupRaw, $user, $formModel, $submit->values, $formModel->fields, [], $fillContext->member ?? null);
+                            }
                             $openGroupIds[] = (int)$field->id;
                             ?>
                             <div <?= Html::renderTagAttributes($groupAttrs) ?>>
-                                <?php if (trim($groupTitle) !== '' && $groupTitle !== FormField::defaultLabelForType(FormField::TYPE_QUESTION_GROUP)): ?>
-                                    <h3 class="cf-question-group__title" data-cf-pipe="<?= Html::encode($field->label) ?>"><?= Html::encode($groupTitle) ?></h3>
+                                <?php if (trim($groupPlain) !== '' && $groupPlain !== FormField::defaultLabelForType(FormField::TYPE_QUESTION_GROUP)): ?>
+                                    <?php if ($groupRich): ?>
+                                        <h3 class="cf-question-group__title">
+                                            <div class="cf-question__label-text richtext-output" data-cf-pipe="<?= Html::encode($groupSource) ?>"><?= $groupTitle ?></div>
+                                        </h3>
+                                    <?php else: ?>
+                                        <h3 class="cf-question-group__title" data-cf-pipe="<?= Html::encode($field->label) ?>"><?= $groupTitle ?></h3>
+                                    <?php endif; ?>
                                 <?php endif; ?>
                             <?php if ($wrapGroup): ?>
                                 <?php $groupDepth++; ?>

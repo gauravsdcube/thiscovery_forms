@@ -127,6 +127,29 @@ class FormPager
      */
     public function visitedFieldIds(array $fields, array $values, array $blockOrders = []): array
     {
+        $walk = $this->walkPages($fields, $values, $blockOrders);
+        return $this->idsOnPages($walk['pages'], $walk['visited'], false);
+    }
+
+    /**
+     * Question ids on reached pages, plus each page's trailing page break.
+     * Screen-out and go-to rules live on that break, which is not one of the page's questions.
+     *
+     * @param FormField[] $fields
+     * @return array<int, true>
+     */
+    public function routeLogicFieldIds(array $fields, array $values, array $blockOrders = []): array
+    {
+        $walk = $this->walkPages($fields, $values, $blockOrders);
+        return $this->idsOnPages($walk['pages'], $walk['visited'], true);
+    }
+
+    /**
+     * @param FormField[] $fields
+     * @return array{pages:array,visited:array<int,true>}
+     */
+    private function walkPages(array $fields, array $values, array $blockOrders): array
+    {
         $built = $this->buildPages($fields);
         if ($blockOrders) {
             $built = $this->applyBlockOrder($built, $blockOrders);
@@ -156,10 +179,27 @@ class FormPager
             }
             $idx = (int)$next;
         }
+        return ['pages' => $pages, 'visited' => $visited];
+    }
+
+    /**
+     * @param array<int, array{items?:FormField[],break?:FormField|null}> $pages
+     * @param array<int, true> $visited
+     * @return array<int, true>
+     */
+    private function idsOnPages(array $pages, array $visited, bool $includeBreaks): array
+    {
         $ids = [];
         foreach ($visited as $pageIndex => $_) {
             foreach ($pages[$pageIndex]['items'] as $field) {
                 $ids[(int)$field->id] = true;
+            }
+            if (!$includeBreaks) {
+                continue;
+            }
+            $break = $pages[$pageIndex]['break'] ?? null;
+            if ($break instanceof FormField) {
+                $ids[(int)$break->id] = true;
             }
         }
         return $ids;

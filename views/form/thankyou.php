@@ -22,7 +22,15 @@ $fillLang = \humhub\modules\thiscoveryForms\services\ParticipantMessages::active
     ?: (new TranslationService())->resolve($formModel);
 \humhub\modules\thiscoveryForms\services\ParticipantMessages::bind($formModel, $fillLang);
 $fillRtl = TranslationService::isRtl($fillLang);
-$showButton = $formModel->showsCompletionButton();
+$screenedOut = $answer && (string)$answer->outcome === \humhub\modules\thiscoveryForms\models\FormAnswer::OUTCOME_SCREENED_OUT;
+$screenMessage = '';
+if ($screenedOut) {
+    $screenMessage = \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored(
+        'author.screen_out',
+        trim((string)$formModel->screen_out_message)
+    );
+}
+$showButton = $formModel->showsCompletionButton() && !$screenedOut;
 $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUrl(), '/')
     && preg_match('#^https?://#i', $formModel->getCompletionButtonUrl());
 ?>
@@ -48,7 +56,13 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <div class="alert alert-warning">
                 <?= Yii::t('ThiscoveryFormsModule.base', 'This was a test submission. It is not counted in participant results.') ?>
             </div>
-            <?php if ($formModel->usesCompletionRedirect()): ?>
+            <?php if ($screenedOut && $formModel->usesScreenOutRedirect()): ?>
+                <div class="alert alert-info">
+                    <?= Yii::t('ThiscoveryFormsModule.base', 'Live screen-outs redirect to {url}. Preview stays on this page.', [
+                        'url' => Html::encode($formModel->getScreenOutRedirectUrl()),
+                    ]) ?>
+                </div>
+            <?php elseif ($formModel->usesCompletionRedirect()): ?>
                 <div class="alert alert-info">
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Live submissions redirect to {url}. Preview stays on this page.', [
                         'url' => Html::encode($formModel->getCompletionRedirectUrl()),
@@ -83,20 +97,18 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
             <?php elseif ($withdrawToken !== ''): ?>
                 <p><?= Yii::t('ThiscoveryFormsModule.base', 'Keep this withdrawal code. It is shown once: {code}', ['code' => $withdrawToken]) ?></p>
             <?php endif; ?>
-            <?php
-            $screenMessage = '';
-            if ($answer && (string)$answer->outcome === \humhub\modules\thiscoveryForms\models\FormAnswer::OUTCOME_SCREENED_OUT) {
-                $screenMessage = \humhub\modules\thiscoveryForms\services\ParticipantMessages::authored(
-                    'author.screen_out',
-                    trim((string)(new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['screen_out_message'])
-                );
-            }
-            ?>
             <?php if ((is_string($overQuota) && $overQuota !== '') || (is_string($notConsented) && $notConsented !== '')): ?>
-            <?php elseif ($screenMessage !== ''): ?>
-                <div class="cf-thankyou__default">
-                    <p><?= nl2br(Html::encode($screenMessage)) ?></p>
-                </div>
+            <?php elseif ($screenedOut): ?>
+                <?php if (trim($screenMessage) !== ''): ?>
+                    <div class="cf-thankyou__content richtext-output">
+                        <?= RichHtml::toHtml($screenMessage) ?>
+                    </div>
+                <?php else: ?>
+                    <div class="cf-thankyou__default">
+                        <h2><?= Yii::t('ThiscoveryFormsModule.base', 'Thank you') ?></h2>
+                        <p><?= Yii::t('ThiscoveryFormsModule.base', 'Thank you for your answers. You do not need to continue.') ?></p>
+                    </div>
+                <?php endif; ?>
             <?php elseif ($formModel->hasThankYouContent()): ?>
                 <div class="cf-thankyou__content richtext-output">
                     <?= RichHtml::toHtml($formModel->thank_you_content) ?>
@@ -111,7 +123,7 @@ $externalBtn = $showButton && !str_starts_with($formModel->getCompletionButtonUr
                 </div>
             <?php endif; ?>
 
-            <?php if ($formModel->isProject() && $answer): ?>
+            <?php if ($formModel->isProject() && $answer && !$screenedOut): ?>
                 <div class="cf-thankyou__actions">
                     <?= Button::primary(ButtonLabel::html('View your project'))
                         ->encodeLabel(false)

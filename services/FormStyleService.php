@@ -82,6 +82,31 @@ class FormStyleService
                     $this->field('borderRadius', Yii::t('ThiscoveryFormsModule.base', 'Corner radius'), 'border-radius', '#cf-fill .cf-fill-progress, #cf-fill .cf-fill-progress__bar'),
                 ],
             ],
+            [
+                'id' => 'accordion',
+                'label' => Yii::t('ThiscoveryFormsModule.base', 'Accordion'),
+                'fields' => [
+                    $this->field('background', Yii::t('ThiscoveryFormsModule.base', 'Background'), 'background-color', '#cf-fill .ep-accordion__item'),
+                    $this->field('borderColor', Yii::t('ThiscoveryFormsModule.base', 'Border colour'), 'border-color', '#cf-fill .ep-accordion__item'),
+                    $this->field('borderWidth', Yii::t('ThiscoveryFormsModule.base', 'Border width'), 'border-width', '#cf-fill .ep-accordion__item'),
+                    $this->field('borderRadius', Yii::t('ThiscoveryFormsModule.base', 'Corner radius'), 'border-radius', '#cf-fill .ep-accordion__item'),
+                    $this->field('marginBottom', Yii::t('ThiscoveryFormsModule.base', 'Space below'), 'margin-bottom', '#cf-fill .ep-accordion__item'),
+                    $this->field('headerBackground', Yii::t('ThiscoveryFormsModule.base', 'Header background'), 'background-color', '#cf-fill .ep-accordion__summary'),
+                    $this->field('headerColor', Yii::t('ThiscoveryFormsModule.base', 'Header text'), 'color', '#cf-fill .ep-accordion__summary'),
+                    $this->field('headerSize', Yii::t('ThiscoveryFormsModule.base', 'Header size'), 'font-size', '#cf-fill .ep-accordion__summary'),
+                    $this->field('headerWeight', Yii::t('ThiscoveryFormsModule.base', 'Header weight'), 'font-weight', '#cf-fill .ep-accordion__summary', 'weight'),
+                    $this->field('headerPadding', Yii::t('ThiscoveryFormsModule.base', 'Header padding'), 'padding', '#cf-fill .ep-accordion__summary'),
+                    $this->field('headerHoverBackground', Yii::t('ThiscoveryFormsModule.base', 'Header hover background'), 'background-color', '#cf-fill .ep-accordion__summary:hover'),
+                    $this->field('headerHoverColor', Yii::t('ThiscoveryFormsModule.base', 'Header hover text'), 'color', '#cf-fill .ep-accordion__summary:hover'),
+                    $this->field('headerOpenBackground', Yii::t('ThiscoveryFormsModule.base', 'Open header background'), 'background-color', '#cf-fill .ep-accordion__item[open] > .ep-accordion__summary'),
+                    $this->field('headerOpenColor', Yii::t('ThiscoveryFormsModule.base', 'Open header text'), 'color', '#cf-fill .ep-accordion__item[open] > .ep-accordion__summary'),
+                    $this->field('bodyColor', Yii::t('ThiscoveryFormsModule.base', 'Body text'), 'color', '#cf-fill .ep-accordion__body'),
+                    $this->field('bodySize', Yii::t('ThiscoveryFormsModule.base', 'Body size'), 'font-size', '#cf-fill .ep-accordion__body'),
+                    $this->field('bodyPadding', Yii::t('ThiscoveryFormsModule.base', 'Body padding'), 'padding', '#cf-fill .ep-accordion__body'),
+                    $this->field('closedSymbol', Yii::t('ThiscoveryFormsModule.base', 'Closed symbol'), 'content', '#cf-fill .ep-accordion__summary::after'),
+                    $this->field('openSymbol', Yii::t('ThiscoveryFormsModule.base', 'Open symbol'), 'content', '#cf-fill .ep-accordion__item[open] > .ep-accordion__summary::after'),
+                ],
+            ],
         ];
 
         foreach (FormField::getTypeLabels() as $type => $label) {
@@ -135,6 +160,8 @@ class FormStyleService
             }
         }
 
+        $this->finishAccordionRules($rules);
+
         $out = [];
         foreach ($rules as $selector => $decls) {
             $parts = [];
@@ -145,6 +172,50 @@ class FormStyleService
         }
 
         return implode("\n", $out);
+    }
+
+    /**
+     * A border colour or a symbol only shows once the matching layout is present.
+     * Those pieces are added when the theme or the form sets the value. Nothing is styled until then.
+     *
+     * @param array<string, array<string, string>> $rules
+     */
+    private function finishAccordionRules(array &$rules): void
+    {
+        $item = '#cf-fill .ep-accordion__item';
+        if (isset($rules[$item]['border-color']) || isset($rules[$item]['border-width'])) {
+            $rules[$item]['border-style'] = 'solid';
+        }
+        if (isset($rules[$item]['border-color']) && !isset($rules[$item]['border-width'])) {
+            $rules[$item]['border-width'] = '1px';
+        }
+        if (isset($rules[$item]['border-radius'])) {
+            $rules[$item]['overflow'] = 'hidden';
+        }
+
+        $closed = '#cf-fill .ep-accordion__summary::after';
+        $open = '#cf-fill .ep-accordion__item[open] > .ep-accordion__summary::after';
+        if (!isset($rules[$closed]['content']) && !isset($rules[$open]['content'])) {
+            return;
+        }
+        $layout = [
+            'position' => 'absolute',
+            'right' => '1rem',
+            'top' => '50%',
+            'transform' => 'translateY(-50%)',
+            'line-height' => '1',
+        ];
+        foreach ([$closed, $open] as $selector) {
+            if (!isset($rules[$selector]['content'])) {
+                continue;
+            }
+            foreach ($layout as $prop => $val) {
+                $rules[$selector][$prop] = $rules[$selector][$prop] ?? $val;
+            }
+        }
+        $rules['#cf-fill .ep-accordion__summary']['position'] = 'relative';
+        $rules['#cf-fill .ep-accordion__summary::-webkit-details-marker']['display'] = 'none';
+        $rules['#cf-fill .ep-accordion__summary::marker']['content'] = 'none';
     }
 
     public function normalize(array $style): array
@@ -338,6 +409,16 @@ class FormStyleService
             }
             if (preg_match('/^(transparent|inherit|currentColor|none)$/i', $value)) {
                 return strtolower($value);
+            }
+            return null;
+        }
+
+        if ($property === 'content') {
+            if (preg_match('/^"([^"\\\\]{1,8})"$/', $value, $quoted) || preg_match("/^'([^'\\\\]{1,8})'$/", $value, $quoted)) {
+                return '"' . $quoted[1] . '"';
+            }
+            if (preg_match('/^[^\s"\'{};\\\\]{1,4}$/u', $value)) {
+                return '"' . $value . '"';
             }
             return null;
         }

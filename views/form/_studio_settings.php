@@ -319,17 +319,12 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                         <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The page key from the builder. The arm is assigned when the respondent leaves that page. Used only when Assign is After a page.')]) ?>
                         <?= Html::textInput('randomisation_assign_page', $rand->config($formModel)['assign_page'], ['class' => 'form-control']) ?>
                     </div>
-                    <div class="col-md-12 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Screened-out message') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Shown when a question uses “End as screened out”. That response is closed and is not counted as a completed questionnaire.')]) ?>
-                        <?= Html::textInput('screen_out_message', $rand->config($formModel)['screen_out_message'], ['class' => 'form-control']) ?>
-                    </div>
                 </div>
                 <?= $fold(
                     Yii::t('ThiscoveryFormsModule.base', 'When to assign'),
                     ob_get_clean(),
                     false,
-                    Yii::t('ThiscoveryFormsModule.base', 'Start of the response, or after a page. Plus the screened-out message.')
+                    Yii::t('ThiscoveryFormsModule.base', 'Start of the response, or after a page.')
                 ) ?>
             </section>
 
@@ -465,6 +460,40 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                             ]) ?>
                         </div>
                     </div>
+                    </div>
+                </details>
+
+                <details class="cf-set-acc">
+                    <summary>
+                        <span class="cf-set-acc__title"><?= Yii::t('ThiscoveryFormsModule.base', 'When someone is screened out') ?></span>
+                        <span class="cf-set-acc__summary"><?= Yii::t('ThiscoveryFormsModule.base', 'A different message, or a different URL, when a question uses End as screened out.') ?></span>
+                    </summary>
+                    <div class="cf-set-acc__body">
+                        <div class="form-group cf-field">
+                            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Screened-out message') ?>
+                                <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                            </label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Shown when a question uses End as screened out. That response is closed and is not counted as a completed questionnaire. Leave empty for a short default message. This does not follow the thank-you message or the completion URL.')]) ?>
+                            <div class="cf-rich-editor" data-cf-rich-editor>
+                                <?= EditorField::widget([
+                                    'model' => $formModel,
+                                    'attribute' => 'screen_out_message',
+                                    'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Thank you for your answers. You do not need to continue.'),
+                                    'height' => 180,
+                                    'profile' => 'simple',
+                                ]) ?>
+                            </div>
+                        </div>
+                        <div class="form-group cf-field mb-0">
+                            <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Screened-out URL') ?>
+                                <span class="cf-optional"><?= Yii::t('ThiscoveryFormsModule.base', 'optional') ?></span>
+                            </label>
+                            <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Send a screened-out person to this address instead of the message. Leave blank to stay on the message. Use a full https:// link or a path starting with /.')]) ?>
+                            <?= Html::activeTextInput($formModel, 'screen_out_redirect_url', [
+                                'class' => 'form-control',
+                                'placeholder' => 'https://example.org/not-eligible',
+                            ]) ?>
+                        </div>
                     </div>
                 </details>
 

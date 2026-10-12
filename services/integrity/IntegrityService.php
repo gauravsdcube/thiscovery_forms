@@ -564,7 +564,12 @@ class IntegrityService
         if ($mode === IntegritySettings::CAPTCHA_ALWAYS) {
             return true;
         }
-        // Sticky after a blocked submit, or already suspicious on this request.
+        // A missing session is only a signal when integrity checks are on.
+        // With those checks off, the session is never started, so every Finish looked suspicious.
+        if (!IntegritySettings::isOn($cfg, 'enabled')) {
+            $this->clearCaptchaRequired($form);
+            return false;
+        }
         return $this->isCaptchaRequired($form)
             || $this->looksSuspiciousBeforeSave($form, Yii::$app->request->post(), $cfg);
     }

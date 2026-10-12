@@ -309,6 +309,17 @@ class FormController extends ContentContainerController
         }
 
         $this->applyFillLayout($form);
+        if ((string)$answer->outcome === \humhub\modules\thiscoveryForms\models\FormAnswer::OUTCOME_SCREENED_OUT) {
+            if (!$isPreview && $form->usesScreenOutRedirect()) {
+                return $this->redirect($form->getScreenOutRedirectUrl());
+            }
+            return $this->render('thankyou', [
+                'formModel' => $form,
+                'contentContainer' => $this->contentContainer,
+                'answer' => $answer,
+                'isPreview' => $isPreview,
+            ]);
+        }
         if (!$isPreview && $form->usesCompletionRedirect()) {
             return $this->redirect($form->getCompletionRedirectUrl());
         }

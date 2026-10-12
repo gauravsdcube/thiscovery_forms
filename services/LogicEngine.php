@@ -749,9 +749,6 @@ class LogicEngine
             if (!in_array($action, [self::ACTION_GOTO_PAGE, self::ACTION_GOTO_END, self::ACTION_SCREEN_OUT], true)) {
                 continue;
             }
-            if ($action === self::ACTION_SCREEN_OUT && !\humhub\modules\thiscoveryForms\Module::randomisationEnabled()) {
-                continue;
-            }
             if (empty($logic['when']) || !$this->rulesMet($logic, $values, $lookup)) {
                 continue;
             }

@@ -348,7 +348,7 @@ class ExportService
 
     public function fieldHeader(FormField $field, string $mode): string
     {
-        $label = trim((string)$field->label);
+        $label = $field->plainLabel();
         $variable = trim((string)$field->variable);
         if ($variable === '') {
             $variable = $label;

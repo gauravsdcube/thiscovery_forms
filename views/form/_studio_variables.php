@@ -67,7 +67,7 @@ foreach ($built['pages'] as $page) {
         }
         $rows[] = [
             'variable' => $variable,
-            'label' => (string)$field->label,
+            'label' => $field->plainLabel(),
             'type' => (string)($typeLabels[$field->type] ?? $field->type),
             'page' => $pageName($page),
         ];

@@ -78,7 +78,41 @@ foreach ($allFields as $f) {
 }
 $pipe = new VariableSubstitutor();
 $user = Yii::$app->user->identity;
-$labelText = $pipe->substitutePlain($field->label, $user, $formModel, $allValues, $allFields, [], $panelMember);
+$labelRaw = (string)$field->label;
+$labelIsRich = RichHtml::isEditorHtml($labelRaw);
+if ($labelIsRich) {
+    $labelSource = RichHtml::toHtml($labelRaw);
+    $labelText = $pipe->substitute($labelSource, $user, $formModel, $allValues, $allFields, true, [], $panelMember);
+} else {
+    $labelSource = $labelRaw;
+    $labelText = $pipe->substitutePlain($labelRaw, $user, $formModel, $allValues, $allFields, [], $panelMember);
+}
+$labelPlain = $field->plainLabel();
+$labelPlainText = $pipe->substitutePlain($labelPlain, $user, $formModel, $allValues, $allFields, [], $panelMember);
+$questionLabel = static function (bool $useFor, ?string $forId, ?string $domId, bool $requiredMark) use ($labelIsRich, $labelSource, $labelText, $labelPlain, $labelPlainText): string {
+    $star = $requiredMark ? ' <span class="text-danger">*</span>' : '';
+    $idAttr = $domId !== null && $domId !== '' ? ' id="' . Html::encode($domId) . '"' : '';
+    if (!$labelIsRich) {
+        if ($useFor) {
+            $for = $forId !== null && $forId !== '' ? ' for="' . Html::encode($forId) . '"' : '';
+            return '<label class="cf-question__label"' . $for . $idAttr . ' data-cf-pipe="' . Html::encode($labelSource) . '">'
+                . $labelText . $star . '</label>';
+        }
+        return '<div class="cf-question__label"' . $idAttr . ' data-cf-pipe="' . Html::encode($labelSource) . '">'
+            . $labelText . $star . '</div>';
+    }
+    $hidden = '';
+    if ($useFor && $forId !== null && $forId !== '') {
+        $hidden = '<label class="cf-question__label visually-hidden" for="' . Html::encode($forId) . '" data-cf-pipe="' . Html::encode($labelPlain) . '">'
+            . $labelPlainText . '</label>';
+        $idAttr = '';
+    }
+    return $hidden
+        . '<div class="cf-question__label"' . $idAttr . '>'
+        . '<div class="cf-question__label-text richtext-output" data-cf-pipe="' . Html::encode($labelSource) . '">' . $labelText . '</div>'
+        . $star
+        . '</div>';
+};
 $helpText = $field->help_text
     ? $pipe->substitutePlain((string)$field->help_text, $user, $formModel, $allValues, $allFields, [], $panelMember)
     : '';
@@ -155,7 +189,11 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
     $consentCfg['witness'] = $consent->effectiveWitness($formModel, (bool)$consentCfg['witness']);
     ?>
     <fieldset class="cf-consent" data-cf-consent="<?= (int)$field->id ?>"<?= $consentCfg['must_read'] ? ' data-cf-consent-must-read="1"' : '' ?>>
-        <legend class="cf-question__label"><?= Html::encode($field->label) ?></legend>
+        <?php if ($labelIsRich): ?>
+            <legend><?= $questionLabel(false, null, null, false) ?></legend>
+        <?php else: ?>
+            <legend class="cf-question__label"><?= Html::encode($field->label) ?></legend>
+        <?php endif; ?>
         <?php if ($consentDoc): ?>
             <div class="cf-consent__sheet" tabindex="0" role="region" aria-label="<?= Html::encode((string)$consentDoc['title']) ?>">
                 <h3><?= Html::encode((string)$consentDoc['title']) ?></h3>
@@ -211,10 +249,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 <span class="cf-question__required"><?= Yii::t('ThiscoveryFormsModule.base', 'Required') ?></span>
             </div>
         <?php endif; ?>
-        <div class="cf-question__label" data-cf-pipe="<?= Html::encode($field->label) ?>">
-            <?= $labelText ?>
-            <?php if ($htmlCfg['required']): ?><span class="text-danger">*</span><?php endif; ?>
-        </div>
+        <?= $questionLabel(false, null, null, (bool)$htmlCfg['required']) ?>
     <?php endif; ?>
     <div class="cf-html-block" data-cf-html-block="<?= (int)$field->id ?>" data-cf-html-var="<?= Html::encode($htmlCfg['variable']) ?>" data-cf-pipe-html="<?= Html::encode($htmlCfg['html']) ?>">
         <?= $html ?>
@@ -235,17 +270,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
         </div>
     <?php endif; ?>
 
-    <?php if ($choiceGroup): ?>
-    <div class="cf-question__label" id="<?= Html::encode($labelId) ?>" data-cf-pipe="<?= Html::encode($field->label) ?>">
-        <?= $labelText ?>
-        <?php if ($field->required): ?><span class="text-danger">*</span><?php endif; ?>
-    </div>
-    <?php else: ?>
-    <label class="cf-question__label" for="<?= Html::encode($inputId) ?>" data-cf-pipe="<?= Html::encode($field->label) ?>">
-        <?= $labelText ?>
-        <?php if ($field->required): ?><span class="text-danger">*</span><?php endif; ?>
-    </label>
-    <?php endif; ?>
+    <?= $questionLabel(!$choiceGroup, $choiceGroup ? null : $inputId, $choiceGroup ? $labelId : null, (bool)$field->required) ?>
 
     <?php if ($field->help_text && !$field->isThermometerRating()): ?>
         <p class="cf-question__help" data-cf-pipe="<?= Html::encode($field->help_text) ?>"><?= $helpText ?></p>

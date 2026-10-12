@@ -108,22 +108,22 @@ $isNew = !empty($isNew);
                     if ($action === LogicEngine::ACTION_SHOW || $action === LogicEngine::ACTION_HIDE) {
                         $displayRule = $ruleText;
                     } elseif ($action === LogicEngine::ACTION_GOTO_PAGE) {
-                        $branches[] = [(string)$field->label, $verb, $ruleText, $pageName((string)($logic['gotoPageKey'] ?? ''))];
+                        $branches[] = [$field->plainLabel(), $verb, $ruleText, $pageName((string)($logic['gotoPageKey'] ?? ''))];
                     } elseif ($action === LogicEngine::ACTION_GOTO_END) {
-                        $branches[] = [(string)$field->label, $verb, $ruleText, $endLabel];
+                        $branches[] = [$field->plainLabel(), $verb, $ruleText, $endLabel];
                     } elseif ($action === LogicEngine::ACTION_SCREEN_OUT) {
-                        $branches[] = [(string)$field->label, $verb, $ruleText, $screenLabel];
+                        $branches[] = [$field->plainLabel(), $verb, $ruleText, $screenLabel];
                     } elseif ($action === LogicEngine::ACTION_SKIP_PAGE) {
-                        $branches[] = [(string)$field->label, $verb, $ruleText, Yii::t('ThiscoveryFormsModule.base', 'Skips the next page')];
+                        $branches[] = [$field->plainLabel(), $verb, $ruleText, Yii::t('ThiscoveryFormsModule.base', 'Skips the next page')];
                     }
                 }
                 if ($field->type !== FormField::TYPE_PAGE_BREAK && $field->type !== FormField::TYPE_GROUP_END && $field->type !== FormField::TYPE_RAND_BLOCK && $field->type !== FormField::TYPE_RAND_BLOCK_END) {
-                    $questions[] = [(string)$field->label, (string)$field->variable, $verb, $displayRule];
+                    $questions[] = [$field->plainLabel(), (string)$field->variable, $verb, $displayRule];
                 }
                 foreach ($field->getActions() as $fn) {
                     if (($fn['fn'] ?? '') === FormActionService::FN_GOTO_PAGE) {
                         $branches[] = [
-                            (string)$field->label,
+                            $field->plainLabel(),
                             Yii::t('ThiscoveryFormsModule.base', 'Action'),
                             Yii::t('ThiscoveryFormsModule.base', 'when answered'),
                             $pageName((string)($fn['page_key'] ?? '')),
@@ -137,7 +137,7 @@ $isNew = !empty($isNew);
                             continue;
                         }
                         $branches[] = [
-                            (string)$field->label,
+                            $field->plainLabel(),
                             Yii::t('ThiscoveryFormsModule.base', 'Page branch'),
                             (string)($branch['text'] ?? $branch['formula'] ?? ''),
                             $pageName($target),

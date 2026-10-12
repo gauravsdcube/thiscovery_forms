@@ -180,11 +180,26 @@ $pct = ($lang && !$isNew) ? (new TranslationService())->completeness($formModel,
                     <div class="cf-i18n-grid">
                         <div>
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Label') ?></label>
-                            <div class="form-control-plaintext" style="white-space: pre-wrap; overflow-wrap: anywhere;"><?= Html::encode($field->label) ?></div>
+                            <?php if (RichHtml::isEditorHtml((string)$field->label)): ?>
+                                <div class="form-control-plaintext richtext-output"><?= RichHtml::toHtml((string)$field->label) ?></div>
+                            <?php else: ?>
+                                <div class="form-control-plaintext" style="white-space: pre-wrap; overflow-wrap: anywhere;"><?= Html::encode($field->label) ?></div>
+                            <?php endif; ?>
                         </div>
                         <div>
                             <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Translated label') ?></label>
-                            <textarea name="field_i18n[<?= (int)$field->id ?>][label]" class="form-control" rows="3" maxlength="<?= (int)FormField::LABEL_MAX ?>" dir="<?= $targetDir ?>"><?= Html::encode((string)$fi->label) ?></textarea>
+                            <?= \humhub\modules\thiscoveryEditor\widgets\EditorField::widget([
+                                'id' => 'cf-i18n-label-' . (int)$field->id,
+                                'name' => 'field_i18n[' . (int)$field->id . '][label]',
+                                'value' => (string)$fi->label,
+                                'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Translated label'),
+                                'height' => 140,
+                                'profile' => 'simple',
+                                'options' => [
+                                    'dir' => $targetDir,
+                                    'maxlength' => FormField::LABEL_MAX,
+                                ],
+                            ]) ?>
                         </div>
                         <?php if ($field->help_text): ?>
                             <div>

@@ -2,6 +2,13 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.41.0 (October 12, 2026)
+
+- The question **Label** in the studio is a rich text box. Participants see the formatting. The name used only in the studio, the variable, logic lists, and error messages stay plain text.
+- **End as screened out if** ends the form even when randomisation is off. **Settings → End of survey → When someone is screened out** is the message, with an optional URL. A blank message uses a short thank-you. Preview stays on that page. **Go to end if** is still a normal completion and uses the thank-you or the completion URL. A screen-out rule on the page break is applied when Finish is used on that page.
+- Accordion styling is in the global theme and under **Settings → CSS → Accordion**. Colours are left unset.
+- Finish does not ask for the verification check on a preview. On a live form it stays hidden when integrity checks are off, unless **CAPTCHA when** is **Always**.
+
 ## 1.40.0 (October 8, 2026)
 
 - On a dropdown, radio, or checkbox, each choice has **Open-ended**. Tick it to ask for extra text when that choice is selected. **Required** on that choice means the extra text cannot be left empty. A choice already named Other keeps that setting. More than one choice can ask for extra text.

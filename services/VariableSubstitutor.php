@@ -51,6 +51,10 @@ class VariableSubstitutor
         foreach ($fields as $field) {
             $fieldsById[(int)$field->id] = $field;
             $labelMap[mb_strtolower(trim($field->label))] = (int)$field->id;
+            $plainLabel = mb_strtolower($field->plainLabel());
+            if ($plainLabel !== '') {
+                $labelMap[$plainLabel] = (int)$field->id;
+            }
             $labelMap[(string)$field->id] = (int)$field->id;
             $var = trim((string)$field->variable);
             if ($var !== '') {

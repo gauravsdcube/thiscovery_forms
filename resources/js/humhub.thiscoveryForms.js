@@ -242,6 +242,16 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $root.find('[data-cf-empty]').toggleClass('d-none', $root.find('.thiscovery-forms-field-row').length > 0);
         };
 
+        var plainFieldLabel = function (value) {
+            var text = String(value || '');
+            if (text.indexOf('<') === -1) {
+                return $.trim(text);
+            }
+            var el = document.createElement('div');
+            el.innerHTML = text;
+            return $.trim(String(el.textContent || '').replace(/\s+/g, ' '));
+        };
+
         var slugVariable = function (label) {
             var s = String(label || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
             if (!s) {
@@ -390,7 +400,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             );
 
             var label = $.trim($own.find('[data-cf-internal-label]').first().val())
-                || $.trim($own.find('[data-cf-field-label]').first().val());
+                || plainFieldLabel($own.find('[data-cf-field-label]').first().val());
             if (!label && (isPage || isRich || isHtml || type === 'question_group')) {
                 label = typeLabels[type] || type;
             }
@@ -494,7 +504,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 }
                 items.push({
                     key: key,
-                    label: $.trim($row.find('[data-cf-field-label]').val()) || ('#' + key)
+                    label: plainFieldLabel($row.find('[data-cf-field-label]').val()) || ('#' + key)
                 });
             });
             var noneLabel = module.text('none');
@@ -769,13 +779,55 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var $ctx = ($scope && $scope.length) ? $scope : $root;
             if (api && typeof api.initEditors === 'function') {
                 api.initEditors($ctx);
-                return;
-            }
-            if (window.ThiscoveryEditor && typeof window.ThiscoveryEditor.init === 'function') {
+            } else if (window.ThiscoveryEditor && typeof window.ThiscoveryEditor.init === 'function') {
                 $ctx.find('[data-te-editor]').each(function () {
                     try { window.ThiscoveryEditor.init(this); } catch (err) {}
                 });
             }
+            watchLabelEditors($ctx);
+        };
+
+        var setFieldLabel = function ($label, text) {
+            if (!$label || !$label.length) {
+                return;
+            }
+            var wrap = $label.closest('[data-te-editor]')[0];
+            if (wrap && window.ThiscoveryEditor && typeof window.ThiscoveryEditor.destroy === 'function') {
+                try { window.ThiscoveryEditor.destroy(wrap); } catch (err) {}
+            }
+            $label.val(text);
+            if (wrap && window.ThiscoveryEditor && typeof window.ThiscoveryEditor.init === 'function') {
+                try { window.ThiscoveryEditor.init(wrap); } catch (err) {}
+                watchLabelEditors($(wrap));
+            }
+            $label.trigger('input');
+        };
+
+        var watchLabelEditors = function ($scope) {
+            var $ctx = ($scope && $scope.length) ? $scope : $root;
+            $ctx.filter('[data-te-editor]').add($ctx.find('[data-te-editor]')).each(function () {
+                var wrap = this;
+                var ta = wrap.querySelector('[data-cf-field-label]');
+                if (!ta || ta.getAttribute('data-cf-label-watch') === '1') {
+                    return;
+                }
+                ta.setAttribute('data-cf-label-watch', '1');
+                var last = ta.value;
+                var poke = function () {
+                    window.setTimeout(function () {
+                        if (ta.value === last) {
+                            return;
+                        }
+                        var before = plainFieldLabel(last);
+                        last = ta.value;
+                        if (before !== plainFieldLabel(ta.value)) {
+                            $(ta).trigger('input');
+                        }
+                    }, 0);
+                };
+                wrap.addEventListener('input', poke, true);
+                wrap.addEventListener('keyup', poke, true);
+            });
         };
 
         var destroyRichEditors = function ($scope) {
@@ -1072,7 +1124,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (tab === 'builder' || (tab === 'settings' && (section === 'translations' || section === 'rounds'))) {
                 setTimeout(function () {
                     var $scope = tab === 'builder'
-                        ? $root.find('[data-cf-panel="builder"]')
+                        ? $root.find('[data-cf-panel="builder"] .thiscovery-forms-field-row.is-expanded')
                         : $root.find('[data-cf-panel="' + section + '"], [data-cf-settings-pane="' + section + '"]');
                     initRichEditors($scope);
                 }, 30);
@@ -2596,7 +2648,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     seen[name] = true;
                     var $row = $(this).closest('.thiscovery-forms-field-row');
                     var $card = ownCard($row);
-                    var label = $.trim($card.find('[data-cf-field-label]').first().val() || '') || name;
+                    var label = plainFieldLabel($card.find('[data-cf-field-label]').first().val()) || name;
                     var options = [];
                     var optSeen = {};
                     $card.find('[data-cf-option-item]').each(function () {
@@ -3466,7 +3518,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $own = ownCard($row);
                 refreshTypeUi($row);
                 var key = String($row.attr('data-cf-key') || '');
-                var label = $.trim(String($(input).val() || '')) || ('#' + key);
+                var label = plainFieldLabel($(input).val()) || ('#' + key);
                 var internal = $.trim(String($own.find('[data-cf-internal-label]').val() || ''));
                 retitleConditionOption(key, (internal || label) + (function () {
                     var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
@@ -3492,7 +3544,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var key = String($row.attr('data-cf-key') || '');
                 var $own = ownCard($row);
                 var label = $.trim(String($(input).val() || ''))
-                    || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
+                    || plainFieldLabel($own.find('[data-cf-field-label]').val())
                     || ('#' + key);
                 var v = $.trim(String($own.find('[data-cf-variable]').val() || ''));
                 retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
@@ -3507,7 +3559,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 var $own = ownCard($row);
                 var key = String($row.attr('data-cf-key') || '');
                 var label = $.trim(String($own.find('[data-cf-internal-label]').val() || ''))
-                    || $.trim(String($own.find('[data-cf-field-label]').val() || ''))
+                    || plainFieldLabel($own.find('[data-cf-field-label]').val())
                     || ('#' + key);
                 var v = $.trim(String($(input).val() || ''));
                 retitleConditionOption(key, label + (v ? (' [' + v + ']') : ''));
@@ -3603,8 +3655,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var cur = $.trim($label.val());
             var known = Object.keys(labels).map(function (k) { return labels[k]; });
             known.push(typeLabels.respondent_meta || 'Respondent metadata');
-            if (!cur || known.indexOf(cur) !== -1) {
-                $label.val(labels[next] || cur);
+            if (!cur || known.indexOf(plainFieldLabel(cur)) !== -1 || known.indexOf(cur) !== -1) {
+                setFieldLabel($label, labels[next] || cur);
             }
             refreshTypeUi($row);
             applyDefaultPii($row);
@@ -3620,8 +3672,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var cur = $.trim($label.val());
             var known = Object.keys(labels).map(function (k) { return labels[k]; });
             known.push(typeLabels.panel_attr || 'Panel member field');
-            if (!cur || known.indexOf(cur) !== -1) {
-                $label.val(labels[next] || cur);
+            if (!cur || known.indexOf(plainFieldLabel(cur)) !== -1 || known.indexOf(cur) !== -1) {
+                setFieldLabel($label, labels[next] || cur);
             }
             refreshTypeUi($row);
             applyDefaultPii($row);
@@ -5603,12 +5655,26 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             return String(raw);
         };
 
+        var escapePipeHtml = function (value) {
+            return String(value).replace(/[&<>"']/g, function (ch) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch];
+            });
+        };
+
+        var pipeTemplateIsHtml = function (tpl) {
+            return /<\/?[a-z][\s\S]*>/i.test(String(tpl || ''));
+        };
+
         var applyPiping = function (values) {
             values = values || readAnswers();
             var allValues = values;
             var extras = module.config.pipeVars || {};
             var loopToken = null;
-            var replaceTpl = function (tpl) {
+            var replaceTpl = function (tpl, asHtml) {
+                var put = function (value) {
+                    value = value == null ? '' : String(value);
+                    return asHtml ? escapePipeHtml(value) : value;
+                };
                 return String(tpl || '').replace(/\{\{\s*(?:(answer|field):)?([^}]+)\s*\}\}/gi, function (full, kind, key) {
                     key = $.trim(String(key).split(':')[0]);
                     if (kind) {
@@ -5616,23 +5682,23 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                         var bracket = key.match(/^([A-Za-z0-9_\-]+)\[([A-Za-z0-9_\/\-]+)\]$/);
                         if (bracket) {
                             var map = allValues[bracket[1]];
-                            return map && typeof map === 'object' && !Array.isArray(map) ? formatPipeValue(map[bracket[2]]) : '';
+                            return map && typeof map === 'object' && !Array.isArray(map) ? put(formatPipeValue(map[bracket[2]])) : '';
                         }
                         if (values[key] !== undefined) {
-                            return formatPipeValue(values[key]);
+                            return put(formatPipeValue(values[key]));
                         }
                         return '';
                     }
                     var loopMatch = key.match(/^loop\.(parent\.)?(label|index|count)$/i);
                     if (loopMatch) {
-                        return loopToken ? loopToken((loopMatch[1] ? 'parent-' : '') + loopMatch[2].toLowerCase()) : '';
+                        return put(loopToken ? loopToken((loopMatch[1] ? 'parent-' : '') + loopMatch[2].toLowerCase()) : '');
                     }
                     var lower = key.toLowerCase();
                     if (extras[lower] != null) {
-                        return String(extras[lower]);
+                        return put(extras[lower]);
                     }
                     if (extras[key] != null) {
-                        return String(extras[key]);
+                        return put(extras[key]);
                     }
                     return full;
                 });
@@ -5644,7 +5710,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 loopToken = $page.length ? function (part) {
                     return String($page.attr('data-cf-instance-' + part) || '');
                 } : null;
-                var text = replaceTpl(tpl);
+                var asHtml = pipeTemplateIsHtml(tpl);
+                var text = replaceTpl(tpl, asHtml);
+                if (asHtml) {
+                    $(this).html(text);
+                    return;
+                }
                 if ($(this).find('.text-danger').length) {
                     var node = $(this).contents().filter(function () { return this.nodeType === 3; }).get(0);
                     var shown = text.charAt(text.length - 1) === ' ' ? text : text + ' ';
@@ -5972,7 +6043,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (!hasCondition(logic) || !ruleFieldShown(fieldLogic[i].fieldId) || !logicMet(logic, values)) {
                     continue;
                 }
-                if (logic.action === 'goto_end') {
+                if (logic.action === 'goto_end' || logic.action === 'screen_out') {
                     return { index: null, explicit: true, end: true };
                 }
                 if (logic.action === 'goto_page') {

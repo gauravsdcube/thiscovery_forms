@@ -1943,6 +1943,22 @@ body.cf-fill-standalone #topbar-second {
     margin-bottom: .35rem;
 }
 
+.cf-question__label-text p,
+.cf-question-group__title p {
+    margin: 0;
+    font-weight: inherit;
+}
+
+.cf-question__label-text ul,
+.cf-question__label-text ol {
+    margin: .25rem 0 .25rem 1.25rem;
+    font-weight: 500;
+}
+
+.cf-field-card [data-cf-label-wrap] .te-field {
+    max-width: 100%;
+}
+
 .cf-question__help {
     color: var(--hh-text-color-secondary, #64748b);
     font-size: .9rem;
@@ -2861,6 +2877,27 @@ body.cf-fill-standalone #topbar-second {
     margin: .25rem 0 .5rem;
     line-height: 1.55;
     color: #0f172a;
+}
+
+#cf-fill .ep-accordion__item {
+    margin-bottom: var(--yg-accordion-margin-bottom, 12px);
+}
+
+#cf-fill .ep-accordion__summary {
+    display: block;
+    list-style: none;
+    box-sizing: border-box;
+    font-size: var(--yg-accordion-header-font-size, 18px);
+    font-weight: var(--yg-accordion-header-font-weight, 600);
+    line-height: 1.4;
+    padding: var(--yg-accordion-header-padding-y, 18px) var(--yg-accordion-header-padding-x, 20px);
+    padding-right: calc(var(--yg-accordion-header-padding-x, 20px) + 30px);
+}
+
+#cf-fill .ep-accordion__summary::-webkit-details-marker,
+#cf-fill .ep-accordion__summary::marker {
+    display: none;
+    content: none;
 }
 
 .cf-rich-block img,

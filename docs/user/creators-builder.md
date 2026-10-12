@@ -10,6 +10,7 @@ Use **Add fields** (or the equivalent control on the builder) and choose a type.
 
 Each question can also have:
 
+- **Label** — wording participants see. This is a rich text box, so bold, lists, and links are kept. The studio name, the variable, and error messages use the words only
 - **Internal label** — name shown in the studio only
 - **Variable name** — stable id for piping, logic, and CSV export (must be unique; auto-fills from the label)
 
@@ -60,7 +61,7 @@ Ranking, grids, MaxDiff, and best-worst do not open this box.
 
 **Page breaks** split the fill experience. Give each page a clear title. The **page key** is used by skip logic and “go to page” actions — keep keys stable once people have started filling. Logic or branch rules on a page break run when the person clicks **Next** on the page before that break.
 
-Show or hide a later page with **Go to page if**. That still shows **Next** so the respondent can open that page. **Go to end if** is the action that replaces Next with **Finish**.
+Show or hide a later page with **Go to page if**. That still shows **Next** so the respondent can open that page. **Go to end if** is the action that replaces Next with **Finish**. **End as screened out if** does the same, and the ending is the screened-out message under **Settings → End of survey**, not the thank-you. Randomisation does not have to be on. A rule on the page break applies when Finish is used on that page.
 
 A later page with nothing visible is skipped, so respondents are not shown a blank page after the last page that still has something to show. Questions on pages they never visit are not required and do not block Submit.
 

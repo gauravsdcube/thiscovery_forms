@@ -25,7 +25,7 @@ if ($rows === []) {
 }
 $labels = [];
 foreach ($formModel->getAllFields()->all() as $field) {
-    $labels[(int)$field->id] = (string)$field->label;
+    $labels[(int)$field->id] = $field->plainLabel();
 }
 $actors = [];
 $actorIds = array_values(array_unique(array_filter(array_map('intval', array_column($rows, 'actor_id')))));

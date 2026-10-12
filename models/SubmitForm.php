@@ -527,7 +527,7 @@ class SubmitForm extends Model
                     continue;
                 }
                 $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required.', [
-                    'label' => $field->label,
+                    'label' => $field->plainLabel(),
                 ]));
                 continue;
             }
@@ -547,7 +547,7 @@ class SubmitForm extends Model
                 $just = trim((string)($this->justifications[$field->id] ?? ''));
                 if ($just === '') {
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please add a comment for "{label}".', [
-                        'label' => $field->label,
+                        'label' => $field->plainLabel(),
                     ]));
                 }
             }
@@ -644,7 +644,7 @@ class SubmitForm extends Model
             if ($this->isEmptyValue($cell)) {
                 if ($required) {
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required for {repeat}.', [
-                        'label' => $field->label,
+                        'label' => $field->plainLabel(),
                         'repeat' => (string)($instance['label'] ?? $code),
                     ]));
                 }
@@ -666,14 +666,14 @@ class SubmitForm extends Model
                 case FormField::TYPE_PANEL_ATTR:
                     if ($field->getPanelAttrKey() === 'email' && !filter_var((string)$value, FILTER_VALIDATE_EMAIL)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid email.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                     }
                     break;
                 case FormField::TYPE_EMAIL:
                     if (!filter_var((string)$value, FILTER_VALIDATE_EMAIL)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid email.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                     }
                     break;
@@ -681,7 +681,7 @@ class SubmitForm extends Model
                     // Plain decimals only: 1e5 passed is_numeric but was empty in formulas (V3-54).
                     if (!is_numeric($value) || \humhub\modules\thiscoveryForms\services\formula\Decimal::canonical(trim((string)$value)) === null) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a number.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                         break;
                     }
@@ -690,13 +690,13 @@ class SubmitForm extends Model
                     $max = $field->getNumberMax();
                     if ($min !== null && $number < $min) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be at least {min}.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                             'min' => $min,
                         ]));
                     }
                     if ($max !== null && $number > $max) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be at most {max}.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                             'max' => $max,
                         ]));
                     }
@@ -705,32 +705,32 @@ class SubmitForm extends Model
                 case FormField::TYPE_RADIO:
                     if (!$field->allowsChoiceValue((string)$value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid option.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                     } elseif ($this->scenario !== self::SCENARIO_DRAFT && $field->otherSpecifyIncomplete($value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please specify your answer for "{label}".', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                     }
                     break;
                 case FormField::TYPE_CHECKBOX:
                     if (!is_array($value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid value.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                         break;
                     }
                     foreach ($value as $item) {
                         if (!$field->allowsChoiceValue((string)$item)) {
                             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid option.', [
-                                'label' => $field->label,
+                                'label' => $field->plainLabel(),
                             ]));
                             break;
                         }
                     }
                     if ($this->scenario !== self::SCENARIO_DRAFT && $field->otherSpecifyIncomplete($value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Please specify your answer for "{label}".', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                     }
                     $exclusiveList = $field->getExclusiveOptions();
@@ -740,13 +740,13 @@ class SubmitForm extends Model
                     $maxSelect = $field->getMaxSelect();
                     if ($maxSelect !== null && count($selected) > $maxSelect) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" allows at most {max} selections.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                             'max' => $maxSelect,
                         ]));
                     }
                     if ($hit && count($selected) > 1) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" cannot combine "{option}" with other choices.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                             'option' => implode(', ', $hit),
                         ]));
                     }
@@ -754,21 +754,21 @@ class SubmitForm extends Model
                 case FormField::TYPE_RANKING:
                     if (!is_array($value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid value.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                         break;
                     }
                     $allowed = $field->getOptions();
                     if (count($value) !== count(array_unique($value))) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has duplicate ranked items.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                         break;
                     }
                     foreach ($value as $item) {
                         if (!in_array((string)$item, $allowed, true)) {
                             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid option.', [
-                                'label' => $field->label,
+                                'label' => $field->plainLabel(),
                             ]));
                             break 2;
                         }
@@ -778,14 +778,14 @@ class SubmitForm extends Model
                     $scale = $field->getRatingScale();
                     if (!is_numeric($value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid rating value.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                         break;
                     }
                     $numeric = (int)$value;
                     if ($numeric < (int)$scale['min'] || $numeric > (int)$scale['max']) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be between {min} and {max}.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                             'min' => $scale['min'],
                             'max' => $scale['max'],
                         ]));
@@ -794,7 +794,7 @@ class SubmitForm extends Model
                     $step = max(1, (int)$scale['step']);
                     if ((($numeric - (int)$scale['min']) % $step) !== 0) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must follow the configured scale step.', [
-                            'label' => $field->label,
+                            'label' => $field->plainLabel(),
                         ]));
                     }
                     break;
@@ -836,21 +836,21 @@ class SubmitForm extends Model
         $max = $field->maxTextLength();
         if ($length > $max) {
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" can be at most {n} characters.', [
-                'label' => $field->label,
+                'label' => $field->plainLabel(),
                 'n' => $max,
             ]));
             return;
         }
         if ($rules['min_length'] !== '' && $length < (int)$rules['min_length']) {
             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be at least {n} characters.', [
-                'label' => $field->label,
+                'label' => $field->plainLabel(),
                 'n' => (int)$rules['min_length'],
             ]));
             return;
         }
         if ($rules['pattern'] !== '' && !FormField::patternMatches($rules['pattern'], $text)) {
             $this->addError('values', $rules['pattern_message'] !== ''
-                ? '"' . $field->label . '": ' . $rules['pattern_message']
+                ? '"' . $field->plainLabel() . '": ' . $rules['pattern_message']
                 : Yii::t('ThiscoveryFormsModule.base', '"{label}" is not in the expected format.', ['label' => $field->label]));
         }
     }
@@ -860,15 +860,15 @@ class SubmitForm extends Model
     {
         $text = is_array($value) ? '' : trim((string)$value);
         if (!FormField::isRealDate($text)) {
-            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a date.', ['label' => $field->label]));
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a date.', ['label' => $field->plainLabel()]));
             return;
         }
         $min = $field->dateBound('date_min');
         $max = $field->dateBound('date_max');
         if ($min !== '' && $text < $min) {
-            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be on or after {date}.', ['label' => $field->label, 'date' => $min]));
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be on or after {date}.', ['label' => $field->plainLabel(), 'date' => $min]));
         } elseif ($max !== '' && $text > $max) {
-            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be on or before {date}.', ['label' => $field->label, 'date' => $max]));
+            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be on or before {date}.', ['label' => $field->plainLabel(), 'date' => $max]));
         }
     }
 
@@ -887,7 +887,7 @@ class SubmitForm extends Model
         }
         $message = $field->getValidation()['check_message'];
         $this->addError('values', $message !== ''
-            ? '"' . $field->label . '": ' . $message
+            ? '"' . $field->plainLabel() . '": ' . $message
             : Yii::t('ThiscoveryFormsModule.base', '"{label}" does not fit with your other answers.', ['label' => $field->label]));
     }
 
@@ -1206,7 +1206,7 @@ class SubmitForm extends Model
                             $transaction->rollBack();
                             FormAnswerField::discardDeferredFiles();
                             $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
-                                'label' => $field->label,
+                                'label' => $field->plainLabel(),
                             ]));
                             return null;
                         }
@@ -1253,7 +1253,7 @@ class SubmitForm extends Model
                     $transaction->rollBack();
                     FormAnswerField::discardDeferredFiles();
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', 'Could not save field "{label}".', [
-                        'label' => $field->label,
+                        'label' => $field->plainLabel(),
                     ]));
                     return null;
                 }
@@ -1430,7 +1430,7 @@ class SubmitForm extends Model
     private function invalid(FormField $field): void
     {
         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" has an invalid value.', [
-            'label' => $field->label,
+            'label' => $field->plainLabel(),
         ]));
     }
 
@@ -1452,10 +1452,10 @@ class SubmitForm extends Model
         }
         $this->addError('values', $field->isMinSelectAll()
             ? Yii::t('ThiscoveryFormsModule.base', '"{label}" requires every option to be selected.', [
-                'label' => $field->label,
+                'label' => $field->plainLabel(),
             ])
             : Yii::t('ThiscoveryFormsModule.base', '"{label}" requires at least {min} selections.', [
-                'label' => $field->label,
+                'label' => $field->plainLabel(),
                 'min' => $minSelect,
             ]));
         return true;
@@ -1504,7 +1504,7 @@ class SubmitForm extends Model
             if ($cell === null || $cell === '' || $cell === []) {
                 if ($field->required && $this->scenario !== self::SCENARIO_DRAFT) {
                     $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" is required.', [
-                        'label' => $field->label,
+                        'label' => $field->plainLabel(),
                     ]));
                     return;
                 }
@@ -1726,7 +1726,7 @@ class SubmitForm extends Model
             if ($this->editingAnswer && \humhub\modules\thiscoveryForms\services\RandomisationService::active($this->form)) {
                 $orders = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->orders($this->editingAnswer)['pages'];
             }
-            $this->onPathFieldIds = (new FormPager())->visitedFieldIds($this->form->fields, $this->values, $orders);
+            $this->onPathFieldIds = (new FormPager())->routeLogicFieldIds($this->form->fields, $this->values, $orders);
         }
         return isset($this->onPathFieldIds[(int)$field->id]);
     }

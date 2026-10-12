@@ -727,7 +727,11 @@ trait FillResumeTrait
             'startNew' => $this->isStartNewRequest(),
             'isPreview' => $this->isPreviewMode($form),
             'accessToken' => $ctx->accessToken,
-            'showCaptcha' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->shouldShowCaptchaWidget($form),
+            // A test submission does not start an integrity session and the server does not
+            // check CAPTCHA on preview, so the widget must not block Finish.
+            'showCaptcha' => $this->isPreviewMode($form)
+                ? false
+                : (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->shouldShowCaptchaWidget($form),
             'captchaProvider' => (string)((\humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form)['captcha_provider'] ?? 'altcha')),
             'integrityEnabled' => (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->isEnabled($form),
             'integritySettings' => \humhub\modules\thiscoveryForms\services\integrity\IntegritySettings::forForm($form),

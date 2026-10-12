@@ -217,6 +217,12 @@ class CustomForm extends ContentActiveRecord implements Searchable
     /** @var string Absolute or site-relative URL when completion_mode=redirect */
     public $completion_redirect_url = '';
 
+    /** @var string Shown when a question ends the form as screened out */
+    public $screen_out_message = '';
+
+    /** @var string Optional URL used only for a screen-out. Empty stays on the message. */
+    public $screen_out_redirect_url = '';
+
     /** @var int|bool Show button under already-submitted message */
     public $already_submitted_button_enabled = 0;
 
@@ -238,7 +244,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['title'], 'string', 'max' => 255],
             [['kind'], 'default', 'value' => self::KIND_SURVEY],
             [['kind'], 'in', 'range' => array_keys(self::getKindLabels())],
-            [['description', 'thank_you_content', 'already_submitted_message', 'custom_css'], 'string'],
+            [['description', 'thank_you_content', 'already_submitted_message', 'custom_css', 'screen_out_message'], 'string'],
             [['custom_css'], 'validateCustomCss'],
             [['status'], 'in', 'range' => [self::STATUS_DRAFT, self::STATUS_OPEN, self::STATUS_CLOSED]],
             [['status'], 'validatePublishedBeforeOpen'],
@@ -250,8 +256,9 @@ class CustomForm extends ContentActiveRecord implements Searchable
             [['completion_mode'], 'in', 'range' => [self::COMPLETION_MESSAGE, self::COMPLETION_REDIRECT]],
             [['completion_button_enabled', 'already_submitted_button_enabled'], 'boolean'],
             [['completion_button_label', 'already_submitted_button_label'], 'string', 'max' => 120],
-            [['completion_button_url', 'completion_redirect_url', 'already_submitted_button_url'], 'string', 'max' => 2000],
+            [['completion_button_url', 'completion_redirect_url', 'already_submitted_button_url', 'screen_out_redirect_url'], 'string', 'max' => 2000],
             [['completion_redirect_url'], 'validateCompletionRedirectUrl'],
+            [['screen_out_redirect_url'], 'validateScreenOutRedirectUrl'],
             [['submit_actions'], 'validateSubmitActions', 'skipOnEmpty' => false],
             [['allow_edit'], 'default', 'value' => 1],
             [['allow_resume'], 'default', 'value' => 0],
@@ -291,6 +298,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'completion_button_label' => Yii::t('ThiscoveryFormsModule.base', 'Thank-you button label'),
             'completion_button_url' => Yii::t('ThiscoveryFormsModule.base', 'Thank-you button URL'),
             'completion_redirect_url' => Yii::t('ThiscoveryFormsModule.base', 'Redirect URL'),
+            'screen_out_message' => Yii::t('ThiscoveryFormsModule.base', 'Screened-out message'),
+            'screen_out_redirect_url' => Yii::t('ThiscoveryFormsModule.base', 'Screened-out URL'),
             'already_submitted_button_enabled' => Yii::t('ThiscoveryFormsModule.base', 'Show button on already-submitted page'),
             'already_submitted_button_label' => Yii::t('ThiscoveryFormsModule.base', 'Already-submitted button label'),
             'already_submitted_button_url' => Yii::t('ThiscoveryFormsModule.base', 'Already-submitted button URL'),
@@ -1276,6 +1285,8 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->already_submitted_button_enabled = $this->getSetting('already_submitted_button_enabled', false) ? 1 : 0;
         $this->already_submitted_button_label = (string)$this->getSetting('already_submitted_button_label', '');
         $this->already_submitted_button_url = (string)$this->getSetting('already_submitted_button_url', '');
+        $this->screen_out_message = (string)$this->getSetting('screen_out_message', '');
+        $this->screen_out_redirect_url = (string)$this->getSetting('screen_out_redirect_url', '');
     }
 
     public function getUrl($scheme = false): string
@@ -1938,7 +1949,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
 
     public function hasThankYouContent(): bool
     {
-        return trim((string)$this->thank_you_content) !== '';
+        return FormField::normalizeLabelHtml((string)$this->thank_you_content) !== '';
     }
 
     public function beforeSave($insert)
@@ -2048,7 +2059,6 @@ class CustomForm extends ContentActiveRecord implements Searchable
             'block_size' => $request->post('randomisation_block_size', 4),
             'assign' => $request->post('randomisation_assign', 'start'),
             'assign_page' => $request->post('randomisation_assign_page', ''),
-            'screen_out_message' => $request->post('screen_out_message', ''),
         ]);
     }
 
@@ -2121,6 +2131,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
         $this->setSetting('already_submitted_button_enabled', !empty($this->already_submitted_button_enabled));
         $this->setSetting('already_submitted_button_label', trim((string)$this->already_submitted_button_label));
         $this->setSetting('already_submitted_button_url', trim((string)$this->already_submitted_button_url));
+        $this->screen_out_message = FormField::normalizeLabelHtml((string)$this->screen_out_message);
+        $this->setSetting('screen_out_message', $this->screen_out_message);
+        $this->screen_out_redirect_url = trim((string)$this->screen_out_redirect_url);
+        $this->setSetting('screen_out_redirect_url', $this->screen_out_redirect_url);
+    }
+
+    public function validateScreenOutRedirectUrl($attribute): void
+    {
+        $url = trim((string)$this->$attribute);
+        if ($url === '') {
+            return;
+        }
+        if (!$this->isSafeOutboundUrl($url)) {
+            $this->addError($attribute, Yii::t('ThiscoveryFormsModule.base', 'Screened-out URL must be http(s) or a path starting with /.'));
+        }
     }
 
     /**
@@ -2185,6 +2210,16 @@ class CustomForm extends ContentActiveRecord implements Searchable
     public function getCompletionRedirectUrl(): string
     {
         return trim((string)$this->completion_redirect_url);
+    }
+
+    public function usesScreenOutRedirect(): bool
+    {
+        return trim((string)$this->screen_out_redirect_url) !== '';
+    }
+
+    public function getScreenOutRedirectUrl(): string
+    {
+        return trim((string)$this->screen_out_redirect_url);
     }
 
     public function showsCompletionButton(): bool
@@ -2749,6 +2784,11 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field = ($id && isset($existing[$id])) ? $existing[$id] : new FormField();
             $field->form_id = $this->id;
             $oldVariable = $field->isNewRecord ? '' : trim((string)$field->variable);
+            if (!$field->isNewRecord) {
+                $label = FormField::keepUnformattedLabel((string)$field->label, $label);
+            } else {
+                $label = FormField::normalizeLabelHtml($label);
+            }
             $field->label = $label;
             $field->type = $type;
             $field->variable = trim((string)($row['variable'] ?? ''));
@@ -3056,7 +3096,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'ThiscoveryFormsModule.base',
                     'Could not save question "{label}": {error}',
                     [
-                        'label' => mb_substr((string)$field->label, 0, 80),
+                        'label' => mb_substr($field->plainLabel(), 0, 80),
                         'error' => $msg,
                     ]
                 ));
@@ -3350,21 +3390,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
             foreach ($fields as $field) {
                 $logic = $field->getLogic();
                 if (($logic['action'] ?? '') === LogicEngine::ACTION_GOTO_PAGE && $pointsBack($from, (string)($logic['gotoPageKey'] ?? ''))) {
-                    return (string)$field->label;
+                    return $field->plainLabel();
                 }
                 foreach ($field->getActions() as $action) {
                     if (($action['fn'] ?? '') === FormActionService::FN_GOTO_PAGE && $pointsBack($from, (string)($action['page_key'] ?? ''))) {
-                        return (string)$field->label;
+                        return $field->plainLabel();
                     }
                 }
                 if ($field->type === FormField::TYPE_PAGE_BREAK) {
                     foreach ($field->getPageBreakConfig()['branches'] as $branch) {
                         if ($pointsBack($from, (string)($branch['gotoPageKey'] ?? ''))) {
-                            return (string)$field->label;
+                            return $field->plainLabel();
                         }
                     }
                     if ($pointsBack($from, (string)$field->getPageBreakConfig()['otherwise'])) {
-                        return (string)$field->label;
+                        return $field->plainLabel();
                     }
                 }
             }

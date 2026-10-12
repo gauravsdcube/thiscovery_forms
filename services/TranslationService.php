@@ -457,7 +457,7 @@ class TranslationService
         $row = FormFieldI18n::findOne(['field_id' => $field->id, 'language' => $lang]) ?: new FormFieldI18n();
         $row->field_id = $field->id;
         $row->language = $lang;
-        $row->label = trim((string)($data['label'] ?? ''));
+        $row->label = FormField::keepUnformattedLabel((string)$row->label, (string)($data['label'] ?? ''));
         $row->help_text = trim((string)($data['help_text'] ?? ''));
         $extra = $row->isNewRecord ? [] : $row->getOptionsOverlay();
         $posted = $this->extraFromData($data, $field);

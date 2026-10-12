@@ -107,7 +107,7 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
         <div class="cf-field-card__title">
             <span class="cf-field-card__index" data-cf-index></span>
             <span class="cf-field-card__name" data-cf-title>
-                <?= Html::encode(($field->internal_label ?: $field->label) ?: Yii::t('ThiscoveryFormsModule.base', 'Untitled field')) ?>
+                <?= Html::encode(($field->internal_label ?: $field->plainLabel()) ?: Yii::t('ThiscoveryFormsModule.base', 'Untitled field')) ?>
             </span>
             <span class="cf-field-card__type-badge" data-cf-type-label>
                 <?= Html::encode($typeLabels[$type] ?? $type) ?>
@@ -143,14 +143,19 @@ if ($isQuestionGroup && !isset($actionLabels[$logic['action']]) && isset(LogicEn
 
     <div class="cf-field-card__body" data-cf-card-body>
         <div class="row g-3">
-            <div class="col-md-6" data-cf-label-wrap>
+            <div class="col-12" data-cf-label-wrap>
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Label') ?></label>
-                <?= Html::textarea($namePrefix . '[label]', $field->label, [
-                    'class' => 'form-control',
-                    'rows' => 3,
-                    'maxlength' => FormField::LABEL_MAX,
-                    'data-cf-field-label' => true,
+                <?= EditorField::widget([
+                    'id' => 'cf-label-field-' . preg_replace('/[^a-zA-Z0-9_-]/', '-', (string)$key),
+                    'name' => $namePrefix . '[label]',
+                    'value' => (string)$field->label,
                     'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Shown to participants'),
+                    'height' => 140,
+                    'profile' => 'simple',
+                    'options' => [
+                        'data-cf-field-label' => '1',
+                        'maxlength' => FormField::LABEL_MAX,
+                    ],
                 ]) ?>
             </div>
             <div class="col-md-3">

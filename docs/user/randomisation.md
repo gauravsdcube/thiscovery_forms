@@ -29,7 +29,7 @@ A test response is not assigned and is not counted.
 
 ## Screened out
 
-A question can use “End as screened out if”. The response is closed. It is not counted as a completed questionnaire, and the person is not reminded to finish. The screened-out message in the form settings is the text to show them.
+A question or page break can use “End as screened out if”. This works whether or not randomisation is on. The response is closed. It is not counted as a completed questionnaire, and the person is not reminded to finish. The message and optional URL are under **Settings → End of survey → When someone is screened out**. **Go to end if** is a normal completion and still uses the thank-you or the completion URL.
 
 ## Export
 

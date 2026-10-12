@@ -45,6 +45,7 @@ A new form opens on Basics. Name it and save before using the share link, questi
 | Thank you message | Rich text after submit in message mode; empty uses the default thank-you |
 | Show a button under the message | Optional thank-you button with **Button label** and **Button URL** (blank URL returns to this form) |
 | Redirect URL | Used instead of the thank-you page when redirect mode is selected |
+| When someone is screened out | Rich text shown instead of the thank-you. Empty uses a short default. An optional URL is used only for a live screen-out; preview stays on the message |
 | Already submitted | Message shown when another submission is blocked; supports `{formName}`; empty uses the default |
 | Show a button under the message (Already submitted) | Optional button with label/URL (blank URL goes to the forms list) |
 
@@ -210,7 +211,7 @@ Do not rely on scrubbing as the only privacy control: it does not detect names i
 | Setting | What it does |
 | --- | --- |
 | Theme | Shared theme from Administration, or **Custom** to keep styles on this form only |
-| Colour / style groups | Page, card, questions, buttons, and per-question-type styles. Empty values keep the theme (or site) default. Colour fields support opacity / transparent. |
+| Colour / style groups | Page, card, questions, buttons, accordion, and per-question-type styles. Empty values add no style of their own. Colour fields support opacity / transparent. An accordion in a rich text box uses the Accordion group, including Closed symbol and Open symbol. |
 | Custom CSS | Optional CSS for this form; prefer selectors under `#cf-fill` |
 
 Administrators create and maintain shared themes under **Administration → Modules → Thiscovery Forms → Appearance themes**. Updating a shared theme updates every form that uses it; values you set on the form still override the theme for that form.

@@ -169,7 +169,6 @@ class RandomisationService
             'strata' => $strata,
             'arms' => $arms,
         ]);
-        $form->setSetting('screen_out_message', trim((string)($posted['screen_out_message'] ?? '')));
     }
 
     public function armsText(CustomForm $form): string
