@@ -514,6 +514,7 @@ return [
     'The file is not valid JSON.' => 'The file is not valid JSON.',
     'The file is not valid JSON/CSV.' => 'The file is not valid JSON/CSV.',
     'The settings in the CSV file are not valid JSON.' => 'The settings in the CSV file are not valid JSON.',
+    'Form settings were left unchanged because the settings cell was not valid JSON.' => 'Form settings were left unchanged because the settings cell was not valid JSON.',
     'JSON is missing a fields list.' => 'JSON is missing a fields list.',
     'No questions found in the CSV file.' => 'No questions found in the CSV file.',
     'No questions found in the import file.' => 'No questions found in the import file.',

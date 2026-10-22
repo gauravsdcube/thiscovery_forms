@@ -15,7 +15,7 @@ Save the form at least once before you import.
 
 **Export JSON** and **Export CSV** include the form settings, so a tested form can be copied onto a new one. Secure send is left out, as are share links and anything that belongs only to this site: panels, appearance themes, and email templates. Those settings are applied when **Replace all existing questions** is ticked, or when the form you import into has no questions yet. Adding questions to a form that already has some does not change that form’s settings.
 
-In a CSV the settings are one row, not a question. Set `type` to `form_settings` and put the settings in the `settings` column as JSON, the same object an export writes. Leave that cell empty on question rows.
+In a CSV the settings are one row, not a question. Set `type` to `form_settings` and put the settings in the `settings` column as JSON, the same object an export writes. Leave that cell empty on question rows. If that cell cannot be read, for example after a spreadsheet rewrites the quotes, the questions are still imported and the form settings stay as they are.
 
 Download **Sample CSV** from Share if you want a working file to copy.
 

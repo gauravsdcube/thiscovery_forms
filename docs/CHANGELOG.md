@@ -2,6 +2,10 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.42.0 (October 22, 2026)
+
+- **Export CSV** quotes cells the way a spreadsheet does, so a file that is opened and saved in Excel or Google Sheets still has valid settings JSON. Importing that file copies the form settings again. A CSV exported by 1.41.0 still imports when it has not been rewritten by a spreadsheet. If the settings cell cannot be read, the questions are imported and the form settings are left as they are.
+
 ## 1.41.0 (October 12, 2026)
 
 - The question **Label** in the studio is a rich text box. Participants see the formatting. The name used only in the studio, the variable, logic lists, and error messages stay plain text.

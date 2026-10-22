@@ -475,6 +475,8 @@ trait StudioTrait
                 : Yii::t('ThiscoveryFormsModule.base', 'Questions imported.');
             if ($service->settingsApplied) {
                 $msg .= ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form settings were copied, except secure send.');
+            } elseif ($service->settingsSkipped) {
+                $msg .= ' ' . Yii::t('ThiscoveryFormsModule.base', 'Form settings were left unchanged because the settings cell was not valid JSON.');
             }
             $this->view->success($msg);
             Yii::$app->session->setFlash('cf_import_notice', ['type' => 'success', 'message' => $msg]);

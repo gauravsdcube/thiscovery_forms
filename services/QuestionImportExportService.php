@@ -17,6 +17,9 @@ class QuestionImportExportService
     /** Set when a JSON import copied the form settings onto the target. */
     public bool $settingsApplied = false;
 
+    /** Set when question rows imported and the form_settings cell could not be read. */
+    public bool $settingsSkipped = false;
+
     /**
      * Links, secrets, and records that exist only on this site. Secure send is never transferred.
      * @var string[]
@@ -156,12 +159,12 @@ class QuestionImportExportService
     public function exportCsv(CustomForm $form): string
     {
         $fh = fopen('php://temp', 'r+');
-        fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row(self::CSV_COLUMNS));
+        $this->putCsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row(self::CSV_COLUMNS));
         $aliases = $this->portableAliasMap($form);
         foreach ($form->fields as $field) {
-            fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvRowFromField($field, $aliases)));
+            $this->putCsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvRowFromField($field, $aliases)));
         }
-        fputcsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvSettingsRow($form, $aliases)));
+        $this->putCsv($fh, \humhub\modules\thiscoveryForms\helpers\CsvCell::row($this->csvSettingsRow($form, $aliases)));
         rewind($fh);
         $csv = stream_get_contents($fh);
         fclose($fh);
@@ -174,6 +177,7 @@ class QuestionImportExportService
     public function importJson(CustomForm $form, string $json, bool $replace = false): ?string
     {
         $this->settingsApplied = false;
+        $this->settingsSkipped = false;
         $decoded = json_decode($json, true);
         if (!is_array($decoded)) {
             return Yii::t('ThiscoveryFormsModule.base', 'The file is not valid JSON/CSV.');
@@ -197,6 +201,8 @@ class QuestionImportExportService
             $csv = substr($csv, 3);
         }
 
+        $delimiter = $this->csvDelimiter($csv);
+        $escape = $this->csvEscape($csv, $delimiter);
         $fh = fopen('php://temp', 'r+');
         fwrite($fh, $csv);
         rewind($fh);
@@ -205,7 +211,8 @@ class QuestionImportExportService
         $header = null;
         $settings = null;
         $settingsError = null;
-        while (($row = fgetcsv($fh)) !== false) {
+        $this->settingsSkipped = false;
+        while (($row = fgetcsv($fh, null, $delimiter, '"', $escape)) !== false) {
             if ($row === [null] || $row === []) {
                 continue;
             }
@@ -226,23 +233,27 @@ class QuestionImportExportService
                 continue;
             }
 
-            $typeCell = strtolower(trim((string)($row[0] ?? '')));
-            $typeCell = str_replace([' ', '-'], '_', $typeCell);
+            if ($header === null) {
+                $candidate = array_map([$this, 'normalizeHeader'], $row);
+                if (in_array('type', $candidate, true) && in_array('label', $candidate, true)) {
+                    $header = $candidate;
+                    continue;
+                }
+            }
+
+            $typeCell = $this->rowTypeCell($header, $row);
             if ($typeCell === 'form_settings' || $typeCell === 'settings') {
-                $read = $this->settingsFromCsvRow($header, $row);
-                if ($read['error'] !== null) {
-                    $settingsError = $read['error'];
-                } elseif ($read['settings'] !== null) {
+                $read = $this->settingsFromCsvRow($header, $row, $delimiter);
+                if ($read['settings'] !== null) {
                     $settings = $read['settings'];
+                    $settingsError = null;
+                } elseif ($read['error'] !== null) {
+                    $settingsError = $read['error'];
                 }
                 continue;
             }
 
             if ($header === null) {
-                $header = array_map([$this, 'normalizeHeader'], $row);
-                if (in_array('type', $header, true) && in_array('label', $header, true)) {
-                    continue;
-                }
                 $header = ['type', 'label', 'help', 'required', 'options'];
             }
 
@@ -343,11 +354,15 @@ class QuestionImportExportService
         }
         fclose($fh);
 
-        if ($settingsError !== null) {
-            return $settingsError;
-        }
         if (!$payloads) {
+            if ($settingsError !== null) {
+                return $settingsError;
+            }
             return Yii::t('ThiscoveryFormsModule.base', 'No questions found in the CSV file.');
+        }
+        if ($settingsError !== null) {
+            $this->settingsSkipped = true;
+            $settings = null;
         }
 
         return $this->appendFieldPayloads($form, $payloads, $replace, $settings);
@@ -644,45 +659,268 @@ class QuestionImportExportService
     }
 
     /**
+     * Quote the way spreadsheets do: a quote inside a cell is doubled, and a
+     * backslash is just a backslash. PHP's older default of escaping quotes
+     * with a backslash cuts a JSON settings cell in half when Excel or Sheets
+     * opens the file.
+     *
+     * @param resource $fh
+     * @param list<string> $row
+     */
+    private function putCsv($fh, array $row): void
+    {
+        fputcsv($fh, $row, ',', '"', '');
+    }
+
+    /**
+     * Spreadsheets often save with semicolons. The header line shows which separator was used.
+     */
+    private function csvDelimiter(string $csv): string
+    {
+        $line = preg_split("/\r\n|\n|\r/", $csv, 2)[0] ?? '';
+        return substr_count($line, ';') > substr_count($line, ',') ? ';' : ',';
+    }
+
+    /**
+     * New exports use an empty escape. Files exported before that still escape
+     * quotes with a backslash. Use whichever reading keeps the settings JSON intact.
+     */
+    private function csvEscape(string $csv, string $delimiter): string
+    {
+        $chosen = '';
+        $best = null;
+        foreach (['', '\\'] as $escape) {
+            $rank = $this->probeCsv($csv, $delimiter, $escape);
+            if ($best === null || $rank > $best) {
+                $chosen = $escape;
+                $best = $rank;
+            }
+        }
+        return $chosen;
+    }
+
+    /**
+     * Higher is a more believable reading of the file.
+     */
+    private function probeCsv(string $csv, string $delimiter, string $escape): int
+    {
+        $fh = fopen('php://temp', 'r+');
+        fwrite($fh, $csv);
+        rewind($fh);
+        $header = null;
+        $questions = 0;
+        $overflow = 0;
+        $settingsOk = false;
+        $settingsBad = false;
+        while (($row = fgetcsv($fh, null, $delimiter, '"', $escape)) !== false) {
+            if ($row === [null] || $row === []) {
+                continue;
+            }
+            if ($header === null) {
+                $candidate = array_map([$this, 'normalizeHeader'], $row);
+                if (in_array('type', $candidate, true) && in_array('label', $candidate, true)) {
+                    $header = $candidate;
+                    continue;
+                }
+            }
+            $type = $this->rowTypeCell($header, $row);
+            if ($type === 'form_settings' || $type === 'settings') {
+                $read = $this->settingsFromCsvRow($header, $row, $delimiter);
+                if ($read['settings'] !== null) {
+                    $settingsOk = true;
+                } elseif ($read['error'] !== null) {
+                    $settingsBad = true;
+                }
+                if ($header !== null && count($row) > count($header)) {
+                    $overflow++;
+                }
+                continue;
+            }
+            if ($header !== null && count($row) > count($header)) {
+                $overflow++;
+            }
+            if ($header === null) {
+                $header = ['type', 'label', 'help', 'required', 'options'];
+            }
+            $map = [];
+            foreach ($header as $idx => $name) {
+                if ($name !== '') {
+                    $map[$name] = $row[$idx] ?? '';
+                }
+            }
+            $normalized = $this->normalizeType((string)($map['type'] ?? ''));
+            if ($normalized !== '' && isset(FormField::getTypeLabels()[$normalized])) {
+                $questions++;
+            }
+        }
+        fclose($fh);
+        $rank = $questions;
+        if ($settingsOk) {
+            $rank += 100000;
+        } elseif ($settingsBad) {
+            $rank -= 1000;
+        }
+        $rank -= $overflow * 50000;
+        return $rank;
+    }
+
+    /**
+     * @param string[]|null $header
+     * @param string[] $row
+     */
+    private function rowTypeCell(?array $header, array $row): string
+    {
+        $raw = (string)($row[0] ?? '');
+        if ($header !== null) {
+            foreach ($header as $idx => $name) {
+                if ($name === 'type') {
+                    $raw = (string)($row[$idx] ?? '');
+                    break;
+                }
+            }
+        }
+        $typeCell = strtolower(trim($raw));
+        return str_replace([' ', '-'], '_', $typeCell);
+    }
+
+    /**
      * @param string[]|null $header
      * @param string[] $row
      * @return array{settings:?array,error:?string}
      */
-    private function settingsFromCsvRow(?array $header, array $row): array
+    private function settingsFromCsvRow(?array $header, array $row, string $delimiter = ','): array
     {
-        $cell = '';
-        if ($header !== null) {
-            foreach ($header as $idx => $name) {
-                if ($name === 'settings') {
-                    $cell = (string)($row[$idx] ?? '');
-                    break;
-                }
-            }
-        }
-        if (trim($cell) === '') {
-            foreach ($row as $idx => $value) {
-                if ($idx === 0) {
-                    continue;
-                }
-                $value = trim((string)$value);
-                if ($value !== '' && ($value[0] === '{' || $value[0] === '[')) {
-                    $cell = $value;
-                    break;
-                }
-            }
-        }
-        $cell = trim($cell);
+        $cell = trim($this->settingsCell($header, $row, $delimiter));
         if ($cell === '') {
             return ['settings' => null, 'error' => null];
         }
-        $decoded = json_decode($cell, true);
-        if (!is_array($decoded)) {
+        $decoded = $this->decodeSettingsJson($cell);
+        if ($decoded === null) {
             return [
                 'settings' => null,
                 'error' => Yii::t('ThiscoveryFormsModule.base', 'The settings in the CSV file are not valid JSON.'),
             ];
         }
         return ['settings' => $decoded, 'error' => null];
+    }
+
+    /**
+     * The settings column, or the JSON object on a settings row when that column was split on commas.
+     *
+     * @param string[]|null $header
+     * @param string[] $row
+     */
+    private function settingsCell(?array $header, array $row, string $delimiter): string
+    {
+        $idx = null;
+        if ($header !== null) {
+            foreach ($header as $i => $name) {
+                if ($name === 'settings') {
+                    $idx = $i;
+                    break;
+                }
+            }
+        }
+        if ($idx === null) {
+            foreach ($row as $i => $value) {
+                if ($i === 0) {
+                    continue;
+                }
+                $value = ltrim((string)$value, " \t'");
+                if ($value !== '' && ($value[0] === '{' || $value[0] === '[')) {
+                    $idx = $i;
+                    break;
+                }
+            }
+        }
+        if ($idx === null) {
+            return '';
+        }
+        $cell = (string)($row[$idx] ?? '');
+        if (trim($cell) === '' || $this->decodeSettingsJson($cell) !== null) {
+            return $cell;
+        }
+        $start = ltrim(ltrim($cell), "'");
+        if ($start !== '' && ($start[0] === '{' || $start[0] === '[')) {
+            $parts = [];
+            for ($i = $idx, $n = count($row); $i < $n; $i++) {
+                $parts[] = (string)$row[$i];
+            }
+            $joined = implode($delimiter, $parts);
+            if ($this->decodeSettingsJson($joined) !== null) {
+                return $joined;
+            }
+        }
+        return $cell;
+    }
+
+    /**
+     * Accept the JSON an export writes, plus the quoting Excel and other spreadsheets often leave behind.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function decodeSettingsJson(string $cell): ?array
+    {
+        $cell = trim($cell);
+        if (str_starts_with($cell, "\xEF\xBB\xBF")) {
+            $cell = trim(substr($cell, 3));
+        }
+        if (str_starts_with($cell, "'")) {
+            $cell = trim(substr($cell, 1));
+        }
+        if ($cell === '') {
+            return null;
+        }
+
+        $candidates = [$cell];
+        $straight = strtr($cell, [
+            "\u{201C}" => '"',
+            "\u{201D}" => '"',
+            "\u{2018}" => "'",
+            "\u{2019}" => "'",
+        ]);
+        if ($straight !== $cell) {
+            $candidates[] = $straight;
+        }
+        if (str_contains($cell, '""')) {
+            $candidates[] = str_replace('""', '"', $cell);
+        }
+        if ($straight !== $cell && str_contains($straight, '""')) {
+            $candidates[] = str_replace('""', '"', $straight);
+        }
+
+        foreach ($candidates as $candidate) {
+            $decoded = $this->jsonArray($candidate);
+            if ($decoded !== null) {
+                return $decoded;
+            }
+            $trimmed = preg_replace('/,\s*([}\]])/', '$1', $candidate);
+            if (is_string($trimmed) && $trimmed !== $candidate) {
+                $decoded = $this->jsonArray($trimmed);
+                if ($decoded !== null) {
+                    return $decoded;
+                }
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return array<string,mixed>|null
+     */
+    private function jsonArray(string $raw): ?array
+    {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+        if (is_string($decoded)) {
+            $inner = json_decode($decoded, true);
+            if (is_array($inner)) {
+                return $inner;
+            }
+        }
+        return null;
     }
 
     /**
