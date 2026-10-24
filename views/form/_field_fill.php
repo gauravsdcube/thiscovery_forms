@@ -58,6 +58,7 @@ $choiceGroup = in_array($field->type, [
     FormField::TYPE_MAXDIFF,
     // No single control to point a <label for> at: named as a group instead (V3-49).
     FormField::TYPE_RATING,
+    FormField::TYPE_RATING_OPTION,
     FormField::TYPE_DRILLDOWN,
     FormField::TYPE_IMAGE_AREA,
     FormField::TYPE_MAP,
@@ -73,8 +74,10 @@ if (($value === '' || $value === null || $value === []) && $field->type === Form
     $value = \humhub\modules\thiscoveryForms\services\PanelFieldService::memberValue($panelMember, $field->getPanelAttrKey());
 }
 $fieldsById = [];
-foreach ($allFields as $f) {
-    $fieldsById[(int)$f->id] = $f;
+if (FormField::isCarryForwardType($field->type)) {
+    foreach ($allFields as $f) {
+        $fieldsById[(int)$f->id] = $f;
+    }
 }
 $pipe = new VariableSubstitutor();
 $user = Yii::$app->user->identity;
@@ -262,6 +265,28 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                 'data-cf-html-required' => $htmlCfg['required'] ? '1' : '0',
             ]) ?>
         <?php endif; ?>
+    </div>
+<?php elseif ($field->type === FormField::TYPE_PAGE_TIMER):
+    $timer = $field->getPageTimer();
+    $timerValue = is_array($value) ? json_encode($value, JSON_UNESCAPED_UNICODE) : (string)$value;
+    ?>
+    <div class="cf-page-timer cf-page-timer--<?= Html::encode($timer['align']) ?>"
+         data-cf-page-timer
+         data-direction="<?= Html::encode($timer['direction']) ?>"
+         data-limit="<?= (int)$timer['limitSeconds'] ?>"
+         data-format="<?= Html::encode($timer['format']) ?>"
+         <?= $timer['visible'] ? '' : 'data-cf-timer-silent="1"' ?>>
+        <?php if ($timer['visible']): ?>
+            <div class="cf-page-timer__clock" aria-live="polite">
+                <?php if ($timer['caption'] !== ''): ?>
+                    <span class="cf-page-timer__caption"><?= Html::encode($timer['caption']) ?></span>
+                <?php endif; ?>
+                <span class="cf-page-timer__digits" data-cf-page-timer-clock><?= $timer['format'] === 'ms' ? '0:00' : '00:00:00' ?></span>
+            </div>
+        <?php endif; ?>
+        <?= Html::hiddenInput($inputName, $timerValue, [
+            'data-cf-page-timer-value' => '1',
+        ]) ?>
     </div>
 <?php else: ?>
     <?php if ($field->required || ($field->type === FormField::TYPE_HTML && $field->getHtmlConfig()['required'])): ?>
@@ -569,7 +594,7 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                         : Yii::t('ThiscoveryFormsModule.base', 'Select at least {min} options.', ['min' => $minSelect]) ?>
                 </p>
             <?php endif; ?>
-        <?php elseif ($field->type === FormField::TYPE_RATING): ?>
+        <?php elseif ($field->isRatingScale()): ?>
             <?php
             $scale = $field->getRatingScale();
             $min = (int)$scale['min'];
@@ -578,7 +603,13 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
             $lowLabel = $scale['lowLabel'] ?? '';
             $highLabel = $scale['highLabel'] ?? '';
             $selected = is_array($value) ? null : $value;
-            $hasValue = $selected !== null && $selected !== '';
+            $optoutPicked = $field->type === FormField::TYPE_RATING_OPTION
+                && (string)$selected === FormField::RATING_OPTOUT;
+            $hasValue = !$optoutPicked && $selected !== null && $selected !== '';
+            $anywherePct = null;
+            if ($hasValue && is_numeric($selected) && ($max - $min) > 0) {
+                $anywherePct = max(0, min(100, (((float)$selected - $min) / ($max - $min)) * 100));
+            }
             $ratingCount = 0;
             for ($ratingValue = $min; $ratingValue <= $max; $ratingValue += $step) {
                 $ratingCount++;
@@ -648,7 +679,8 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                                 'min' => $min,
                                 'max' => $max,
                                 'step' => $step,
-                                'required' => (bool)$field->required,
+                                'required' => (bool)$field->required && !$optoutPicked,
+                                'disabled' => $optoutPicked || !empty($frozen),
                                 'inputmode' => 'numeric',
                                 'autocomplete' => 'off',
                                 'aria-valuemin' => $min,
@@ -688,6 +720,56 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                         <?php endif; ?>
                     </div>
                 </div>
+            <?php elseif (($scale['display'] ?? FormField::RATING_DISPLAY_PILLS) === FormField::RATING_DISPLAY_ANYWHERE): ?>
+                <div class="cf-scale-any cf-rating-scale<?= $optoutPicked ? ' is-optout' : '' ?>"
+                     data-cf-anywhere
+                     data-min="<?= (int)$min ?>"
+                     data-max="<?= (int)$max ?>"
+                     data-step="<?= (int)$step ?>"
+                     style="--cf-rating-count: <?= (int)$ratingCount ?>">
+                    <div class="cf-scale-any__points">
+                        <div class="cf-scale-any__line" aria-hidden="true"></div>
+                        <?php for ($ratingValue = $min; $ratingValue <= $max; $ratingValue += $step): ?>
+                            <span class="cf-scale-any__point" aria-hidden="true">
+                                <span class="cf-rating-pill"><?= (int)$ratingValue ?></span>
+                            </span>
+                        <?php endfor; ?>
+                        <div class="cf-scale-any__track"
+                             data-cf-anywhere-track
+                             role="slider"
+                             tabindex="<?= $optoutPicked || !empty($frozen) ? '-1' : '0' ?>"
+                             aria-labelledby="<?= Html::encode($labelId) ?>"<?= $field->required ? ' aria-required="true"' : '' ?>
+                             aria-orientation="horizontal"
+                             aria-valuemin="<?= (int)$min ?>"
+                             aria-valuemax="<?= (int)$max ?>"
+                             <?= $hasValue ? 'aria-valuenow="' . Html::encode((string)$selected) . '"' : '' ?>>
+                            <span class="cf-scale-any__marker" data-cf-anywhere-marker<?= $anywherePct === null ? ' hidden' : '' ?>
+                                  style="<?= $anywherePct === null ? '' : 'inset-inline-start:' . $anywherePct . '%' ?>"></span>
+                        </div>
+                    </div>
+                    <?php if ($lowLabel !== '' || $highLabel !== ''): ?>
+                        <div class="cf-rating-labels">
+                            <span class="cf-rating-label cf-rating-label-low"><?= Html::encode($lowLabel) ?></span>
+                            <span class="cf-rating-label cf-rating-label-high"><?= Html::encode($highLabel) ?></span>
+                        </div>
+                    <?php endif; ?>
+                    <label class="cf-scale-any__score" for="<?= Html::encode($inputId) ?>">
+                        <span class="cf-scale-any__score-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Your position') ?></span>
+                        <?= Html::input('number', $inputName, $hasValue ? (string)$selected : '', [
+                            'class' => 'form-control cf-scale-any__input',
+                            'id' => $inputId,
+                            'aria-required' => $field->required ? 'true' : null,
+                            'min' => $min,
+                            'max' => $max,
+                            'step' => '0.01',
+                            'required' => (bool)$field->required && !$optoutPicked,
+                            'disabled' => $optoutPicked || !empty($frozen),
+                            'inputmode' => 'decimal',
+                            'autocomplete' => 'off',
+                            'data-cf-anywhere-input' => true,
+                        ]) ?>
+                    </label>
+                </div>
             <?php else: ?>
             <div class="cf-rating-scale" data-cf-rating style="--cf-rating-count: <?= (int)$ratingCount ?>">
                 <div class="cf-rating-options" role="radiogroup" aria-labelledby="<?= Html::encode($labelId) ?>"<?= $field->required ? ' aria-required="true"' : '' ?>>
@@ -709,6 +791,25 @@ if ($field->type === FormField::TYPE_RICH_TEXT):
                     </div>
                 <?php endif; ?>
             </div>
+            <?php endif; ?>
+            <?php if ($field->type === FormField::TYPE_RATING_OPTION): ?>
+                <label class="cf-rating-optout<?= $optoutPicked ? ' is-selected' : '' ?>">
+                    <?php if (($scale['display'] ?? FormField::RATING_DISPLAY_PILLS) === FormField::RATING_DISPLAY_PILLS): ?>
+                        <?= Html::radio($inputName, $optoutPicked, $choiceInputOpts([
+                            'value' => FormField::RATING_OPTOUT,
+                            'disabled' => !empty($frozen),
+                            'data-cf-rating-optout' => '1',
+                        ])) ?>
+                    <?php else: ?>
+                        <?= Html::checkbox($inputName, $optoutPicked, [
+                            'value' => FormField::RATING_OPTOUT,
+                            'uncheck' => null,
+                            'disabled' => !empty($frozen),
+                            'data-cf-rating-optout' => '1',
+                        ]) ?>
+                    <?php endif; ?>
+                    <span><?= Html::encode((string)$scale['optoutLabel']) ?></span>
+                </label>
             <?php endif; ?>
         <?php elseif ($field->type === FormField::TYPE_RANKING): ?>
             <?php

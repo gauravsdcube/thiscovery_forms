@@ -19,6 +19,7 @@ class DashboardService
         FormField::TYPE_RADIO,
         FormField::TYPE_CHECKBOX,
         FormField::TYPE_RATING,
+        FormField::TYPE_RATING_OPTION,
         FormField::TYPE_RANKING,
         FormField::TYPE_GRID_SINGLE,
         FormField::TYPE_GRID_MULTI,
@@ -298,7 +299,7 @@ class DashboardService
                 continue;
             }
 
-            if ($field->type === FormField::TYPE_RATING) {
+            if ($field->isRatingScale()) {
                 $scale = $field->getRatingScale();
                 $min = (float)$scale['min'];
                 $max = (float)$scale['max'];
@@ -312,19 +313,36 @@ class DashboardService
                     $counts[$fmt($value)] = 0;
                 }
                 $offScale = 0;
+                $optout = 0;
 
                 $values = $this->fieldRawValues($form, $field);
 
                 foreach ($values as $raw) {
+                    if ((string)$raw === FormField::RATING_OPTOUT) {
+                        $optout++;
+                        continue;
+                    }
                     if (!is_numeric($raw)) {
                         continue;
                     }
-                    $item = $fmt((float)$raw);
+                    $number = (float)$raw;
+                    if ($field->isAnywhereRating()) {
+                        $steps = (int)round(($number - $min) / $step);
+                        $item = $fmt($min + $steps * $step);
+                    } else {
+                        $item = $fmt($number);
+                    }
                     if (array_key_exists($item, $counts)) {
                         $counts[$item]++;
                     } else {
                         $offScale++;
                     }
+                }
+                if ($optout > 0) {
+                    $labels[] = $scale['optoutLabel'] !== ''
+                        ? $scale['optoutLabel']
+                        : Yii::t('ThiscoveryFormsModule.base', "I don't know");
+                    $counts['__optout'] = $optout;
                 }
                 if ($offScale > 0) {
                     $labels[] = Yii::t('ThiscoveryFormsModule.base', 'Other values');

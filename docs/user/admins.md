@@ -160,7 +160,7 @@ Each of these is **off** until you tick it here **and** the form turns it on und
 - **Consent** — a published information sheet. Completing a form does not record consent by itself. See [Consent](econsent.md).
 - **Quotas** — targets for who can finish. A full cell keeps the partial answers. See [Quotas](quotas.md).
 - **Loops** — a question group can repeat, and one repeating group can contain one other. See [Loops](loops.md).
-- **Randomisation** — the server shuffles order and can assign an arm. Each response gets its own option order. See [Randomisation](randomisation.md).
+- **Randomisation** — the server shuffles order and can place each person in a group. Each response gets its own option order. See [Randomisation](randomisation.md).
 
 ## Headerless fill pages
 

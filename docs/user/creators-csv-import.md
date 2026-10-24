@@ -48,7 +48,8 @@ Download **Sample CSV** from Share if you want a working file to copy.
 | `branches` | Optional JSON for page-break routing (see Page breaks below). |
 | `rating_min`, `rating_max`, `rating_step` | Rating scale numbers. Typical 1–5, step 1. Thermometer: 0–100, step 1. |
 | `rating_low_label`, `rating_high_label` | Labels under the lowest and highest values. |
-| `rating_display` | `pills` (horizontal) or `thermometer` (vertical). |
+| `rating_display` | `pills` (fixed points), `anywhere` (any position between the ends), or `thermometer` (vertical). |
+| `rating_optout` | Extra choice on a **Rating with an option** question, such as `I don't know`. |
 | `grid_rows`, `grid_columns` | One label per line. Grids only. |
 | `grid_mobile_layout` | Grids: `scroll` (default) or `stack` (each row as a stacked list on mobile). |
 | `items` | One item per line for ranking, best–worst, and MaxDiff. If empty, `options` is used. |
@@ -96,9 +97,11 @@ Put the **code** in the `type` column.
 | `radio` | Radio | `options`, optional `other_specify`, `other_specify_required` |
 | `checkbox` | Checkbox | `options`, optional `exclusive_option`, `max_select`, `min_select`, `min_select_all`, `randomize`, `other_specify`, `other_specify_required` |
 | `rating` | Rating scale | `rating_min`, `rating_max`, `rating_step`, labels, `rating_display` |
+| `rating_option` | Rating with an option | Same rating columns, plus `rating_optout` |
 | `ranking` | Ranking (drag & drop) | `options` or `items` |
 | `file` | File upload | — |
 | `page_break` | Page break | `page_key`, `page_title`, optional `branches` |
+| `page_timer` | Page timer | `timer_visible` (`1` to show a clock), `timer_direction` (`up` or `down`), `timer_limit` (seconds, used when counting down), `timer_align` (`start`, `center`, `end`), `timer_caption`, `timer_format` (`hms` or `ms`) |
 | `form_settings` | Form settings | Not a question. One row. `settings` holds the JSON. |
 | `question_group` | Question group | Label is optional. Place the grouped questions after this row. |
 | `group_end` | Group end | Closes the previous `question_group`. |

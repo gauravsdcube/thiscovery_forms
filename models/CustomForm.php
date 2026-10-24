@@ -2051,9 +2051,24 @@ class CustomForm extends ContentActiveRecord implements Searchable
         if (!$request->isPost || $request->post('randomisation_present') === null) {
             return;
         }
+        $armCodes = $request->post('randomisation_arm_code', null);
+        if (is_array($armCodes)) {
+            $armNames = (array)$request->post('randomisation_arm_name', []);
+            $armWeights = (array)$request->post('randomisation_arm_weight', []);
+            $postedArms = [];
+            foreach ($armCodes as $i => $code) {
+                $postedArms[] = [
+                    'code' => (string)$code,
+                    'name' => (string)($armNames[$i] ?? ''),
+                    'weight' => $armWeights[$i] ?? 1,
+                ];
+            }
+        } else {
+            $postedArms = $request->post('randomisation_arms', '');
+        }
         (new \humhub\modules\thiscoveryForms\services\RandomisationService())->saveConfig($this, [
             'enabled' => $request->post('randomisation_enabled', '0'),
-            'arms' => $request->post('randomisation_arms', ''),
+            'arms' => $postedArms,
             'strata' => $request->post('randomisation_strata', ''),
             'method' => $request->post('randomisation_method', 'simple'),
             'block_size' => $request->post('randomisation_block_size', 4),
@@ -2661,6 +2676,151 @@ class CustomForm extends ContentActiveRecord implements Searchable
     }
 
     /**
+     * A question that was not opened posts only its identity. Keep what is stored and
+     * apply the new order.
+     *
+     * @param array<string,bool> $usedVariables
+     * @param array<string,string> $usedBy
+     * @param int[] $keptIds
+     * @param array<string,int> $createdMap
+     */
+    private function keepUnchangedField(
+        FormField $field,
+        string $tempKey,
+        int &$sort,
+        int &$answerableKept,
+        array &$usedVariables,
+        array &$usedBy,
+        array &$keptIds,
+        array &$createdMap
+    ): bool {
+        if ($this->isPoll() && $field->collectsAnswer()) {
+            if ($answerableKept >= 1) {
+                return true;
+            }
+            $answerableKept++;
+        }
+        $nextSort = $sort++;
+        if ((int)$field->sort_order !== $nextSort) {
+            $field->sort_order = $nextSort;
+            if (!$field->save(false, ['sort_order'])) {
+                $first = $field->getFirstErrors();
+                Yii::$app->session->setFlash('error', $first ? (string)reset($first) : Yii::t('ThiscoveryFormsModule.base', 'Validation failed.'));
+                return false;
+            }
+        }
+        if ($field->type !== FormField::TYPE_GROUP_END) {
+            $chosen = strtolower(trim((string)$field->variable));
+            if ($chosen !== '') {
+                if (isset($usedVariables[$chosen])) {
+                    $this->addError('title', Yii::t('ThiscoveryFormsModule.base', '“{label}” uses the variable name “{name}”, which {other} already has. Each question needs its own name.', [
+                        'label' => $field->plainLabel(),
+                        'name' => (string)$field->variable,
+                        'other' => $usedBy[$chosen] ?? Yii::t('ThiscoveryFormsModule.base', 'another question'),
+                    ]));
+                    return false;
+                }
+                $usedVariables[$chosen] = true;
+                $usedBy[$chosen] = '“' . $field->plainLabel() . '”';
+            }
+        }
+        $keptIds[] = (int)$field->id;
+        $createdMap[$tempKey] = (int)$field->id;
+        $createdMap[(string)(int)$field->id] = (int)$field->id;
+        $createdMap[FormField::studioKey((int)$field->id)] = (int)$field->id;
+        $variable = trim((string)$field->variable);
+        if ($variable !== '') {
+            $createdMap[$variable] = (int)$field->id;
+        }
+        return true;
+    }
+
+    /**
+     * A variable renamed on an opened question is followed through questions that were not opened.
+     *
+     * @param array<string,string> $renames
+     */
+    private function renameStoredFieldText(FormField $field, array $renames): void
+    {
+        $refs = \humhub\modules\thiscoveryForms\services\formula\FormulaRefs::class;
+        $field->label = $refs::renameText((string)$field->label, $renames);
+        if ($field->help_text !== null) {
+            $field->help_text = $refs::renameText((string)$field->help_text, $renames);
+        }
+        $logic = $field->getLogic();
+        $text = (string)($logic['text'] ?? '');
+        if ($text !== '') {
+            $next = $refs::renameText($text, $renames);
+            if ($next !== $text) {
+                try {
+                    $field->setLogic(LogicEngine::fromFormula(
+                        $next,
+                        (string)($logic['action'] ?? 'show'),
+                        (string)($logic['gotoPageKey'] ?? '')
+                    ));
+                } catch (\Throwable $e) {
+                    Yii::warning('Thiscovery Forms could not rename a stored formula: ' . $e->getMessage(), 'thiscovery-forms');
+                }
+            }
+        }
+        if ($field->type === FormField::TYPE_PAGE_BREAK) {
+            $cfg = $field->getPageBreakConfig();
+            $changed = false;
+            foreach ($cfg['branches'] as $i => $branch) {
+                if (!is_array($branch) || !isset($branch['formula']) || !is_string($branch['formula'])) {
+                    continue;
+                }
+                $next = $refs::renameText($branch['formula'], $renames);
+                if ($next !== $branch['formula']) {
+                    $cfg['branches'][$i]['formula'] = $next;
+                    $changed = true;
+                }
+            }
+            if ($changed) {
+                $field->setPageBreakConfig($cfg);
+            }
+        }
+        if ($field->type === FormField::TYPE_RICH_TEXT) {
+            $field->setRichTextContent($refs::renameText($field->getRichTextContent(), $renames));
+        }
+        if ($field->type === FormField::TYPE_CALCULATED) {
+            $calc = $field->getFormulaConfig();
+            $next = $refs::renameText((string)$calc['formula'], $renames);
+            if ($next !== (string)$calc['formula']) {
+                $field->setFormulaConfig($next, $calc['result'], $calc['display'], $calc['places']);
+            }
+        }
+        $actions = $field->getActions();
+        $actionsChanged = false;
+        foreach ($actions as $i => $action) {
+            if (!is_array($action)) {
+                continue;
+            }
+            foreach (['value', 'condition'] as $key) {
+                if (!isset($action[$key]) || !is_string($action[$key])) {
+                    continue;
+                }
+                $next = $refs::renameText($action[$key], $renames);
+                if ($next !== $action[$key]) {
+                    $actions[$i][$key] = $next;
+                    $actionsChanged = true;
+                }
+            }
+        }
+        if ($actionsChanged) {
+            $field->setActions($actions);
+        }
+        $validation = $field->getValidation();
+        if (($validation['check'] ?? '') !== '') {
+            $next = $refs::renameText((string)$validation['check'], $renames);
+            if ($next !== (string)$validation['check']) {
+                $validation['check'] = $next;
+                $field->setValidation($validation);
+            }
+        }
+    }
+
+    /**
      * The write half of saveFieldsFromPost(); only ever called inside its transaction.
      */
     private function writeFields(array $rows): bool
@@ -2751,6 +2911,15 @@ class CustomForm extends ContentActiveRecord implements Searchable
         foreach ($orderedRows as $item) {
             $tempKey = $item['key'];
             $row = $item['row'];
+            if (!empty($row['unchanged'])) {
+                $keepId = isset($row['id']) && $row['id'] !== '' ? (int)$row['id'] : 0;
+                if ($keepId && isset($existing[$keepId])) {
+                    if (!$this->keepUnchangedField($existing[$keepId], $tempKey, $sort, $answerableKept, $usedVariables, $usedBy, $keptIds, $createdMap)) {
+                        return false;
+                    }
+                }
+                continue;
+            }
             $type = (string)($row['type'] ?? '');
             if ($type === '' || !isset(FormField::getTypeLabels()[$type])) {
                 continue;
@@ -2795,7 +2964,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             $field->internal_label = trim((string)($row['internal_label'] ?? ''));
             $field->help_text = $row['help_text'] ?? null;
             $field->required = !empty($row['required']);
-            if (FormField::isQuestionGroup($type) || FormField::isGroupEnd($type) || $type === FormField::TYPE_PAGE_BREAK || $type === FormField::TYPE_RICH_TEXT || $type === FormField::TYPE_RESPONDENT_META) {
+            if (FormField::isQuestionGroup($type) || FormField::isGroupEnd($type) || $type === FormField::TYPE_PAGE_BREAK || $type === FormField::TYPE_PAGE_TIMER || $type === FormField::TYPE_RICH_TEXT || $type === FormField::TYPE_RESPONDENT_META) {
                 $field->required = false;
             }
             if (FormField::isGroupEnd($type) && trim($field->label) === '') {
@@ -2827,7 +2996,10 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
 
             try {
-            if ($type === FormField::TYPE_RATING) {
+            if ($field->isRatingScale() || $type === FormField::TYPE_RATING || $type === FormField::TYPE_RATING_OPTION) {
+                if ($type === FormField::TYPE_RATING || $type === FormField::TYPE_RATING_OPTION) {
+                    $field->type = $type;
+                }
                 $field->setRatingScale([
                     'min' => $row['rating_min'] ?? 1,
                     'max' => $row['rating_max'] ?? 5,
@@ -2835,6 +3007,16 @@ class CustomForm extends ContentActiveRecord implements Searchable
                     'lowLabel' => $row['rating_low_label'] ?? '',
                     'highLabel' => $row['rating_high_label'] ?? '',
                     'display' => $row['rating_display'] ?? FormField::RATING_DISPLAY_PILLS,
+                    'optoutLabel' => $row['rating_optout'] ?? '',
+                ]);
+            } elseif ($type === FormField::TYPE_PAGE_TIMER) {
+                $field->setPageTimer([
+                    'visible' => $row['timer_visible'] ?? '',
+                    'direction' => $row['timer_direction'] ?? 'up',
+                    'limitSeconds' => $row['timer_limit'] ?? 60,
+                    'align' => $row['timer_align'] ?? 'start',
+                    'caption' => $row['timer_caption'] ?? '',
+                    'format' => $row['timer_format'] ?? 'hms',
                 ]);
             } elseif ($type === FormField::TYPE_PAGE_BREAK) {
                 $branches = [];
@@ -3071,6 +3253,7 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
 
             $field->setHiddenFromRespondent(!empty($row['hidden']) || $type === FormField::TYPE_RESPONDENT_META);
+            $field->setBlockBack(!empty($row['block_back']));
             if ($field->collectsAnswer()) {
                 $field->setAttentionCheck(!empty($row['attention_check']), (string)($row['attention_expected'] ?? ''));
                 $field->setStraightlineConfig(!empty($row['straightline_exempt']), !empty($row['reverse_keyed']), (string)($row['reverse_rows'] ?? ''));
@@ -3125,11 +3308,21 @@ class CustomForm extends ContentActiveRecord implements Searchable
             }
         }
 
-        // Second pass: logic, carry-forward, page-break branch field keys
-        $choiceFields = FormField::find()->where(['form_id' => $this->id])->all();
+        // Second pass: logic, carry-forward, page-break branch field keys.
+        // Questions that were not opened are already stored. Skip them unless a rename has to follow through.
+        $choiceFields = null;
+        $loadChoiceFields = function () use (&$choiceFields) {
+            if ($choiceFields === null) {
+                $choiceFields = FormField::find()->where(['form_id' => $this->id])->all();
+            }
+            return $choiceFields;
+        };
         $choiceNotices = [];
         foreach ($rows as $tempKey => $row) {
             if (!is_array($row)) {
+                continue;
+            }
+            if (!empty($row['unchanged']) && !$renames) {
                 continue;
             }
             $fieldId = $createdMap[(string)$tempKey] ?? null;
@@ -3140,7 +3333,13 @@ class CustomForm extends ContentActiveRecord implements Searchable
             if (!$field) {
                 continue;
             }
+            if (!empty($row['unchanged'])) {
+                $this->renameStoredFieldText($field, $renames);
+                $field->save(false);
+                continue;
+            }
 
+            $choiceFields = $loadChoiceFields();
             $goto = (string)($row['logic_goto'] ?? '');
             try {
                 $formula = LogicEngine::postedFormula($row, $choiceFields) ?? '';

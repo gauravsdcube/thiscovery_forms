@@ -58,7 +58,7 @@ class QuestionTypeRegistry
         foreach ([FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_DRILLDOWN, FormField::TYPE_RESPONDENT_META, FormField::TYPE_PANEL_ATTR, FormField::TYPE_IMAGE_AREA] as $id) {
             self::$factories[$id] = $cat;
         }
-        foreach ([FormField::TYPE_NUMBER, FormField::TYPE_RATING] as $id) {
+        foreach ([FormField::TYPE_NUMBER, FormField::TYPE_RATING, FormField::TYPE_RATING_OPTION] as $id) {
             self::$factories[$id] = $num;
         }
         foreach ([FormField::TYPE_TEXT, FormField::TYPE_TEXTAREA, FormField::TYPE_EMAIL, FormField::TYPE_FILE, FormField::TYPE_HTML] as $id) {

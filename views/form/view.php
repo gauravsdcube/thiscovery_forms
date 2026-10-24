@@ -83,9 +83,13 @@ if ($existing instanceof FormAnswer) {
     $randService->materialise($existing);
 }
 $builtPages = FormPager::fillPages($formModel, $orderAnswer instanceof FormAnswer ? $orderAnswer : null, $submit->values);
-$pages = $builtPages['pages'];
-$pageKeyIndex = $builtPages['pageKeyIndex'];
 $armAssignment = ($existing instanceof FormAnswer) ? $randService->assignment($existing) : null;
+// A page that is shown only for one group is not sent for the other groups.
+// Until the group is known, those pages are left out and loaded after it is assigned.
+$armPages = FormPager::forAssignedArm($builtPages, (string)($armAssignment['arm_code'] ?? ''));
+$pages = $armPages['pages'];
+$pageKeyIndex = $armPages['pageKeyIndex'];
+$armDeferred = !empty($armPages['armDeferred']);
 
 $pagePayload = [];
 $pipe = new VariableSubstitutor();
@@ -195,13 +199,34 @@ foreach ($pages as $page) {
 // so the new language opens there. A posted page (failed submit) and a fresh start win.
 $fillStartPage = (function () use ($existing, $pages): int {
     $request = Yii::$app->request;
-    $startNew = (string)$request->get('start', '') === 'new';
+    $startNew = (string)$request->get('start', '') === 'new'
+        && (string)$request->get('cfcontinue', '') !== '1';
     $postedPage = $request->post('current_page');
     $usePostedPage = $request->isPost && $postedPage !== null && $postedPage !== '';
     $holdPage = $request->get('cfpage');
     $useHold = !$usePostedPage && $holdPage !== null && $holdPage !== '';
     if ($startNew && !$usePostedPage && !$useHold) {
         return 0;
+    }
+    // The group was just assigned and the other groups' pages were not on the previous
+    // page. Open the next page of this group, once. A refresh stays on that page.
+    if ((string)$request->get('cfcontinue') === '1' && $existing && $existing->isInProgress() && !$usePostedPage) {
+        $once = 'cfFillContinueDone:' . (int)$existing->form_id . ':' . (int)$existing->id;
+        $savedKey = $existing->hasAttribute('current_page_key') ? (string)$existing->current_page_key : '';
+        $savedIndex = FormPager::resumeIndex($pages, (int)$existing->current_page, $savedKey);
+        if (!Yii::$app->session->get($once)) {
+            Yii::$app->session->set($once, 1);
+            $next = isset($pages[$savedIndex + 1]) ? $savedIndex + 1 : $savedIndex;
+            $existing->current_page = $next;
+            $cols = ['current_page'];
+            if ($existing->hasAttribute('current_page_key')) {
+                $existing->current_page_key = substr((string)($pages[$next]['pageKey'] ?? ''), 0, 64);
+                $cols[] = 'current_page_key';
+            }
+            $existing->save(false, $cols);
+            return $next;
+        }
+        return $savedIndex;
     }
     if ($usePostedPage) {
         $start = (int)$postedPage;
@@ -284,6 +309,30 @@ $this->registerJsConfig('thiscoveryForms', [
     'questionTiming' => $integrityEnabled && !empty($integritySettings['question_timing']),
 ]);
 $this->registerJs('humhub.require("thiscoveryForms").initFill("#cf-fill");', \yii\web\View::POS_READY);
+if ($submit->hasErrors()) {
+    $this->registerJs(
+        'var box = document.querySelector("[data-cf-page-errors]");'
+        . 'if (box && !box.classList.contains("d-none") && box.scrollIntoView) {'
+        . 'box.scrollIntoView({block:"center"});'
+        . '}',
+        \yii\web\View::POS_READY
+    );
+}
+if ((string)Yii::$app->request->get('cfcontinue') === '1') {
+    // The allocation reload is done. Drop that one-time flag and start=new, and
+    // keep continue so a refresh stays on this response. The plain form link does not
+    // carry continue, so opening that link still asks how to continue.
+    $this->registerJs(
+        'if (window.history && window.history.replaceState) {'
+        . 'var u = new URL(window.location.href);'
+        . 'u.searchParams.delete("cfcontinue");'
+        . 'u.searchParams.delete("start");'
+        . 'u.searchParams.set("continue","1");'
+        . 'window.history.replaceState(null,"",u.toString());'
+        . '}',
+        \yii\web\View::POS_READY
+    );
+}
 
 $isDraft = $existing && $existing->isInProgress();
 $canSubmit = $isPreview
@@ -309,9 +358,11 @@ if ($resumeEnabled && !$editingAnswer && $existing && $existing->isComplete() &&
 $canSaveProgress = ($resumeEnabled || $formModel->keepsPartials()) && $canSubmit && ($isPreview || $formModel->isOpen()) && (!$existing || $isDraft);
 
 $answerableCount = 0;
-foreach ($formModel->fields as $f) {
-    if ($f->collectsAnswer()) {
-        $answerableCount++;
+foreach ($pages as $page) {
+    foreach ($page['items'] as $f) {
+        if ($f instanceof FormField && $f->collectsAnswer()) {
+            $answerableCount++;
+        }
     }
 }
 $multiPage = count($pages) > 1;
@@ -578,7 +629,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 'panelToken' => $panelToken,
             ]) ?>
         <?php elseif ($canSubmit): ?>
-            <?= Html::beginForm('', 'post', [
+            <?= Html::beginForm(\yii\helpers\Url::current(['cfcontinue' => null]), 'post', [
                 'class' => 'cf-fill-form',
                 'novalidate' => true,
                 'data-cf-fill-form' => true,
@@ -590,6 +641,11 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     return $urlValues;
                 })($formModel, $submit->values)),
                 'data-cf-arm-code' => $armAssignment['arm_code'] ?? '',
+                'data-cf-arm-deferred' => !empty($armDeferred) ? '1' : '0',
+                'data-cf-assign-start' => (
+                    \humhub\modules\thiscoveryForms\services\RandomisationService::active($formModel)
+                    && (new \humhub\modules\thiscoveryForms\services\RandomisationService())->config($formModel)['assign'] === 'start'
+                ) ? '1' : '0',
                 'data-cf-save-url' => Url::toSaveProgress($formModel),
                 'data-cf-run-actions-url' => Url::toRunActions($formModel),
                 'data-cf-autosave' => $formModel->keepsPartials() ? '1' : '0',
@@ -661,9 +717,21 @@ $fillRtl = TranslationService::isRtl($fillLang);
                     ]);
                 }
                 ?>
+                <?php
+                $pageBlocksBack = $page['break'] instanceof \humhub\modules\thiscoveryForms\models\FormField && $page['break']->blocksBack();
+                if (!$pageBlocksBack) {
+                    foreach ($page['items'] ?? [] as $pageItem) {
+                        if ($pageItem instanceof \humhub\modules\thiscoveryForms\models\FormField && $pageItem->blocksBack()) {
+                            $pageBlocksBack = true;
+                            break;
+                        }
+                    }
+                }
+                ?>
                 <div class="cf-form-page<?= (int)$page['index'] === (int)$fillStartPage ? ' is-active' : '' ?>"
                      data-cf-page="<?= (int)$page['index'] ?>"
                      data-cf-page-key="<?= Html::encode((string)$page['pageKey']) ?>"
+                     data-cf-block-back="<?= $pageBlocksBack ? '1' : '0' ?>"
                      <?= !empty($page['instanceKey']) ? 'data-cf-instance="' . Html::encode((string)$page['instanceKey']) . '"'
                         . ' data-cf-instance-code="' . Html::encode((string)(explode('/', (string)$page['instanceKey'])[substr_count((string)$page['instanceKey'], '/')])) . '"'
                         . ' data-cf-instance-label="' . Html::encode((string)($page['instanceLabel'] ?? '')) . '"'
@@ -793,8 +861,11 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 $attrs['data-cf-other-optional'] = '1';
                             }
                         }
-                        if ($field->collectsAnswer()) {
+                        if ($field->collectsAnswer() && $field->type !== FormField::TYPE_PAGE_TIMER) {
                             $attrs['data-cf-answerable'] = '1';
+                        }
+                        if ($field->type === FormField::TYPE_PAGE_TIMER && !$field->getPageTimer()['visible']) {
+                            $attrs['class'] .= ' is-silent';
                         }
                         if ($field->hasActions()) {
                             $attrs['data-cf-field-actions'] = '1';
@@ -817,7 +888,7 @@ $fillRtl = TranslationService::isRtl($fillLang);
                                 $value = $prev->getValuesMap()[$field->id] ?? $value;
                             }
                         }
-                        if ($field->collectsAnswer()) {
+                        if ($field->collectsAnswer() && $field->type !== FormField::TYPE_PAGE_TIMER) {
                             $questionNum++;
                         }
                         ?>
@@ -843,7 +914,17 @@ $fillRtl = TranslationService::isRtl($fillLang);
                 </div>
             <?php endforeach; ?>
 
-            <div class="cf-fill-errors d-none" data-cf-page-errors role="alert"></div>
+            <?php $submitErrors = $submit->getErrorSummary(true); ?>
+            <div class="cf-fill-errors<?= $submitErrors ? '' : ' d-none' ?>" data-cf-page-errors role="alert">
+                <?php if ($submitErrors): ?>
+                    <p><?= Yii::t('ThiscoveryFormsModule.base', 'Please fix the highlighted questions, then try again.') ?></p>
+                    <ul class="cf-fill-errors__list">
+                        <?php foreach ($submitErrors as $submitError): ?>
+                            <li><?= Html::encode($submitError) ?></li>
+                        <?php endforeach; ?>
+                    </ul>
+                <?php endif; ?>
+            </div>
 
             <div class="cf-fill-nav">
                 <div class="cf-fill-nav__start">

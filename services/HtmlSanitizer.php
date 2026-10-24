@@ -3,6 +3,7 @@
 namespace humhub\modules\thiscoveryForms\services;
 
 use HTMLPurifier_AttrDef_Text;
+use humhub\modules\thiscoveryEditor\helpers\EditorHtml;
 use yii\helpers\HtmlPurifier;
 
 class HtmlSanitizer
@@ -23,10 +24,14 @@ class HtmlSanitizer
         // An empty select is invalid HTML, so the purifier drops it and a consent-shaped
         // name would never be renamed. Keep one option so the select survives and is prefixed.
         $html = (string)preg_replace('/<select\b([^>]*)>\s*<\/select>/i', '<select$1><option value=""></option></select>', $html);
+        $clean = $this->purify($html);
+        if (class_exists(EditorHtml::class)) {
+            $clean = EditorHtml::withEmbedReferrer($clean);
+        }
         return (string)preg_replace_callback(
             '/(<(?:input|select|textarea)\b[^>]*?\bname=")([^"]*)(")/i',
             static fn(array $m) => $m[1] . (str_starts_with($m[2], 'cfhtml_') ? $m[2] : 'cfhtml_' . $m[2]) . $m[3],
-            $this->purify($html)
+            $clean
         );
     }
 

@@ -132,21 +132,40 @@ class RandomisationService
         $enabled = in_array((string)($posted['enabled'] ?? '0'), ['1', 'true', 'on'], true) ? '1' : '0';
         $form->setSetting('randomisation_enabled', $enabled);
         $arms = [];
-        foreach (preg_split('/\r\n|\r|\n/', (string)($posted['arms'] ?? '')) as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
+        $postedArms = $posted['arms'] ?? '';
+        if (is_array($postedArms)) {
+            foreach ($postedArms as $arm) {
+                if (!is_array($arm)) {
+                    continue;
+                }
+                $code = trim((string)($arm['code'] ?? ''));
+                if ($code === '') {
+                    continue;
+                }
+                $name = trim((string)($arm['name'] ?? ''));
+                $arms[] = [
+                    'code' => $code,
+                    'name' => $name !== '' ? $name : $code,
+                    'weight' => max(1, (int)($arm['weight'] ?? 1)),
+                ];
             }
-            $parts = array_map('trim', explode('|', $line));
-            $code = $parts[0] ?? '';
-            if ($code === '') {
-                continue;
+        } else {
+            foreach (preg_split('/\r\n|\r|\n/', (string)$postedArms) as $line) {
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $parts = array_map('trim', explode('|', $line));
+                $code = $parts[0] ?? '';
+                if ($code === '') {
+                    continue;
+                }
+                $arms[] = [
+                    'code' => $code,
+                    'name' => ($parts[1] ?? '') !== '' ? $parts[1] : $code,
+                    'weight' => max(1, (int)($parts[2] ?? 1)),
+                ];
             }
-            $arms[] = [
-                'code' => $code,
-                'name' => ($parts[1] ?? '') !== '' ? $parts[1] : $code,
-                'weight' => max(1, (int)($parts[2] ?? 1)),
-            ];
         }
         $strata = [];
         foreach (preg_split('/\r\n|\r|\n/', (string)($posted['strata'] ?? '')) as $line) {
@@ -202,7 +221,7 @@ class RandomisationService
         $codes = [];
         foreach ($cfg['arms'] as $arm) {
             if (isset($codes[$arm['code']])) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Arm code “{code}” is used twice.', ['code' => $arm['code']]);
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Group code “{code}” is used twice.', ['code' => $arm['code']]);
             }
             $codes[$arm['code']] = true;
         }
@@ -215,10 +234,10 @@ class RandomisationService
         }
         foreach ($cfg['strata'] as $factor) {
             if ($factor['source'] === 'panel' && $form->hidesIdentityFromManagers()) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'A fully anonymous form cannot stratify on a panel attribute.');
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'A fully anonymous form cannot keep a separate list for a panel field.');
             }
             if ($factor['source'] === 'field' && !isset($variables[$factor['key']])) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Stratification question “{key}” is not on this form.', ['key' => $factor['key']]);
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'The question “{key}” used for a separate list is not on this form.', ['key' => $factor['key']]);
             }
         }
         if (in_array($cfg['method'], ['block', 'stratified'], true) && $cfg['arms']) {
@@ -226,18 +245,18 @@ class RandomisationService
             // with 3 arms and size 4 the blocks were A,A,B,C; with weights 2:1 and size 4, 3:1.
             $unit = array_sum(array_map(static fn($arm) => max(1, (int)$arm['weight']), $cfg['arms']));
             if ($unit > 0 && (int)$cfg['block_size'] % $unit !== 0) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Block size {size} must be a multiple of {unit}, the total of the arm weights, so every block keeps the allocation ratio.', [
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'People in each round ({size}) must be a multiple of {unit}, the weights added together, so every round keeps the same balance.', [
                     'size' => (int)$cfg['block_size'],
                     'unit' => $unit,
                 ]);
             }
         }
         if ($cfg['assign'] === 'after_page' && $cfg['assign_page'] === '') {
-            $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Choose the page that assigns the arm.');
+            $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Choose the page where someone is placed in a group.');
         }
         foreach ($this->blocks($form->getFields()->all()) as $block) {
             if (!empty($block['open'])) {
-                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Randomisation block “{key}” has no end.', ['key' => $block['key']]);
+                $errors[] = Yii::t('ThiscoveryFormsModule.base', 'Shuffled pages “{key}” has no End of shuffled pages.', ['key' => $block['key']]);
                 continue;
             }
             $allowed = array_fill_keys($block['pages'], true);
@@ -247,7 +266,7 @@ class RandomisationService
                 $target = trim((string)($logic['gotoPageKey'] ?? ''));
                 if ($action === LogicEngine::ACTION_GOTO_PAGE && $target !== '' && !isset($allowed[$target])) {
                     $label = trim((string)$field->label) ?: $block['key'];
-                    $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” goes to “{target}”, which is outside block “{key}”.', [
+                    $errors[] = Yii::t('ThiscoveryFormsModule.base', '“{label}” goes to “{target}”, which is outside shuffled pages “{key}”.', [
                         'label' => $label,
                         'target' => $target,
                         'key' => $block['key'],
@@ -447,7 +466,9 @@ class RandomisationService
             return $built;
         }
         $this->ensure($answer);
-        $orders = $this->orders($answer);
+        $orders = $this->withNamedPageOrders($this->orders($answer), $form->fields);
+        $assignedRow = $this->assignment($answer);
+        $armCode = trim((string)($assignedRow['arm_code'] ?? ''));
         $changed = false;
         foreach ($this->blocks($form->fields) as $block) {
             if (!empty($block['open']) || count($block['pages']) < 2) {
@@ -455,6 +476,10 @@ class RandomisationService
             }
             $key = $block['key'];
             if (!isset($orders['pages'][$key])) {
+                $gate = FormPager::blockArmShowCodes($block['fields']);
+                if ($gate !== null && !in_array($armCode, $gate, true)) {
+                    continue;
+                }
                 $seed = $this->seedFor($answer, 'pages:' . $key);
                 $offset = $block['method'] === 'rotate' ? $this->nextRotateOffset((int)$form->id, 'pages:' . $key, count($block['pages']), $answer, $seed) : 0;
                 $presented = $this->engine->present($block['pages'], ['method' => $block['method'], 'show' => $block['show'] ?? null], $seed, $offset);
@@ -464,9 +489,86 @@ class RandomisationService
             }
         }
         if ($changed) {
-            $orders = $this->orders($answer);
+            $orders = $this->withNamedPageOrders($this->orders($answer), $form->fields);
         }
         return (new FormPager())->applyBlockOrder($built, $orders['pages']);
+    }
+
+    /**
+     * Page orders keyed by the shuffled-pages name. An order saved before that name
+     * was kept on the published form (block1, block2, …) is copied onto the name.
+     *
+     * @param FormField[] $fields
+     * @return array{options:array,questions:array,pages:array,shown:array,loops?:array}
+     */
+    public function withNamedPageOrders(array $orders, array $fields): array
+    {
+        $pages = is_array($orders['pages'] ?? null) ? $orders['pages'] : [];
+        foreach ($this->blocks($fields) as $block) {
+            if (!empty($block['open']) || count($block['pages']) < 2) {
+                continue;
+            }
+            $key = (string)$block['key'];
+            if ($key === '' || isset($pages[$key])) {
+                continue;
+            }
+            $existing = $this->storedPageOrder($pages, $block['pages']);
+            if ($existing !== null) {
+                $pages[$key] = $existing;
+            }
+        }
+        $orders['pages'] = $pages;
+        return $orders;
+    }
+
+    /**
+     * A stored page order whose pages all belong to this block. The list keeps
+     * the order it was shown in.
+     *
+     * @param array<string, mixed> $stored
+     * @param string[] $pageKeys
+     * @return string[]|null
+     */
+    public function storedPageOrder(array $stored, array $pageKeys): ?array
+    {
+        $wanted = [];
+        foreach ($pageKeys as $pageKey) {
+            $pageKey = (string)$pageKey;
+            if ($pageKey !== '') {
+                $wanted[$pageKey] = true;
+            }
+        }
+        if (count($wanted) < 2) {
+            return null;
+        }
+        $best = null;
+        $bestCount = 0;
+        foreach ($stored as $list) {
+            if (!is_array($list)) {
+                continue;
+            }
+            $order = [];
+            $seen = [];
+            $fits = true;
+            foreach ($list as $pageKey) {
+                $pageKey = (string)$pageKey;
+                if ($pageKey === '' || isset($seen[$pageKey])) {
+                    continue;
+                }
+                if (!isset($wanted[$pageKey])) {
+                    $fits = false;
+                    break;
+                }
+                $seen[$pageKey] = true;
+                $order[] = $pageKey;
+            }
+            if (!$fits || count($order) < 2 || count($order) <= $bestCount) {
+                continue;
+            }
+            $best = $order;
+            $bestCount = count($order);
+        }
+        return $best;
     }
 
     /**

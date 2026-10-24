@@ -35,8 +35,17 @@ $fnLabels = FormActionService::functionLabels();
             </div>
             <div class="col-md-3<?= $fn === FormActionService::FN_GOTO_PAGE ? '' : ' d-none' ?>" data-cf-action-param="goto_page">
                 <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Page') ?></label>
-                <?= Html::dropDownList($rowName . '[page_key]', $action['page_key'] ?? '', $pageKeyOptions, [
+                <?php
+                $actionPageKey = (string)($action['page_key'] ?? '');
+                $actionPageOptions = $pageKeyOptions;
+                if ($actionPageKey !== '' && !isset($actionPageOptions[$actionPageKey])) {
+                    $actionPageOptions[$actionPageKey] = $actionPageKey;
+                }
+                ?>
+                <?= Html::dropDownList($rowName . '[page_key]', $actionPageKey, $actionPageOptions, [
                     'class' => 'form-control',
+                    'data-cf-action-page' => true,
+                    'data-cf-selected-key' => $actionPageKey,
                 ]) ?>
             </div>
             <div class="col-md-2<?= in_array($fn, [FormActionService::FN_SET_VARIABLE, FormActionService::FN_CUSTOM], true) ? '' : ' d-none' ?>" data-cf-action-param="name">

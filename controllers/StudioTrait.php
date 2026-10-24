@@ -485,6 +485,38 @@ trait StudioTrait
         return $this->redirect($shareUrl);
     }
 
+    /**
+     * One question's editor. A long form does not render every editor on first load.
+     */
+    public function actionFieldCard($id)
+    {
+        Yii::$app->response->format = Response::FORMAT_JSON;
+        if (!Yii::$app->request->isPost) {
+            return ['success' => false, 'error' => Yii::t('ThiscoveryFormsModule.base', 'Could not open that question. Try again.')];
+        }
+        $form = $this->findForm($id);
+        if (!$form->canManage()) {
+            throw new ForbiddenHttpException();
+        }
+        $fieldId = (int)Yii::$app->request->post('fieldId', 0);
+        $field = FormField::findOne(['id' => $fieldId, 'form_id' => (int)$form->id]);
+        if (!$field || $field->isRemoved()) {
+            return ['success' => false, 'error' => Yii::t('ThiscoveryFormsModule.base', 'That question is not on this form.')];
+        }
+        $key = (string)Yii::$app->request->post('key', '');
+        if (!preg_match('/^[A-Za-z0-9_-]{1,40}$/', $key)) {
+            $key = FormField::studioKey((int)$field->id);
+        }
+        $html = $this->renderPartial('@thiscovery-forms/views/form/_field_row', [
+            'key' => $key,
+            'field' => $field,
+            'collapsed' => false,
+            'allowedTypes' => $form->getAllowedFieldTypes(),
+        ]);
+
+        return ['success' => true, 'html' => $html];
+    }
+
     public function actionLibraryList()
     {
         Yii::$app->response->format = Response::FORMAT_JSON;

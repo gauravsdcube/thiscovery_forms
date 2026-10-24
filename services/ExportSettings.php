@@ -331,6 +331,26 @@ class ExportSettings
                     ];
                 }
             }
+            if ($field->type === FormField::TYPE_PAGE_TIMER) {
+                $variable = trim((string)$field->variable);
+                $base = $variable !== '' ? $variable : $header;
+                foreach ([
+                    'until_first' => Yii::t('ThiscoveryFormsModule.base', 'until first interaction'),
+                    'until_last' => Yii::t('ThiscoveryFormsModule.base', 'until last interaction'),
+                    'interactions' => Yii::t('ThiscoveryFormsModule.base', 'interactions'),
+                ] as $suffix => $phrase) {
+                    $cols[] = [
+                        'key' => self::fieldColumnKey($field) . '.' . $suffix,
+                        'header' => self::uniqueHeader($headerMode === ExportService::HEADER_VARIABLE
+                            ? $base . '_' . $suffix
+                            : $header . ' — ' . $phrase, $usedHeaders),
+                        'group' => self::GROUP_QUESTION,
+                        'lock' => $lock,
+                        'field' => $field,
+                        'comment' => false,
+                    ];
+                }
+            }
             if ($field->supportsJustification()) {
                 $cols[] = [
                     'key' => self::commentColumnKey($field),

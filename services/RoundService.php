@@ -158,7 +158,7 @@ class RoundService
         ];
 
         foreach ($form->getAllFields()->all() as $field) {
-            if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING], true)) {
+            if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING, FormField::TYPE_RATING_OPTION], true)) {
                 continue;
             }
             $rows = (new Query())
@@ -212,6 +212,12 @@ class RoundService
             }
             foreach (self::percentages($counts, $weightTotal) as $code => $pct) {
                 $label = $labels[(string)$code] ?? (string)$code;
+                if ((string)$code === FormField::RATING_OPTOUT && $field->isRatingScale()) {
+                    $optoutLabel = (string)$field->getRatingScale()['optoutLabel'];
+                    if ($optoutLabel !== '') {
+                        $label = $optoutLabel;
+                    }
+                }
                 $parts[] = '<li>' . htmlspecialchars($label, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
                     . ' — ' . $pct . '%</li>';
             }
@@ -305,7 +311,7 @@ class RoundService
     {
         $frozen = [];
         foreach ($form->getAllFields()->all() as $field) {
-            if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING], true)) {
+            if (!in_array($field->type, [FormField::TYPE_RADIO, FormField::TYPE_DROPDOWN, FormField::TYPE_RATING, FormField::TYPE_RATING_OPTION], true)) {
                 continue;
             }
             $rows = (new Query())

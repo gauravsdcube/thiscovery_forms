@@ -236,8 +236,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
 
         var refreshIndexes = function () {
             $root.find('.thiscovery-forms-field-row').each(function (i) {
-                $(this).find('[data-cf-index]').text(String(i + 1));
-                $(this).find('[data-cf-sort-order]').val(String(i));
+                var $row = $(this);
+                $row.children().not('[data-cf-group-shell]').find('[data-cf-index]').text(String(i + 1));
+                $row.children('[data-cf-sort-order]').val(String(i));
             });
             $root.find('[data-cf-empty]').toggleClass('d-none', $root.find('.thiscovery-forms-field-row').length > 0);
         };
@@ -295,7 +296,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var $own = ownCard($row);
             var type = $own.find('[data-cf-field-type]').val() || $row.find('[data-cf-field-type]').first().val();
             var needsOptions = OPTION_TYPES.indexOf(type) !== -1;
-            var isRating = type === (module.config.ratingType || 'rating');
+            var isRating = type === (module.config.ratingType || 'rating') || type === (module.config.ratingOptionType || 'rating_option');
             var isRanking = type === 'ranking';
             var isChoice = ['dropdown', 'radio', 'checkbox'].indexOf(type) !== -1;
             var isPage = type === (module.config.pageBreakType || 'page_break');
@@ -303,8 +304,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var isHtml = type === (module.config.htmlType || 'html');
             var isMeta = type === 'respondent_meta';
             var isPanelAttr = type === 'panel_attr';
-            var hideRequired = isPage || isRich || isMeta || isPanelAttr && $own.find('[data-cf-hidden-field]').first().is(':checked') || type === 'question_group' || type === 'group_end';
-            var hideHelp = isPage || type === 'group_end';
+            var hideRequired = isPage || isRich || isMeta || isPanelAttr && $own.find('[data-cf-hidden-field]').first().is(':checked') || type === 'question_group' || type === 'group_end' || type === 'page_timer' || type === 'rand_block' || type === 'rand_block_end';
+            var hideHelp = isPage || type === 'group_end' || type === 'rand_block' || type === 'rand_block_end';
             var isHiddenQ = $own.find('[data-cf-hidden-field]').first().is(':checked') || isMeta;
 
             $row.attr('data-cf-type', type);
@@ -316,10 +317,30 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-text-rules-panel]').toggleClass('d-none', type !== 'text' && type !== 'textarea');
             $own.find('[data-cf-date-rules-panel]').toggleClass('d-none', type !== 'date');
             $own.find('[data-cf-file-rules-panel]').toggleClass('d-none', type !== 'file');
-            $own.find('[data-cf-consensus-panel]').toggleClass('d-none', ['radio', 'dropdown', 'rating'].indexOf(type) === -1);
+            $own.find('[data-cf-consensus-panel]').toggleClass('d-none', ['radio', 'dropdown', 'rating', 'rating_option'].indexOf(type) === -1);
             $own.find('[data-cf-check-panel]').toggleClass('d-none', isPage || isRich || isMeta || ['question_group', 'group_end', 'calculated'].indexOf(type) !== -1);
             $own.find('[data-cf-formula-panel]').toggleClass('d-none', type !== 'calculated');
             $own.find('[data-cf-rating-panel]').toggleClass('d-none', !isRating);
+            $own.find('[data-cf-timer-panel]').toggleClass('d-none', type !== 'page_timer');
+            var isRandBlock = type === 'rand_block';
+            var isRandGroup = type === 'question_group';
+            $own.find('[data-cf-rand-panel]').toggleClass('d-none', !isRandBlock && !isRandGroup);
+            $own.find('[data-cf-rand-block-note], [data-cf-rand-key-wrap]').toggleClass('d-none', !isRandBlock);
+            $own.find('[data-cf-rand-group-note], [data-cf-rand-enabled-wrap]').toggleClass('d-none', !isRandGroup);
+            $own.find('[data-cf-rand-show-label]').each(function () {
+                var label = isRandBlock ? $(this).attr('data-block-label') : $(this).attr('data-group-label');
+                if (label) {
+                    $(this).text(label);
+                }
+            });
+            $own.find('[data-cf-timer-limit-wrap]').toggleClass('d-none', $own.find('[data-cf-timer-direction]').val() !== 'down');
+            $own.find('[data-cf-rating-optout-wrap]').toggleClass('d-none', type !== 'rating_option');
+            if (type === 'rating_option') {
+                var $optoutLabel = $own.find('[data-cf-rating-optout-label]');
+                if ($optoutLabel.length && !$.trim(String($optoutLabel.val() || ''))) {
+                    $optoutLabel.val(module.config.ratingOptoutDefault || "I don't know");
+                }
+            }
             $own.find('[data-cf-page-panel]').toggleClass('d-none', !isPage);
             $own.find('[data-cf-rich-panel]').toggleClass('d-none', !isRich);
             $own.find('[data-cf-html-panel]').toggleClass('d-none', !isHtml);
@@ -330,7 +351,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-image-panel]').toggleClass('d-none', type !== 'image_area');
             $own.find('[data-cf-map-panel]').toggleClass('d-none', type !== 'map');
             $own.find('[data-cf-carry-wrap]').toggleClass('d-none', ['dropdown', 'radio', 'checkbox'].indexOf(type) === -1);
-            $own.find('[data-cf-justify-wrap]').toggleClass('d-none', ['dropdown', 'radio', 'checkbox', 'rating', 'ranking'].indexOf(type) === -1);
+            $own.find('[data-cf-justify-wrap]').toggleClass('d-none', ['dropdown', 'radio', 'checkbox', 'rating', 'rating_option', 'ranking'].indexOf(type) === -1);
             $own.find('[data-cf-ranking-note]').toggleClass('d-none', !isRanking);
             $own.find('[data-cf-choice-note]').toggleClass('d-none', !isChoice);
             $own.find('[data-cf-max-select-wrap]').toggleClass('d-none', type !== 'checkbox');
@@ -340,6 +361,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             $own.find('[data-cf-options-hint-ranking]').toggleClass('d-none', !isRanking);
             $own.find('[data-cf-options-hint-choice]').toggleClass('d-none', isRanking);
             $own.find('[data-cf-required-wrap]').toggleClass('d-none', hideRequired);
+            $own.find('[data-cf-block-back-wrap]').toggleClass('d-none', ['group_end', 'rand_block', 'rand_block_end', 'rich_text'].indexOf(type) !== -1);
             $own.find('[data-cf-help-wrap]').toggleClass('d-none', hideHelp);
             $own.find('[data-cf-hidden-wrap]').toggleClass('d-none', isPage || type === 'question_group' || type === 'group_end' || isRich);
             $own.find('[data-cf-attention-wrap]').toggleClass('d-none', hideRequired || isMeta || isPanelAttr);
@@ -433,6 +455,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     initRichEditors($row);
                 }, 30);
             }
+            var $side = $row.children('[data-cf-card-body]').find('[data-cf-field-side]').first();
+            if ($side.length) {
+                var sideShown = false;
+                $side.find('[data-cf-required-wrap], [data-cf-block-back-wrap], [data-cf-help-wrap]').each(function () {
+                    if (!$(this).hasClass('d-none')) {
+                        sideShown = true;
+                    }
+                });
+                $side.toggleClass('d-none', !sideShown);
+            }
+            orderFieldSettings($row);
         };
 
         var selectedKeyCandidates = function (wanted) {
@@ -493,7 +526,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 .text(label);
         };
 
-        var refreshConditionOptions = function () {
+        var refreshConditionOptions = function ($scope) {
+            var $selects = ($scope && $scope.length)
+                ? $scope.find('[data-cf-condition-field], [data-cf-branch-field], [data-cf-carry-from]')
+                : $root.find('.thiscovery-forms-field-row.is-expanded [data-cf-condition-field], .thiscovery-forms-field-row.is-expanded [data-cf-branch-field], .thiscovery-forms-field-row.is-expanded [data-cf-carry-from]');
+            if (!$selects.length) {
+                return;
+            }
             var items = [];
             $root.find('.thiscovery-forms-field-row').each(function () {
                 var $row = $(this);
@@ -508,7 +547,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 });
             });
             var noneLabel = module.text('none');
-            $root.find('[data-cf-condition-field], [data-cf-branch-field], [data-cf-carry-from]').each(function () {
+            $selects.each(function () {
                 var $select = $(this);
                 var selfKey = String($select.closest('.thiscovery-forms-field-row').attr('data-cf-key') || '');
                 var wanted = rememberedSelectKey($select);
@@ -760,10 +799,346 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         };
 
-        var expandCard = function ($row) {
-            $root.find('.thiscovery-forms-field-row').addClass('is-collapsed').removeClass('is-expanded');
-            $row.removeClass('is-collapsed').addClass('is-expanded');
-            initRichEditors($row);
+        var fillActionPageKeys = function ($scope) {
+            if (!$scope || !$scope.length) {
+                return;
+            }
+            var $selects = $scope.find('[data-cf-action-page]');
+            if (!$selects.length) {
+                return;
+            }
+            var items = [{ key: '', label: module.text('selectPage') }];
+            $root.find('[data-cf-page-key]').each(function () {
+                var key = $.trim(String($(this).val() || ''));
+                if (!key) {
+                    return;
+                }
+                var title = $.trim(String($(this).closest('.thiscovery-forms-field-row').find('[data-cf-page-title]').val() || ''));
+                items.push({ key: key, label: (title || key) + ' (' + key + ')' });
+            });
+            $selects.each(function () {
+                var $select = $(this);
+                var wanted = String($select.val() || $select.attr('data-cf-selected-key') || '');
+                var $tmp = $('<select/>');
+                items.forEach(function (item) {
+                    $tmp.append($('<option/>').val(item.key).text(item.label));
+                });
+                if (wanted && !$tmp.children().filter(function () { return this.value === wanted; }).length) {
+                    $tmp.append($('<option/>').val(wanted).text(wanted));
+                }
+                $select.empty().append($tmp.children()).val(wanted);
+            });
+        };
+
+        var loadCompactCard = function ($row, done) {
+            if (!$row || !$row.length) {
+                if (done) {
+                    done($row);
+                }
+                return;
+            }
+            if (String($row.attr('data-cf-compact') || '') !== '1') {
+                if (done) {
+                    done($row);
+                }
+                return;
+            }
+            if ($row.data('cfLoading')) {
+                return;
+            }
+            var url = module.config.fieldCardUrl;
+            var fieldId = $.trim(String($row.children('[name$="[id]"]').first().val() || ''));
+            if (!url || !fieldId) {
+                if (done) {
+                    done($row);
+                }
+                return;
+            }
+            $row.data('cfLoading', 1);
+            var sort = $row.children('[data-cf-sort-order]').val();
+            var $kids = $row.children('[data-cf-group-shell]').find('[data-cf-group-body]').first().children('.thiscovery-forms-field-row');
+            $.ajax({
+                url: url,
+                method: 'POST',
+                dataType: 'json',
+                data: $.extend(csrfData(), {
+                    fieldId: fieldId,
+                    key: String($row.attr('data-cf-key') || '')
+                })
+            }).done(function (data) {
+                if (!data || !data.success || !data.html) {
+                    $row.removeData('cfLoading');
+                    window.alert((data && data.error) || module.config.fieldCardError || 'Could not open that question. Try again.');
+                    return;
+                }
+                var $new = $(data.html).filter(function () { return this.nodeType === 1; }).first();
+                if (!$new.length) {
+                    $row.removeData('cfLoading');
+                    window.alert(module.config.fieldCardError || 'Could not open that question. Try again.');
+                    return;
+                }
+                if (sort !== undefined && sort !== null && String(sort) !== '') {
+                    $new.children('[data-cf-sort-order]').val(String(sort));
+                }
+                var $newBody = $new.children('[data-cf-group-shell]').find('[data-cf-group-body]').first();
+                if ($kids.length && $newBody.length) {
+                    $newBody.append($kids);
+                    refreshGroupEmpty($newBody);
+                }
+                $row.replaceWith($new);
+                bindHotspotBuilder($new);
+                renderHotspotBuilder($new);
+                if (!studioDirty) {
+                    studioBaseline = snapshotStudio();
+                }
+                if (done) {
+                    done($new);
+                }
+            }).fail(function () {
+                $row.removeData('cfLoading');
+                window.alert(module.config.fieldCardError || 'Could not open that question. Try again.');
+            });
+        };
+
+        var SETTING_KEYS = [
+            ['data-cf-options-panel', 'options'],
+            ['data-cf-rating-panel', 'rating'],
+            ['data-cf-number-panel', 'number'],
+            ['data-cf-text-rules-panel', 'text'],
+            ['data-cf-date-rules-panel', 'date'],
+            ['data-cf-file-rules-panel', 'file'],
+            ['data-cf-formula-panel', 'formula'],
+            ['data-cf-page-panel', 'page'],
+            ['data-cf-timer-panel', 'timer'],
+            ['data-cf-rich-panel', 'rich'],
+            ['data-cf-html-panel', 'html'],
+            ['data-cf-grid-panel', 'grid'],
+            ['data-cf-items-panel', 'items'],
+            ['data-cf-drilldown-panel', 'drilldown'],
+            ['data-cf-image-panel', 'image'],
+            ['data-cf-map-panel', 'map'],
+            ['data-cf-rand-panel', 'rand'],
+            ['data-cf-meta-key-wrap', 'meta'],
+            ['data-cf-panel-key-wrap', 'panel'],
+            ['data-cf-consent-panel', 'consent'],
+            ['data-cf-check-panel', 'check'],
+            ['data-cf-consensus-panel', 'consensus'],
+            ['data-cf-default-wrap', 'default'],
+            ['data-cf-identity-wrap', 'identity'],
+            ['data-cf-logic-panel', 'logic'],
+            ['data-cf-field-actions', 'actions'],
+            ['data-cf-email-note', 'email-note'],
+            ['data-cf-meta-note', 'meta-note'],
+            ['data-cf-panel-note', 'panel-note']
+        ];
+
+        var settingKey = function (el) {
+            var i;
+            for (i = 0; i < SETTING_KEYS.length; i++) {
+                if (el.hasAttribute(SETTING_KEYS[i][0])) {
+                    return SETTING_KEYS[i][1];
+                }
+            }
+            return '';
+        };
+
+        var settingRank = function (type) {
+            var primary = {
+                dropdown: 'options',
+                radio: 'options',
+                checkbox: 'options',
+                ranking: 'options',
+                number: 'number',
+                text: 'text',
+                textarea: 'text',
+                date: 'date',
+                file: 'file',
+                calculated: 'formula',
+                page_timer: 'timer',
+                grid_single: 'grid',
+                grid_multi: 'grid',
+                best_worst: 'items',
+                maxdiff: 'items',
+                drilldown: 'drilldown',
+                image_area: 'image',
+                map: 'map',
+                question_group: 'rand',
+                rand_block: 'rand',
+                respondent_meta: 'meta',
+                panel_attr: 'panel',
+                consent: 'consent',
+                email: 'email-note'
+            };
+            primary[module.config.pageBreakType || 'page_break'] = 'page';
+            primary[module.config.richTextType || 'rich_text'] = 'rich';
+            primary[module.config.htmlType || 'html'] = 'html';
+            primary[module.config.ratingType || 'rating'] = 'rating';
+            primary[module.config.ratingOptionType || 'rating_option'] = 'rating';
+            var base = {
+                options: 10,
+                rating: 10,
+                number: 10,
+                text: 10,
+                date: 10,
+                file: 10,
+                formula: 10,
+                page: 10,
+                timer: 10,
+                rich: 10,
+                html: 10,
+                grid: 10,
+                items: 10,
+                drilldown: 10,
+                image: 10,
+                map: 10,
+                rand: 10,
+                meta: 10,
+                panel: 10,
+                consent: 10,
+                'email-note': 12,
+                'meta-note': 12,
+                'panel-note': 12,
+                logic: 20,
+                actions: 30,
+                check: 40,
+                consensus: 50,
+                'default': 60,
+                identity: 70
+            };
+            if (primary[type] && Object.prototype.hasOwnProperty.call(base, primary[type])) {
+                base[primary[type]] = 0;
+            }
+            return function (key) {
+                return Object.prototype.hasOwnProperty.call(base, key) ? base[key] : 200;
+            };
+        };
+
+        var fieldMain = function ($card) {
+            var $body = $card.children('[data-cf-card-body]');
+            var $main = $body.find('[data-cf-field-main]').first();
+            return $main.length ? $main : $body;
+        };
+
+        var orderFieldSettings = function ($card) {
+            var $body = $card.children('[data-cf-card-body]');
+            var $main = fieldMain($card);
+            if (!$main.length) {
+                return;
+            }
+            var type = String($body.find('[data-cf-field-type]').first().val() || $card.attr('data-cf-type') || '');
+            var rank = settingRank(type);
+            var selector = SETTING_KEYS.map(function (pair) {
+                return '[' + pair[0] + ']';
+            }).join(',');
+            var items = $main.children(selector).get();
+            items.sort(function (a, b) {
+                return rank(settingKey(a)) - rank(settingKey(b));
+            });
+            var $cursor = $main.children().has('[data-cf-label-wrap]').first();
+            if (!$cursor.length) {
+                return;
+            }
+            items.forEach(function (el) {
+                $cursor.after(el);
+                $cursor = $(el);
+            });
+            placeComment($card, type);
+        };
+
+        var placeComment = function ($card, type) {
+            var host = '';
+            if (['dropdown', 'radio', 'checkbox', 'ranking'].indexOf(type) !== -1) {
+                host = '[data-cf-options-panel]';
+            } else if (type === (module.config.ratingType || 'rating') || type === (module.config.ratingOptionType || 'rating_option')) {
+                host = '[data-cf-rating-panel]';
+            }
+            if (!host) {
+                return;
+            }
+            var $body = $card.children('[data-cf-card-body]');
+            var $comment = $body.find('[data-cf-justify-wrap]').first();
+            var $panel = $body.find(host).first();
+            if (!$comment.length || !$panel.length) {
+                return;
+            }
+            var $dest = $panel;
+            if ($panel.is('details')) {
+                $dest = $panel.children('.cf-set-acc__body').children().first();
+                if (!$dest.length) {
+                    $dest = $panel.children('.cf-set-acc__body');
+                }
+            }
+            if (!$dest.length) {
+                $dest = $panel;
+            }
+            if ($comment.parent()[0] !== $dest[0]) {
+                $dest.append($comment);
+            }
+        };
+
+        var foldFieldSettings = function ($card) {
+            var $body = $card.children('[data-cf-card-body]');
+            if (!$body.length) {
+                return;
+            }
+            if ($body.attr('data-cf-folded') === '1') {
+                orderFieldSettings($card);
+                return;
+            }
+            $body.attr('data-cf-folded', '1');
+            fieldMain($card).children('[data-cf-fold-title]').each(function () {
+                var $el = $(this);
+                if ($el.is('details')) {
+                    $el.addClass('cf-set-acc cf-field-acc');
+                    return;
+                }
+                var title = String($el.attr('data-cf-fold-title') || '');
+                var $details = $('<details class="cf-set-acc cf-field-acc"></details>');
+                var names = [];
+                $.each(this.attributes, function () {
+                    if (this.name.indexOf('data-cf-') === 0 && this.name !== 'data-cf-fold-title') {
+                        names.push(this.name);
+                    }
+                });
+                names.forEach(function (name) {
+                    $details.attr(name, $el.attr(name));
+                    $el.removeAttr(name);
+                });
+                if ($el.hasClass('d-none')) {
+                    $details.addClass('d-none');
+                    $el.removeClass('d-none');
+                }
+                $el.removeClass('is-open');
+                var $summary = $('<summary></summary>');
+                $summary.append($('<span class="cf-set-acc__title"></span>').text(title));
+                var $inner = $('<div class="cf-set-acc__body"></div>');
+                $el.before($details);
+                $details.append($summary).append($inner);
+                $inner.append($el);
+            });
+            orderFieldSettings($card);
+        };
+
+        var expandCard = function ($row, after) {
+            var open = function ($target) {
+                $root.find('.thiscovery-forms-field-row').addClass('is-collapsed').removeClass('is-expanded');
+                $target.removeClass('is-collapsed').addClass('is-expanded');
+                foldFieldSettings($target);
+                refreshConditionOptions($target);
+                fillActionPageKeys($target);
+                initRichEditors($target);
+                if (typeof layoutStudioPanes === 'function') {
+                    layoutStudioPanes();
+                }
+                if (typeof after === 'function') {
+                    after($target);
+                }
+            };
+            if (String($row.attr('data-cf-compact') || '') === '1') {
+                loadCompactCard($row, open);
+                return;
+            }
+            open($row);
         };
 
         var editorApi = function () {
@@ -847,6 +1222,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
         };
 
+        $root.on('toggle', 'details.cf-field-acc', function () {
+            if (!this.open) {
+                return;
+            }
+            var $box = $(this);
+            window.setTimeout(function () {
+                destroyRichEditors($box);
+                initRichEditors($box);
+            }, 0);
+        });
+
         var syncRichEditors = function () {
             var api = editorApi();
             if (api && typeof api.saveEditors === 'function') {
@@ -894,7 +1280,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var $row = $(html);
             var typeLabels = module.config.types || {};
             var metaLabels = module.config.metaKeys || {};
-            $row.find('[data-cf-field-type]').val(type);
+            var $typeSelect = $row.find('[data-cf-field-type]');
+            if (type === 'group_end' && !$typeSelect.find('option[value="group_end"]').length) {
+                $typeSelect.append($('<option>', {
+                    value: 'group_end',
+                    text: typeLabels.group_end || 'Group end'
+                }));
+            }
+            $typeSelect.val(type);
+            if (type === 'group_end') {
+                $row.attr('data-cf-type', 'group_end').addClass('is-group-end d-none');
+            }
             var metaKey = String(opts.metaKey || '');
             var panelKey = String(opts.panelKey || '');
             if (type === 'respondent_meta') {
@@ -915,11 +1311,28 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 $row.find('[data-cf-field-label]').val(typeLabels[type] || '');
             }
             var labelNow = $.trim($row.find('[data-cf-field-label]').val());
-            if (labelNow && !$.trim($row.find('[data-cf-variable]').val())) {
-                $row.find('[data-cf-variable]').val(slugVariable(labelNow));
-            }
-            if (labelNow && !$.trim($row.find('[data-cf-internal-label]').val())) {
-                $row.find('[data-cf-internal-label]').val(labelNow);
+            if (type === 'page_timer') {
+                var timerName = typeLabels[type] || 'Page timer';
+                if (!$.trim($row.find('[data-cf-variable]').val())) {
+                    $row.find('[data-cf-variable]').val(slugVariable(timerName));
+                }
+                if (!$.trim($row.find('[data-cf-internal-label]').val())) {
+                    $row.find('[data-cf-internal-label]').val(timerName);
+                }
+                $row.find('[data-cf-field-label]').val('');
+                $row.find('[data-cf-title]').text(timerName);
+            } else if (type === 'rand_block' || type === 'rand_block_end') {
+                var blockName = typeLabels[type] || type;
+                $row.find('[data-cf-field-label]').val('');
+                $row.find('[data-cf-internal-label]').val(blockName);
+                $row.find('[data-cf-title]').text(blockName);
+            } else {
+                if (labelNow && !$.trim($row.find('[data-cf-variable]').val())) {
+                    $row.find('[data-cf-variable]').val(slugVariable(labelNow));
+                }
+                if (labelNow && !$.trim($row.find('[data-cf-internal-label]').val())) {
+                    $row.find('[data-cf-internal-label]').val(labelNow);
+                }
             }
             $row.find('[data-cf-action-row]').each(function () {
                 $(this).find('[data-cf-action-fn]').val('none');
@@ -1048,7 +1461,11 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 expandCard($row);
             }
             if (type === 'question_group') {
-                ownCard($row).find('[data-cf-logic-panel]').addClass('is-open');
+                var $logic = ownCard($row).find('[data-cf-logic-panel]');
+                $logic.addClass('is-open');
+                if ($logic.is('details')) {
+                    $logic.prop('open', true);
+                }
             }
             bindHotspotBuilder($row);
             renderHotspotBuilder($row);
@@ -1190,6 +1607,40 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('click', '[data-cf-settings-nav]', function (e) {
             e.preventDefault();
             activateSettingsSection($(this).attr('data-cf-settings-nav'));
+        });
+
+        var syncGroupMethod = function () {
+            var method = String($root.find('[data-cf-group-method]').val() || 'simple');
+            $root.find('[data-cf-group-note]').addClass('d-none');
+            $root.find('[data-cf-group-note="' + method + '"]').removeClass('d-none');
+            $root.find('[data-cf-round-size]').toggleClass('d-none', method !== 'block' && method !== 'stratified');
+            $root.find('[data-cf-balance]').toggleClass('d-none', method !== 'stratified');
+        };
+        var syncAssignWhen = function () {
+            $root.find('[data-cf-assign-page]').toggleClass('d-none', $root.find('[data-cf-assign-when]').val() !== 'after_page');
+        };
+        syncGroupMethod();
+        syncAssignWhen();
+        $root.on('change', '[data-cf-group-method]', syncGroupMethod);
+        $root.on('change', '[data-cf-assign-when]', syncAssignWhen);
+        $root.on('click', '[data-cf-group-add]', function (e) {
+            e.preventDefault();
+            var $list = $root.find('[data-cf-group-rows]');
+            var $row = $list.find('[data-cf-group-row]').first().clone();
+            $row.find('input').val('');
+            $row.find('[data-cf-group-weight]').val('1');
+            $list.append($row);
+        });
+        $root.on('click', '[data-cf-group-remove]', function (e) {
+            e.preventDefault();
+            var $rows = $root.find('[data-cf-group-row]');
+            var $row = $(this).closest('[data-cf-group-row]');
+            if ($rows.length < 2) {
+                $row.find('input').val('');
+                $row.find('[data-cf-group-weight]').val('1');
+                return;
+            }
+            $row.remove();
         });
 
         var syncExportLocks = function () {
@@ -1558,26 +2009,46 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 armStudioSubmit();
             }
         });
+        var submitStudio = function ($form, intent) {
+            var form = $form.get(0);
+            if (!form) {
+                return;
+            }
+            $form.find('input[name="after_save"], [data-cf-studio-submitter]').remove();
+            var submitter = document.createElement('button');
+            submitter.type = 'submit';
+            submitter.name = 'after_save';
+            submitter.value = intent || 'stay';
+            submitter.hidden = true;
+            submitter.setAttribute('formnovalidate', 'formnovalidate');
+            submitter.setAttribute('data-cf-studio-submitter', '1');
+            form.appendChild(submitter);
+            allowStudioSubmit = true;
+            // Pass this button. A bare requestSubmit() uses the first submit button
+            // in the form, which is Publish, and the studio stays on the editor.
+            if (typeof form.requestSubmit === 'function') {
+                form.requestSubmit(submitter);
+            } else {
+                form.submit();
+            }
+            window.setTimeout(function () {
+                allowStudioSubmit = false;
+            }, 0);
+        };
         $root.off('click.cfStudioNav').on('click.cfStudioNav', '[data-cf-studio-submit]', function (e) {
             e.preventDefault();
             var $form = $root.find('form.cf-studio__form');
             if (!$form.length) {
                 return;
             }
-            $form.find('input[name="after_save"]').remove();
-            if (this.getAttribute('data-cf-studio-submit') === 'preview') {
-                $('<input type="hidden" name="after_save" value="preview">').appendTo($form);
+            var intent = this.getAttribute('data-cf-studio-submit') === 'preview' ? 'preview' : 'stay';
+            // A clean form opens the test page directly. Saving first rewrites every question,
+            // which on a long form never gets as far as the preview.
+            if (intent === 'preview' && module.config.previewUrl && studioWatch && !studioIsDirty()) {
+                window.location.assign(module.config.previewUrl);
+                return;
             }
-            allowStudioSubmit = true;
-            if (typeof $form.get(0).requestSubmit === 'function') {
-                $form.get(0).requestSubmit();
-            } else {
-                $form.trigger('submit');
-                $form.get(0).submit();
-            }
-            window.setTimeout(function () {
-                allowStudioSubmit = false;
-            }, 0);
+            submitStudio($form, intent);
         });
         $root.find('form.cf-studio__form').each(function () {
             this.addEventListener('keydown', function (e) {
@@ -1638,17 +2109,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             e.preventDefault();
-            $studio.find('input[name="after_save"][value="publish"]').remove();
-            $('<input type="hidden" name="after_save" value="publish">').appendTo($studio);
-            allowStudioSubmit = true;
-            if (typeof $studio.get(0).requestSubmit === 'function') {
-                $studio.get(0).requestSubmit();
-            } else {
-                $studio.trigger('submit');
-            }
-            window.setTimeout(function () {
-                allowStudioSubmit = false;
-            }, 0);
+            submitStudio($studio, 'publish');
         });
 
         $root.on('submit', '[data-cf-panel="rounds"] form', function () {
@@ -1750,8 +2211,15 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return;
             }
             var $row = $(this).closest('.thiscovery-forms-field-row');
-            syncRichEditors();
-            saveLibrary(title, 'question', collectLibraryFields($row));
+            var storeQuestion = function ($loaded) {
+                syncRichEditors();
+                saveLibrary(title, 'question', collectLibraryFields($loaded));
+            };
+            if (String($row.attr('data-cf-compact') || '') === '1') {
+                loadCompactCard($row, storeQuestion);
+                return;
+            }
+            storeQuestion($row);
         });
 
         $root.on('click', '[data-cf-library-save-block]', function (e) {
@@ -1760,34 +2228,76 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             if (!title) {
                 return;
             }
-            var fields = {};
-            syncRichEditors();
-            $root.find('.thiscovery-forms-field-row').each(function (i) {
-                fields['b' + i] = collectFieldPost($(this));
-            });
-            saveLibrary(title, 'block', fields);
+            var storeBlock = function () {
+                var fields = {};
+                syncRichEditors();
+                $root.find('.thiscovery-forms-field-row').each(function (i) {
+                    fields['b' + i] = collectFieldPost($(this));
+                });
+                saveLibrary(title, 'block', fields);
+            };
+            var openNextCompact = function () {
+                var $next = $root.find('[data-cf-compact="1"]').first();
+                if (!$next.length) {
+                    storeBlock();
+                    return;
+                }
+                loadCompactCard($next, openNextCompact);
+            };
+            openNextCompact();
         });
 
-        var dropPlacement = function (e) {
-            var $body = $(e.target).closest('[data-cf-group-body]');
-            var $inTarget = $body.length
-                ? $(e.target).closest('[data-cf-group-body] > .thiscovery-forms-field-row')
-                : $();
-            var $target = $(e.target).closest('.thiscovery-forms-field-row');
+        var $dropMarker = $('<div class="cf-drop-marker" aria-hidden="true"></div>');
+        var clearDropMarker = function () {
+            $dropMarker.detach();
+        };
+        var rowBeforePointer = function ($container, clientY) {
             var $before = null;
-            if ($target.length) {
-                var rect = $target[0].getBoundingClientRect();
-                if (e.originalEvent.clientY > rect.top + rect.height / 2) {
-                    var $next = $target.next('.thiscovery-forms-field-row');
-                    $before = $next.length ? $next : null;
-                } else {
-                    $before = $target;
+            $container.children('.thiscovery-forms-field-row').each(function () {
+                var $row = $(this);
+                if ($row.hasClass('is-group-end') || $row.hasClass('d-none') || !$row.is(':visible')) {
+                    return;
                 }
+                var rect = this.getBoundingClientRect();
+                if (rect.height < 2) {
+                    return;
+                }
+                if (clientY < rect.top + (rect.height / 2)) {
+                    $before = $row;
+                    return false;
+                }
+            });
+            return $before;
+        };
+        var dropPlacement = function (e) {
+            var clientY = e.originalEvent.clientY;
+            var $body = $(e.target).closest('[data-cf-group-body]');
+            if ($body.length) {
+                return {
+                    $intoBody: $body,
+                    $beforeEl: rowBeforePointer($body, clientY)
+                };
             }
             return {
-                $intoBody: $body,
-                $beforeEl: $inTarget.length ? $inTarget : $before
+                $intoBody: $(),
+                $beforeEl: rowBeforePointer($root.find('[data-cf-fields]'), clientY)
             };
+        };
+        var showDropMarker = function (place) {
+            if (place.$beforeEl && place.$beforeEl.length) {
+                $dropMarker.insertBefore(place.$beforeEl);
+                return;
+            }
+            if (place.$intoBody && place.$intoBody.length) {
+                var $end = place.$intoBody.children('[data-cf-type="group_end"]');
+                if ($end.length) {
+                    $dropMarker.insertBefore($end);
+                } else {
+                    place.$intoBody.append($dropMarker);
+                }
+                return;
+            }
+            $root.find('[data-cf-fields]').append($dropMarker);
         };
 
         var libraryRowsAreStructural = function ($rows) {
@@ -1967,6 +2477,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         $root.on('dragend', '[data-cf-palette-type]', function () {
             $(this).removeClass('is-dragging');
             $root.find('[data-cf-canvas]').removeClass('is-drop-target is-drag-over');
+            clearDropMarker();
         });
 
         var $canvas = $root.find('[data-cf-canvas]');
@@ -1974,14 +2485,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             e.preventDefault();
             e.originalEvent.dataTransfer.dropEffect = 'copy';
             $(this).addClass('is-drag-over');
+            showDropMarker(dropPlacement(e));
         });
         $canvas.on('dragleave', function (e) {
             if (!$.contains(this, e.relatedTarget)) {
                 $(this).removeClass('is-drag-over');
+                clearDropMarker();
             }
         });
         $canvas.on('drop', function (e) {
             e.preventDefault();
+            clearDropMarker();
             $(this).removeClass('is-drag-over is-drop-target');
             var dt = e.originalEvent.dataTransfer;
             var libraryId = dt.getData('text/cf-library-id') || '';
@@ -2265,13 +2779,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             e.preventDefault();
             e.stopPropagation();
             var $row = $(this).closest('.thiscovery-forms-field-row');
-            expandCard($row);
-            var $panel = ownCard($row).find('[data-cf-logic-panel]');
-            $panel.addClass('is-open');
-            var panelNode = $panel.get(0);
-            if (panelNode && panelNode.scrollIntoView) {
-                panelNode.scrollIntoView({ block: 'nearest' });
-            }
+            expandCard($row, function ($loaded) {
+                var $panel = ownCard($loaded).find('[data-cf-logic-panel]');
+                $panel.addClass('is-open');
+                if ($panel.is('details')) {
+                    $panel.prop('open', true);
+                }
+                var panelNode = $panel.get(0);
+                if (panelNode && panelNode.scrollIntoView) {
+                    panelNode.scrollIntoView({ block: 'nearest' });
+                }
+            });
         });
 
         $root.on('click', '[data-cf-add-branch]', function (e) {
@@ -3490,6 +4008,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         })();
 
+        $root.on('change', '[data-cf-timer-direction]', function () {
+            $(this).closest('[data-cf-timer-panel]').find('[data-cf-timer-limit-wrap]').toggleClass('d-none', $(this).val() !== 'down');
+        });
+
         $root.on('change', '[data-cf-field-type]', function () {
             var $row = $(this).closest('.thiscovery-forms-field-row');
             var type = String($(this).val() || '');
@@ -3716,6 +4238,10 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 height = 280;
             }
             $workspace.css('height', height + 'px');
+            $workspace.find('.cf-studio__palette, .cf-studio__canvas').css({
+                height: height + 'px',
+                maxHeight: height + 'px'
+            });
             // Edge sizes a flex child from its content unless the scroll box has a
             // pixel max-height, so the page scrolls and Add fields has no bar.
             var tabs = $workspace.find('.cf-palette__tabs').get(0);
@@ -3767,7 +4293,13 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return studioDirty;
             }
             if (snapshotStudio() !== studioBaseline) {
-                markStudioDirty();
+                if (!studioDirty) {
+                    // Editors and the long question list finish settling after the first snapshot.
+                    // That is not an edit. Adopt it as the clean state.
+                    studioBaseline = snapshotStudio();
+                } else {
+                    markStudioDirty();
+                }
             }
             return studioDirty;
         };
@@ -3932,7 +4464,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
         window.addEventListener('popstate', onStudioPop);
         $(document).off('pjax:beforeSend.cfStudioLeave').on('pjax:beforeSend.cfStudioLeave', onStudioPjax);
         var noteStudioEdit = function (e) {
-            if (!studioWatch || studioSaving) {
+            if (!studioWatch || studioSaving || !e.isTrusted) {
                 return;
             }
             var field = e.target;
@@ -4146,6 +4678,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 if (typeof syncHtmlValues === 'function') {
                     syncHtmlValues();
                 }
+                if (typeof flushPageTimers === 'function') {
+                    flushPageTimers();
+                }
                 if (typeof syncFileGuids === 'function') {
                     syncFileGuids();
                 }
@@ -4168,6 +4703,17 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     return;
                 }
                 applyResumeCode(res.resume_code);
+                if (!res.roster_changed && !res.quota_closed_url) {
+                    try {
+                        var bound = new URL(window.location.href);
+                        bound.searchParams.delete('start');
+                        if (bound.searchParams.get('continue') !== '1') {
+                            bound.searchParams.set('continue', '1');
+                        }
+                        window.history.replaceState(window.history.state, '', bound.toString());
+                        $form.find('input[name="start"]').remove();
+                    } catch (err) {}
+                }
                 if (res.roster_changed) {
                     fillSubmitting = true;
                     autosaveQueued = false;
@@ -4728,6 +5274,12 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 });
                 return setsOk && $field.find('.cf-maxdiff-set').length > 0;
             }
+            if ($field.find('[data-cf-anywhere-input], [data-cf-vas-input]').length) {
+                if ($field.find('[data-cf-rating-optout]:checked').length) {
+                    return true;
+                }
+                return $.trim(String($field.find('[data-cf-anywhere-input], [data-cf-vas-input]').first().val() || '')) !== '';
+            }
             if ($field.find('input[type="checkbox"]').length) {
                 if ($field.find('input[type="checkbox"]:checked').length < 1) {
                     return false;
@@ -5208,7 +5760,50 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var $scale = $(this).closest('[data-cf-rating]');
             $scale.find('.cf-rating-option').removeClass('is-selected');
             $(this).closest('.cf-rating-option').addClass('is-selected');
+            var $opt = $(this).closest('[data-cf-conditional], .cf-question').find('[data-cf-rating-optout]');
+            $opt.prop('checked', false).closest('.cf-rating-optout').removeClass('is-selected');
             evaluate();
+        });
+
+        var syncRatingOptout = function ($box) {
+            var on = $box.is(':checked');
+            var $question = $box.closest('[data-cf-conditional], .cf-question');
+            $box.closest('.cf-rating-optout').toggleClass('is-selected', on);
+            var $scale = $question.find('[data-cf-vas], [data-cf-anywhere], [data-cf-rating]');
+            $scale.toggleClass('is-optout', on && $box.attr('type') !== 'radio');
+            if ($box.attr('type') === 'radio' && on) {
+                $question.find('[data-cf-rating] .cf-rating-option').removeClass('is-selected');
+                $question.find('[data-cf-rating] input[type="radio"]').prop('checked', false);
+                $box.prop('checked', true);
+            }
+            $question.find('[data-cf-vas-input], [data-cf-anywhere-input]').each(function () {
+                var $input = $(this);
+                if (on) {
+                    if ($input.prop('required')) {
+                        $input.data('cfRequired', true);
+                    }
+                    $input.prop('required', false).prop('disabled', true).val('');
+                } else if (!$input.prop('readonly') && !$question.closest('.is-frozen').length) {
+                    $input.prop('disabled', false);
+                    if ($input.data('cfRequired')) {
+                        $input.prop('required', true);
+                    }
+                }
+            });
+            $question.find('[data-cf-vas-track], [data-cf-anywhere-track]').attr('tabindex', on ? '-1' : '0');
+            if (on) {
+                $question.find('[data-cf-vas-marker], [data-cf-anywhere-marker]').attr('hidden', true);
+                $question.find('[data-cf-vas-track], [data-cf-anywhere-track]').removeAttr('aria-valuenow');
+            }
+        };
+
+        $root.on('change', '[data-cf-rating-optout]', function () {
+            syncRatingOptout($(this));
+            evaluate();
+        });
+
+        $root.find('[data-cf-rating-optout]:checked').each(function () {
+            syncRatingOptout($(this));
         });
 
         var initVas = function () {
@@ -5286,7 +5881,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 });
 
                 $track.on('pointerdown', function (e) {
-                    if ($vas.closest('.is-frozen').length) {
+                    if ($vas.hasClass('is-optout') || $vas.closest('.is-frozen').length) {
                         return;
                     }
                     e.preventDefault();
@@ -5310,7 +5905,7 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     }
                 });
                 $track.on('keydown', function (e) {
-                    if ($vas.closest('.is-frozen').length) {
+                    if ($vas.hasClass('is-optout') || $vas.closest('.is-frozen').length) {
                         return;
                     }
                     var cur = $input.val() === '' ? min : snap(Number($input.val()));
@@ -5332,6 +5927,143 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         };
         initVas();
+
+        var initAnywhere = function () {
+            $root.find('[data-cf-anywhere]').each(function () {
+                var $scale = $(this);
+                if ($scale.data('cfAnywhereReady')) {
+                    return;
+                }
+                $scale.data('cfAnywhereReady', true);
+                var min = parseFloat($scale.attr('data-min'));
+                var max = parseFloat($scale.attr('data-max'));
+                var nudge = parseFloat($scale.attr('data-step'));
+                if (isNaN(min)) { min = 1; }
+                if (isNaN(max) || max <= min) { max = min + 1; }
+                if (isNaN(nudge) || nudge <= 0) { nudge = 1; }
+                var $input = $scale.find('[data-cf-anywhere-input]');
+                var $track = $scale.find('[data-cf-anywhere-track]');
+                var $marker = $scale.find('[data-cf-anywhere-marker]');
+                var dragging = false;
+
+                var clamp = function (raw) {
+                    var n = Math.round(Number(raw) * 100) / 100;
+                    if (!isFinite(n)) { n = min; }
+                    if (n < min) { n = min; }
+                    if (n > max) { n = max; }
+                    return n;
+                };
+                var format = function (n) {
+                    return String(clamp(n));
+                };
+                var paint = function (value, empty) {
+                    if (empty || value === '' || value === null || typeof value === 'undefined' || !isFinite(Number(value))) {
+                        $marker.attr('hidden', true);
+                        $track.removeAttr('aria-valuenow');
+                        return;
+                    }
+                    var n = clamp(value);
+                    var pct = ((n - min) / (max - min)) * 100;
+                    $marker.removeAttr('hidden').css('inset-inline-start', pct + '%');
+                    $track.attr('aria-valuenow', format(n));
+                };
+                var setValue = function (raw, silent) {
+                    if ($input.prop('disabled') || $input.prop('readonly') || $scale.hasClass('is-optout') || $scale.closest('.is-frozen').length) {
+                        return;
+                    }
+                    var n = clamp(raw);
+                    $input.val(format(n));
+                    paint(n, false);
+                    var $opt = $scale.closest('[data-cf-conditional], .cf-question').find('[data-cf-rating-optout]');
+                    if ($opt.is(':checked')) {
+                        $opt.prop('checked', false);
+                        syncRatingOptout($opt);
+                    }
+                    if (!silent) {
+                        $input.trigger('change');
+                    }
+                };
+                var valueFromPointer = function (clientX) {
+                    var rect = $track[0].getBoundingClientRect();
+                    var ratio = (clientX - rect.left) / Math.max(1, rect.width);
+                    if ($track.css('direction') === 'rtl') {
+                        ratio = 1 - ratio;
+                    }
+                    if (ratio < 0) { ratio = 0; }
+                    if (ratio > 1) { ratio = 1; }
+                    return min + ratio * (max - min);
+                };
+
+                paint($input.val(), $input.val() === '');
+
+                $input.on('input', function () {
+                    var v = $.trim(String($input.val() || ''));
+                    if (v === '' || !isFinite(Number(v))) {
+                        paint('', true);
+                        return;
+                    }
+                    paint(v, false);
+                    var $opt = $scale.closest('[data-cf-conditional], .cf-question').find('[data-cf-rating-optout]');
+                    if ($opt.is(':checked')) {
+                        $opt.prop('checked', false);
+                        syncRatingOptout($opt);
+                    }
+                });
+                $input.on('blur', function () {
+                    var v = $.trim(String($input.val() || ''));
+                    if (v === '' || !isFinite(Number(v))) {
+                        return;
+                    }
+                    $input.val(format(v));
+                    paint($input.val(), false);
+                });
+                $track.on('pointerdown', function (e) {
+                    if ($scale.hasClass('is-optout') || $scale.closest('.is-frozen').length) {
+                        return;
+                    }
+                    e.preventDefault();
+                    dragging = true;
+                    if ($track[0].setPointerCapture) {
+                        $track[0].setPointerCapture(e.originalEvent.pointerId);
+                    }
+                    setValue(valueFromPointer(e.originalEvent.clientX), true);
+                    $track.trigger('focus');
+                });
+                $track.on('pointermove', function (e) {
+                    if (!dragging) {
+                        return;
+                    }
+                    setValue(valueFromPointer(e.originalEvent.clientX), true);
+                });
+                $track.on('pointerup pointercancel', function () {
+                    if (dragging) {
+                        dragging = false;
+                        $input.trigger('change');
+                    }
+                });
+                $track.on('keydown', function (e) {
+                    if ($scale.hasClass('is-optout') || $scale.closest('.is-frozen').length) {
+                        return;
+                    }
+                    var cur = $input.val() === '' ? min : clamp($input.val());
+                    var delta = e.shiftKey ? nudge * 10 : nudge;
+                    if (e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+                        e.preventDefault();
+                        setValue(cur + (e.key === 'PageUp' ? nudge * 10 : delta));
+                    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown' || e.key === 'PageDown') {
+                        e.preventDefault();
+                        setValue(cur - (e.key === 'PageDown' ? nudge * 10 : delta));
+                    } else if (e.key === 'Home') {
+                        e.preventDefault();
+                        setValue(min);
+                    } else if (e.key === 'End') {
+                        e.preventDefault();
+                        setValue(max);
+                    }
+                });
+            });
+        };
+        initAnywhere();
 
         var updateProgress = function () {
             var $visible = $root.find('[data-cf-conditional][data-cf-answerable]').filter(function () {
@@ -5506,6 +6238,14 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                             });
                         });
                         values[id] = {sets: sets};
+                        return;
+                    }
+                    if ($field.find('[data-cf-rating-optout]:checked').length && $field.find('[data-cf-anywhere-input], [data-cf-vas-input]').length) {
+                        values[id] = 'optout';
+                        return;
+                    }
+                    if ($field.find('[data-cf-anywhere-input], [data-cf-vas-input]').length) {
+                        values[id] = String($field.find('[data-cf-anywhere-input], [data-cf-vas-input]').first().val() || '');
                         return;
                     }
                     if ($field.find('input[type="checkbox"]').length) {
@@ -6198,6 +6938,124 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             });
         };
 
+        var pageTimerNodes = [];
+        var formatPageTimer = function (seconds, format) {
+            var total = Math.max(0, Math.floor(Number(seconds) || 0));
+            var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+            var s = total % 60;
+            if (format === 'ms') {
+                return Math.floor(total / 60) + ':' + pad(s);
+            }
+            var h = Math.floor(total / 3600);
+            var m = Math.floor((total % 3600) / 60);
+            return pad(h) + ':' + pad(m) + ':' + pad(s);
+        };
+        var pageTimerOpen = function (node) {
+            var open = node.acc;
+            if (node.running) {
+                open += (Date.now() - node.entered) / 1000;
+            }
+            return Math.round(open * 10) / 10;
+        };
+        var writePageTimer = function (node) {
+            node.$input.val(JSON.stringify({
+                on_page: pageTimerOpen(node),
+                until_first: node.untilFirst,
+                until_last: node.untilLast,
+                interactions: node.interactions
+            }));
+        };
+        var paintPageTimer = function (node) {
+            if (!node.$clock.length) {
+                return;
+            }
+            var open = pageTimerOpen(node);
+            var shown = node.direction === 'down' ? Math.max(0, node.limit - open) : open;
+            node.$clock.text(formatPageTimer(shown, node.format));
+        };
+        var stopPageTimer = function (node) {
+            if (!node.running) {
+                return;
+            }
+            node.acc = pageTimerOpen(node);
+            node.running = false;
+            writePageTimer(node);
+            paintPageTimer(node);
+        };
+        var bindPageTimers = function () {
+            pageTimerNodes = [];
+            $root.find('[data-cf-page-timer]').each(function () {
+                var $host = $(this);
+                var $input = $host.find('[data-cf-page-timer-value]');
+                var saved = {};
+                try {
+                    saved = JSON.parse($input.val() || '{}') || {};
+                } catch (e) {
+                    saved = {};
+                }
+                var untilFirst = saved.until_first;
+                var untilLast = saved.until_last;
+                pageTimerNodes.push({
+                    $input: $input,
+                    page: $host.closest('[data-cf-page]'),
+                    acc: parseFloat(saved.on_page) || 0,
+                    untilFirst: (untilFirst === null || untilFirst === '' || typeof untilFirst === 'undefined') ? null : parseFloat(untilFirst),
+                    untilLast: (untilLast === null || untilLast === '' || typeof untilLast === 'undefined') ? null : parseFloat(untilLast),
+                    interactions: parseInt(saved.interactions, 10) || 0,
+                    running: false,
+                    entered: 0,
+                    limit: parseInt($host.attr('data-limit'), 10) || 0,
+                    direction: $host.attr('data-direction') || 'up',
+                    format: $host.attr('data-format') || 'hms',
+                    $clock: $host.find('[data-cf-page-timer-clock]')
+                });
+            });
+        };
+        var flushPageTimers = function () {
+            pageTimerNodes.forEach(writePageTimer);
+        };
+        var syncPageTimers = function () {
+            pageTimerNodes.forEach(function (node) {
+                var active = node.page.hasClass('is-active');
+                if (active && !node.running) {
+                    node.running = true;
+                    node.entered = Date.now();
+                } else if (!active) {
+                    stopPageTimer(node);
+                }
+                paintPageTimer(node);
+            });
+        };
+        bindPageTimers();
+        $root.on('pointerdown keydown', '[data-cf-page]', function (e) {
+            if ($(e.target).closest('[data-cf-page-next], [data-cf-page-back], [data-cf-submit-wrap], [data-cf-save-progress]').length) {
+                return;
+            }
+            if (e.type === 'keydown' && (e.originalEvent.repeat || ['Shift', 'Control', 'Alt', 'Meta', 'Tab', 'Escape'].indexOf(e.key) !== -1)) {
+                return;
+            }
+            var pageEl = this;
+            pageTimerNodes.forEach(function (node) {
+                if (node.page[0] !== pageEl || !node.running) {
+                    return;
+                }
+                var open = pageTimerOpen(node);
+                if (node.untilFirst === null || isNaN(node.untilFirst)) {
+                    node.untilFirst = open;
+                }
+                node.untilLast = open;
+                node.interactions += 1;
+                writePageTimer(node);
+            });
+        });
+        setInterval(function () {
+            pageTimerNodes.forEach(function (node) {
+                if (node.running) {
+                    paintPageTimer(node);
+                }
+            });
+        }, 250);
+
         var showPage = function (idx, options) {
             options = options || {};
             var pageChanged = idx !== currentPage;
@@ -6234,7 +7092,8 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             var isLast = nav.index === null || nav.end === true;
             var screenedOut = !!(nav.end && nav.explicit);
 
-            var canGoBack = pageHistory.length > 1;
+            var pageBlocksBack = String($targetPage.attr('data-cf-block-back') || '') === '1';
+            var canGoBack = pageHistory.length > 1 && !pageBlocksBack;
             $root.find('[data-cf-page-back]').toggle(canGoBack);
             $root.find('[data-cf-page-next]').toggle(multiPage && !isLast);
             $root.find('[data-cf-submit-wrap]').toggle(!multiPage || isLast);
@@ -6281,6 +7140,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
             }
             window.requestAnimationFrame(syncGridOverflow);
             noteLanguageProgress();
+            if (typeof syncPageTimers === 'function') {
+                syncPageTimers();
+            }
         };
 
         var writeActionVars = function (vars) {
@@ -6724,22 +7586,61 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                     pageHistory.push(nav.index);
                     showPage(nav.index);
                 };
-                var breakId = $root.find('[data-cf-page="' + currentPage + '"]').attr('data-cf-page-break-id');
-                if (breakId) {
-                    runActions('page', breakId).done(function (res) {
-                        if (res && res.vars && typeof res.vars === 'object') {
-                            writeActionVars(res.vars);
+                var proceed = function () {
+                    var breakId = $root.find('[data-cf-page="' + currentPage + '"]').attr('data-cf-page-break-id');
+                    if (breakId) {
+                        runActions('page', breakId).done(function (res) {
+                            if (res && res.vars && typeof res.vars === 'object') {
+                                writeActionVars(res.vars);
+                            }
+                            goNext();
+                        }).fail(goNext);
+                        return;
+                    }
+                    goNext();
+                };
+                var $fill = $root.find('[data-cf-fill-form]');
+                if ($fill.attr('data-cf-assign-start') === '1' && !String($fill.attr('data-cf-arm-code') || '') && $fill.attr('data-cf-save-url') && !$fill.data('cfAssigning')) {
+                    $fill.data('cfAssigning', true);
+                    $.ajax({
+                        url: $fill.attr('data-cf-save-url'),
+                        type: 'POST',
+                        data: $fill.serialize(),
+                        dataType: 'json'
+                    }).done(function (res) {
+                        if (res && res.resume_code && typeof applyResumeCode === 'function') {
+                            applyResumeCode(res.resume_code);
                         }
-                        goNext();
-                    }).fail(goNext);
+                        if (res && res.arm_code && $fill.attr('data-cf-arm-deferred') === '1' && !res.quota_halt) {
+                            try {
+                                var nextUrl = new URL(window.location.href);
+                                nextUrl.searchParams.delete('start');
+                                nextUrl.searchParams.set('cfcontinue', '1');
+                                window.location.replace(nextUrl.toString());
+                                $fill.data('cfArmReload', 1);
+                                return;
+                            } catch (err) {}
+                        }
+                        if (res && res.arm_code) {
+                            $fill.attr('data-cf-arm-code', String(res.arm_code));
+                            evaluate();
+                        }
+                    }).always(function () {
+                        $fill.data('cfAssigning', false);
+                        if ($fill.data('cfArmReload')) {
+                            return;
+                        }
+                        proceed();
+                    });
                     return;
                 }
-                goNext();
+                proceed();
             });
 
             $root.on('click', '[data-cf-page-back]', function (e) {
                 e.preventDefault();
-                if (pageHistory.length < 2) {
+                var $here = $root.find('[data-cf-page="' + currentPage + '"]');
+                if (String($here.attr('data-cf-block-back') || '') === '1' || pageHistory.length < 2) {
                     return;
                 }
                 pageHistory.pop();
@@ -6886,6 +7787,9 @@ humhub.module('thiscoveryForms', function (module, require, $) {
                 return false;
             }
             flushEvaluate();
+            if (typeof flushPageTimers === 'function') {
+                flushPageTimers();
+            }
             cancelAutosave();
             captureRespondentMeta();
             syncHtmlValues();

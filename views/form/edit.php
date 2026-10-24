@@ -43,6 +43,7 @@ $palette = [
     ['type' => FormField::TYPE_RICH_TEXT, 'icon' => 'fa-paragraph', 'group' => 'content'],
     ['type' => FormField::TYPE_HTML, 'icon' => 'fa-code', 'group' => 'content'],
     ['type' => FormField::TYPE_PAGE_BREAK, 'icon' => 'fa-files-o', 'group' => 'content'],
+    ['type' => FormField::TYPE_PAGE_TIMER, 'icon' => 'fa-clock-o', 'group' => 'content'],
     ['type' => FormField::TYPE_QUESTION_GROUP, 'icon' => 'fa-object-group', 'group' => 'content'],
     ['type' => FormField::TYPE_RAND_BLOCK, 'icon' => 'fa-random', 'group' => 'content'],
     ['type' => FormField::TYPE_RAND_BLOCK_END, 'icon' => 'fa-random', 'group' => 'content'],
@@ -56,6 +57,7 @@ $palette = [
     ['type' => FormField::TYPE_RADIO, 'icon' => 'fa-dot-circle-o', 'group' => 'choice'],
     ['type' => FormField::TYPE_CHECKBOX, 'icon' => 'fa-check-square-o', 'group' => 'choice'],
     ['type' => FormField::TYPE_RATING, 'icon' => 'fa-star', 'group' => 'choice'],
+    ['type' => FormField::TYPE_RATING_OPTION, 'icon' => 'fa-star-half-o', 'group' => 'choice'],
     ['type' => FormField::TYPE_RANKING, 'icon' => 'fa-sort-amount-desc', 'group' => 'choice'],
     ['type' => FormField::TYPE_GRID_SINGLE, 'icon' => 'fa-th', 'group' => 'research'],
     ['type' => FormField::TYPE_GRID_MULTI, 'icon' => 'fa-th-large', 'group' => 'research'],
@@ -123,11 +125,14 @@ if ($allowedTypes !== null) {
 
 $this->registerJsConfig('thiscoveryForms', [
     'none' => Yii::t('ThiscoveryFormsModule.base', 'None'),
+    'selectPage' => Yii::t('ThiscoveryFormsModule.base', 'Select page…'),
     'untitled' => Yii::t('ThiscoveryFormsModule.base', 'Untitled field'),
     'hiddenBadge' => Yii::t('ThiscoveryFormsModule.base', 'Hidden'),
     'types' => $typeLabels,
     'optionTypes' => [FormField::TYPE_DROPDOWN, FormField::TYPE_RADIO, FormField::TYPE_CHECKBOX, FormField::TYPE_RANKING],
     'ratingType' => FormField::TYPE_RATING,
+    'ratingOptionType' => FormField::TYPE_RATING_OPTION,
+    'ratingOptoutDefault' => Yii::t('ThiscoveryFormsModule.base', "I don't know"),
     'pageBreakType' => FormField::TYPE_PAGE_BREAK,
     'questionGroupType' => FormField::TYPE_QUESTION_GROUP,
     'richTextType' => FormField::TYPE_RICH_TEXT,
@@ -153,6 +158,9 @@ $this->registerJsConfig('thiscoveryForms', [
     'librarySaveUrl' => Url::toLibrarySave($contentContainer),
     'libraryDeleteUrl' => Url::toLibraryDelete($contentContainer),
     'libraryInsertUrl' => Url::toLibraryInsert($contentContainer),
+    'fieldCardUrl' => !$isNew && $formModel->id ? Url::toFieldCard($formModel) : '',
+    'previewUrl' => !$isNew && $formModel->id ? Url::toPreview($formModel) : '',
+    'fieldCardError' => Yii::t('ThiscoveryFormsModule.base', 'Could not open that question. Try again.'),
     'librarySaved' => Yii::t('ThiscoveryFormsModule.base', 'Saved to library.'),
     'libraryTitlePrompt' => Yii::t('ThiscoveryFormsModule.base', 'Name this library item'),
     'libraryEmpty' => Yii::t('ThiscoveryFormsModule.base', 'No library items yet. Save a question or block from the canvas.'),
@@ -371,8 +379,8 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                         continue;
                     }
                     ?>
-                    <div class="cf-palette__group">
-                        <div class="cf-palette__group-label"><?= Html::encode($groupLabel) ?></div>
+                    <details class="cf-palette__group"<?= $groupKey === 'content' ? ' open' : '' ?>>
+                        <summary class="cf-palette__group-label"><?= Html::encode($groupLabel) ?></summary>
                         <?php foreach ($items as $item): ?>
                             <button type="button"
                                     class="cf-palette__item"
@@ -385,20 +393,13 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                                 <span class="cf-palette__label"><?= Html::encode($item['label'] ?? ($typeLabels[$item['type']] ?? $item['type'])) ?></span>
                             </button>
                         <?php endforeach; ?>
-                    </div>
+                    </details>
                 <?php endforeach; ?>
 
                 <button type="button" class="btn btn-sm btn-dark cf-palette__clear" data-cf-clear-fields>
                     <?= Yii::t('ThiscoveryFormsModule.base', 'Clear') ?>
                 </button>
-                <?php if (!$isPoll): ?>
-                    <button type="button" class="btn btn-sm btn-light cf-palette__clear" data-cf-insert-health-status>
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Insert health-status pages') ?>
-                    </button>
-                    <p class="cf-hint text-muted cf-palette__hint">
-                        <?= Yii::t('ThiscoveryFormsModule.base', 'Adds five one-question pages and a vertical 0–100 scale. Paste licensed wording; this is not an official instrument.') ?>
-                    </p>
-                <?php endif; ?>
+                <?php /* Health-status insert is hidden for now. Restore the button and hint together. */ ?>
                 </div>
 
                 <div class="d-none" data-cf-palette-panel="library">
@@ -424,16 +425,25 @@ $isSettingsExtra = $openTab === 'settings' && in_array($openSection, ['panel', '
                 <div class="cf-fields-list" data-cf-fields>
                     <?php
                     $i = 0;
+                    // A full editor for every question is too large for a long form.
+                    $compactStudio = count($fieldList) > 60;
                     foreach ($fieldList as $field):
-                        echo $this->render('_field_row', [
-                            'key' => $field->id ? ('id' . (int)$field->id) : ('n' . $i),
-                            'field' => $field,
-                            'allFields' => $fieldList,
-                            'collapsed' => true,
-                            'allowedTypes' => $allowedTypes,
-                            'emailTemplateOptions' => $emailTemplateOptions,
-                            'panelAttrKeys' => $panelAttrKeys,
-                        ]);
+                        $rowKey = $field->id ? ('id' . (int)$field->id) : ('n' . $i);
+                        if ($compactStudio && $field->id) {
+                            echo $this->render('_field_row_compact', [
+                                'key' => $rowKey,
+                                'field' => $field,
+                            ]);
+                        } else {
+                            echo $this->render('_field_row', [
+                                'key' => $rowKey,
+                                'field' => $field,
+                                'collapsed' => true,
+                                'allowedTypes' => $allowedTypes,
+                                'emailTemplateOptions' => $emailTemplateOptions,
+                                'panelAttrKeys' => $panelAttrKeys,
+                            ]);
+                        }
                         $i++;
                     endforeach;
                     ?>

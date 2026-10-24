@@ -2,7 +2,7 @@
 
 Both the module switch and the form switch default to off. With either off, a response completes as it did before and the counter does not move.
 
-A quota is an integer target and a logic rule. The rule can use answers, the assigned arm, and panel attributes. A fully anonymous form cannot use a panel attribute. A parent quota must also have room. A wave quota counts only that wave.
+A quota is an integer target and a logic rule. The rule can use answers, the group code (`[arm]`), and panel attributes. A fully anonymous form cannot use a panel attribute. A parent quota must also have room. A wave quota counts only that wave.
 
 The check runs when the chosen page is left, and again on submit. The server result is the one that counts. The place is taken inside the same transaction as the answer, with the counter row locked. One hundred overlapping submits with ten places left finish with ten completed and ninety over quota.
 
@@ -17,8 +17,8 @@ Actions when the cell is full:
 - Go to another page and keep the response open.
 - Mark and continue. The response can finish and does not take a place.
 
-Lowering a target does not remove people who already finished. The fill percent can go over 100. Editing a completed response does not free a place and does not turn that response into over quota, whether or not arm randomisation is on. A finished response is stored as complete so later edits can tell it was already counted. `php yii thiscovery-forms/quota/reconcile` prints any difference and, with `--apply=1`, sets the counter to the recount.
+Lowering a target does not remove people who already finished. The fill percent can go over 100. Editing a completed response does not free a place and does not turn that response into over quota, whether or not group placement is on. A finished response is stored as complete so later edits can tell it was already counted. `php yii thiscovery-forms/quota/reconcile` prints any difference and, with `--apply=1`, sets the counter to the recount.
 
-An optional least-filled arm uses the open arm quotas. If every arm the person qualifies for is full, the fullest quota’s action runs and the arm is not kept.
+An optional setting places the person in the open group with the most room. If every group the person qualifies for is full, the fullest quota’s action runs and no group is kept.
 
 `quota.full` is written to the quota audit when the target is reached. If the form has an address under Email when a quota fills, that address is sent a message. The event is not posted to another system. Webhooks are a later release.

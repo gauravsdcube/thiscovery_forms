@@ -43,11 +43,19 @@ class FormField extends ActiveRecord
     public const TYPE_RADIO = 'radio';
     public const TYPE_CHECKBOX = 'checkbox';
     public const TYPE_RATING = 'rating';
+    /** A rating scale plus one extra choice, such as "I don't know", which clears the scale. */
+    public const TYPE_RATING_OPTION = 'rating_option';
     public const RATING_DISPLAY_PILLS = 'pills';
     public const RATING_DISPLAY_THERMOMETER = 'thermometer';
+    /** The respondent can stop anywhere between the ends. The stored value is that position. */
+    public const RATING_DISPLAY_ANYWHERE = 'anywhere';
+    /** Stored answer when the extra option on a rating-with-option question is chosen. */
+    public const RATING_OPTOUT = 'optout';
     public const TYPE_RANKING = 'ranking';
     public const TYPE_FILE = 'file';
     public const TYPE_PAGE_BREAK = 'page_break';
+    /** Records how long the page is open, and optional interaction timing. */
+    public const TYPE_PAGE_TIMER = 'page_timer';
     public const TYPE_QUESTION_GROUP = 'question_group';
     public const TYPE_GROUP_END = 'group_end';
     public const TYPE_RAND_BLOCK = 'rand_block';
@@ -95,7 +103,10 @@ class FormField extends ActiveRecord
     public function rules()
     {
         return [
-            [['form_id', 'type', 'label'], 'required'],
+            [['form_id', 'type'], 'required'],
+            [['label'], 'required', 'when' => static function ($model): bool {
+                return $model instanceof self && !$model->allowsBlankLabel();
+            }],
             [['form_id', 'sort_order'], 'integer'],
             [['required'], 'boolean'],
             [['label'], 'string', 'max' => self::LABEL_MAX],
@@ -225,13 +236,15 @@ class FormField extends ActiveRecord
             self::TYPE_RADIO => Yii::t('ThiscoveryFormsModule.base', 'Radio'),
             self::TYPE_CHECKBOX => Yii::t('ThiscoveryFormsModule.base', 'Checkbox'),
             self::TYPE_RATING => Yii::t('ThiscoveryFormsModule.base', 'Rating scale'),
+            self::TYPE_RATING_OPTION => Yii::t('ThiscoveryFormsModule.base', 'Rating with an option'),
             self::TYPE_RANKING => Yii::t('ThiscoveryFormsModule.base', 'Ranking (drag & drop)'),
             self::TYPE_FILE => Yii::t('ThiscoveryFormsModule.base', 'File upload'),
             self::TYPE_PAGE_BREAK => Yii::t('ThiscoveryFormsModule.base', 'Page break'),
+            self::TYPE_PAGE_TIMER => Yii::t('ThiscoveryFormsModule.base', 'Page timer'),
             self::TYPE_QUESTION_GROUP => Yii::t('ThiscoveryFormsModule.base', 'Question group'),
             self::TYPE_GROUP_END => Yii::t('ThiscoveryFormsModule.base', 'Group end'),
-            self::TYPE_RAND_BLOCK => Yii::t('ThiscoveryFormsModule.base', 'Randomisation block'),
-            self::TYPE_RAND_BLOCK_END => Yii::t('ThiscoveryFormsModule.base', 'Randomisation block end'),
+            self::TYPE_RAND_BLOCK => Yii::t('ThiscoveryFormsModule.base', 'Shuffled pages'),
+            self::TYPE_RAND_BLOCK_END => Yii::t('ThiscoveryFormsModule.base', 'End of shuffled pages'),
             self::TYPE_CONSENT => Yii::t('ThiscoveryFormsModule.base', 'Consent'),
             self::TYPE_RICH_TEXT => Yii::t('ThiscoveryFormsModule.base', 'Rich text section'),
             self::TYPE_HTML => Yii::t('ThiscoveryFormsModule.base', 'HTML / custom block'),
@@ -267,6 +280,22 @@ class FormField extends ActiveRecord
     {
         $labels = self::getTypeLabels();
         return $labels[$type] ?? $type;
+    }
+
+    /**
+     * These blocks are not questions. The page title, the rich text, the page
+     * timer, or the shuffled-pages marker carries the meaning, so a blank label can be saved.
+     */
+    public function allowsBlankLabel(): bool
+    {
+        return in_array($this->type, [
+            self::TYPE_RICH_TEXT,
+            self::TYPE_PAGE_BREAK,
+            self::TYPE_PAGE_TIMER,
+            self::TYPE_RAND_BLOCK,
+            self::TYPE_RAND_BLOCK_END,
+            self::TYPE_GROUP_END,
+        ], true);
     }
 
     /**
@@ -368,7 +397,7 @@ class FormField extends ActiveRecord
 
     public function displayLabel(): string
     {
-        $label = trim((string)$this->label);
+        $label = $this->plainLabel();
         if ($label === '') {
             $label = trim((string)$this->variable);
         }
@@ -376,6 +405,30 @@ class FormField extends ActiveRecord
             $label .= ' (' . Yii::t('ThiscoveryFormsModule.base', 'removed') . ')';
         }
         return $label;
+    }
+
+    /** Hide Back while the page that holds this item is on screen. */
+    public function blocksBack(): bool
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            return false;
+        }
+        return !empty($decoded['blockBack']);
+    }
+
+    public function setBlockBack(bool $block): void
+    {
+        $decoded = $this->decodedOptions();
+        if ($decoded && array_is_list($decoded)) {
+            $decoded = ['options' => array_values($decoded)];
+        }
+        if ($block) {
+            $decoded['blockBack'] = true;
+        } else {
+            unset($decoded['blockBack']);
+        }
+        $this->writeDecodedOptions($decoded);
     }
 
     public static function isChoiceType(?string $type): bool
@@ -1929,10 +1982,16 @@ class FormField extends ActiveRecord
         return array_values(array_unique($labels));
     }
 
+    public function isRatingScale(): bool
+    {
+        return $this->type === self::TYPE_RATING || $this->type === self::TYPE_RATING_OPTION;
+    }
+
     public static function getRatingDisplayLabels(): array
     {
         return [
-            self::RATING_DISPLAY_PILLS => Yii::t('ThiscoveryFormsModule.base', 'Horizontal pills'),
+            self::RATING_DISPLAY_PILLS => Yii::t('ThiscoveryFormsModule.base', 'Fixed points'),
+            self::RATING_DISPLAY_ANYWHERE => Yii::t('ThiscoveryFormsModule.base', 'Anywhere on the scale'),
             self::RATING_DISPLAY_THERMOMETER => Yii::t('ThiscoveryFormsModule.base', 'Vertical thermometer'),
         ];
     }
@@ -1945,9 +2004,10 @@ class FormField extends ActiveRecord
         $lowLabel = trim((string)($config['lowLabel'] ?? ''));
         $highLabel = trim((string)($config['highLabel'] ?? ''));
         $display = (string)($config['display'] ?? self::RATING_DISPLAY_PILLS);
-        if ($display !== self::RATING_DISPLAY_THERMOMETER) {
+        if (!in_array($display, [self::RATING_DISPLAY_THERMOMETER, self::RATING_DISPLAY_ANYWHERE, self::RATING_DISPLAY_PILLS], true)) {
             $display = self::RATING_DISPLAY_PILLS;
         }
+        $optoutLabel = trim((string)($config['optoutLabel'] ?? ''));
 
         $role = trim((string)($config['instrument_role'] ?? ''));
         if ($role === '') {
@@ -1966,6 +2026,14 @@ class FormField extends ActiveRecord
             'highLabel' => $highLabel,
             'display' => $display,
         ];
+        if ($this->type === self::TYPE_RATING_OPTION) {
+            $payload['__type'] = self::TYPE_RATING_OPTION;
+            $payload['optoutLabel'] = $optoutLabel !== ''
+                ? $optoutLabel
+                : Yii::t('ThiscoveryFormsModule.base', "I don't know");
+        } elseif ($optoutLabel !== '') {
+            $payload['optoutLabel'] = $optoutLabel;
+        }
         if ($role !== '') {
             $payload['instrument_role'] = $role;
         }
@@ -1981,36 +2049,159 @@ class FormField extends ActiveRecord
             'lowLabel' => '',
             'highLabel' => '',
             'display' => self::RATING_DISPLAY_PILLS,
+            'optoutLabel' => '',
         ];
 
         if (!$this->options_json) {
-            return $defaults;
+            return $this->ratingScaleDefaults($defaults);
         }
 
         $decoded = json_decode($this->options_json, true);
-        if (!is_array($decoded) || (($decoded['__type'] ?? null) !== self::TYPE_RATING)) {
-            return $defaults;
+        $kind = is_array($decoded) ? (string)($decoded['__type'] ?? '') : '';
+        if (!is_array($decoded) || !in_array($kind, [self::TYPE_RATING, self::TYPE_RATING_OPTION], true)) {
+            return $this->ratingScaleDefaults($defaults);
         }
 
         $display = (string)($decoded['display'] ?? $defaults['display']);
-        if ($display !== self::RATING_DISPLAY_THERMOMETER) {
+        if (!in_array($display, [self::RATING_DISPLAY_THERMOMETER, self::RATING_DISPLAY_ANYWHERE, self::RATING_DISPLAY_PILLS], true)) {
             $display = self::RATING_DISPLAY_PILLS;
         }
 
-        return [
+        return $this->ratingScaleDefaults([
             'min' => max(0, (int)($decoded['min'] ?? $defaults['min'])),
             'max' => max(1, (int)($decoded['max'] ?? $defaults['max'])),
             'step' => max(1, (int)($decoded['step'] ?? $defaults['step'])),
             'lowLabel' => (string)($decoded['lowLabel'] ?? ''),
             'highLabel' => (string)($decoded['highLabel'] ?? ''),
             'display' => $display,
-        ];
+            'optoutLabel' => trim((string)($decoded['optoutLabel'] ?? '')),
+        ]);
+    }
+
+    /**
+     * @param array{min:int,max:int,step:int,lowLabel:string,highLabel:string,display:string,optoutLabel:string} $scale
+     * @return array{min:int,max:int,step:int,lowLabel:string,highLabel:string,display:string,optoutLabel:string}
+     */
+    private function ratingScaleDefaults(array $scale): array
+    {
+        if ($this->type === self::TYPE_RATING_OPTION && $scale['optoutLabel'] === '') {
+            $scale['optoutLabel'] = Yii::t('ThiscoveryFormsModule.base', "I don't know");
+        }
+        return $scale;
     }
 
     public function isThermometerRating(): bool
     {
-        return $this->type === self::TYPE_RATING
+        return $this->isRatingScale()
             && ($this->getRatingScale()['display'] ?? self::RATING_DISPLAY_PILLS) === self::RATING_DISPLAY_THERMOMETER;
+    }
+
+    public function isAnywhereRating(): bool
+    {
+        return $this->isRatingScale()
+            && ($this->getRatingScale()['display'] ?? self::RATING_DISPLAY_PILLS) === self::RATING_DISPLAY_ANYWHERE;
+    }
+
+    public function setPageTimer(array $config): void
+    {
+        $direction = (string)($config['direction'] ?? 'up');
+        if (!in_array($direction, ['up', 'down'], true)) {
+            $direction = 'up';
+        }
+        $align = (string)($config['align'] ?? 'start');
+        if (!in_array($align, ['start', 'center', 'end'], true)) {
+            $align = 'start';
+        }
+        $format = (string)($config['format'] ?? 'hms');
+        if (!in_array($format, ['hms', 'ms'], true)) {
+            $format = 'hms';
+        }
+        $limit = (int)($config['limitSeconds'] ?? 60);
+        if ($limit < 1) {
+            $limit = 1;
+        }
+        if ($limit > 86400) {
+            $limit = 86400;
+        }
+        $this->options_json = json_encode([
+            '__type' => self::TYPE_PAGE_TIMER,
+            'visible' => !empty($config['visible']),
+            'direction' => $direction,
+            'limitSeconds' => $limit,
+            'align' => $align,
+            'caption' => trim((string)($config['caption'] ?? '')),
+            'format' => $format,
+        ], JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * @return array{visible:bool,direction:string,limitSeconds:int,align:string,caption:string,format:string}
+     */
+    public function getPageTimer(): array
+    {
+        $defaults = [
+            'visible' => false,
+            'direction' => 'up',
+            'limitSeconds' => 60,
+            'align' => 'start',
+            'caption' => '',
+            'format' => 'hms',
+        ];
+        $decoded = json_decode((string)$this->options_json, true);
+        if (!is_array($decoded) || ($decoded['__type'] ?? '') !== self::TYPE_PAGE_TIMER) {
+            return $defaults;
+        }
+        $timer = $defaults;
+        $timer['visible'] = !empty($decoded['visible']);
+        if (in_array($decoded['direction'] ?? '', ['up', 'down'], true)) {
+            $timer['direction'] = (string)$decoded['direction'];
+        }
+        if (in_array($decoded['align'] ?? '', ['start', 'center', 'end'], true)) {
+            $timer['align'] = (string)$decoded['align'];
+        }
+        if (in_array($decoded['format'] ?? '', ['hms', 'ms'], true)) {
+            $timer['format'] = (string)$decoded['format'];
+        }
+        $limit = (int)($decoded['limitSeconds'] ?? 60);
+        $timer['limitSeconds'] = max(1, min(86400, $limit));
+        $timer['caption'] = trim((string)($decoded['caption'] ?? ''));
+        return $timer;
+    }
+
+    /**
+     * @param mixed $raw
+     */
+    public static function normalizePageTimerValue($raw): string
+    {
+        if (is_string($raw)) {
+            $decoded = json_decode($raw, true);
+        } elseif (is_array($raw)) {
+            $decoded = $raw;
+        } else {
+            return '';
+        }
+        if (!is_array($decoded)) {
+            return '';
+        }
+        $seconds = static function ($value): ?float {
+            if ($value === null || $value === '') {
+                return null;
+            }
+            if (!is_numeric($value)) {
+                return null;
+            }
+            return round(max(0, (float)$value), 1);
+        };
+        $onPage = $seconds($decoded['on_page'] ?? null);
+        $payload = [
+            'on_page' => $onPage ?? 0,
+            'until_first' => $seconds($decoded['until_first'] ?? null),
+            'until_last' => $seconds($decoded['until_last'] ?? null),
+            'interactions' => isset($decoded['interactions']) && is_numeric($decoded['interactions'])
+                ? max(0, (int)$decoded['interactions'])
+                : 0,
+        ];
+        return json_encode($payload, JSON_UNESCAPED_UNICODE);
     }
 
     public function setPageBreakConfig(array $config, bool $keepLegacy = false): void
@@ -2188,6 +2379,7 @@ class FormField extends ActiveRecord
             self::TYPE_RADIO,
             self::TYPE_CHECKBOX,
             self::TYPE_RATING,
+            self::TYPE_RATING_OPTION,
             self::TYPE_RANKING,
         ], true);
     }
@@ -2919,7 +3111,7 @@ class FormField extends ActiveRecord
             $keep['check'] = $check;
             $keep['check_message'] = trim((string)($raw['check_message'] ?? ''));
         }
-        if (in_array($this->type, [self::TYPE_RADIO, self::TYPE_DROPDOWN, self::TYPE_RATING], true)) {
+        if (in_array($this->type, [self::TYPE_RADIO, self::TYPE_DROPDOWN, self::TYPE_RATING, self::TYPE_RATING_OPTION], true)) {
             foreach (['consensus_agree_from', 'consensus_agree_to', 'consensus_disagree_from', 'consensus_disagree_to', 'consensus_exclude'] as $key) {
                 $keep[$key] = mb_substr(trim((string)($raw[$key] ?? '')), 0, 255);
             }
@@ -3114,6 +3306,7 @@ class FormField extends ActiveRecord
             'options' => $this->getOptionsAsText(),
             'option_items' => self::isChoiceType($this->type) ? $this->getChoicePairs() : [],
             'hidden' => $this->isHiddenFromRespondent() ? '1' : '',
+            'block_back' => $this->blocksBack() ? '1' : '',
             'pii' => $this->isContainsPii() ? '1' : '',
             'straightline_exempt' => $this->isStraightlineExempt() ? '1' : '',
             'reverse_keyed' => $this->isReverseKeyed() ? '1' : '',
@@ -3168,7 +3361,7 @@ class FormField extends ActiveRecord
             'actions' => $this->getActions(),
         ];
 
-        if ($this->type === self::TYPE_RATING) {
+        if ($this->isRatingScale()) {
             $scale = $this->getRatingScale();
             $row['rating_min'] = $scale['min'];
             $row['rating_max'] = $scale['max'];
@@ -3176,6 +3369,15 @@ class FormField extends ActiveRecord
             $row['rating_low_label'] = $scale['lowLabel'];
             $row['rating_high_label'] = $scale['highLabel'];
             $row['rating_display'] = $scale['display'];
+            $row['rating_optout'] = $this->type === self::TYPE_RATING_OPTION ? $scale['optoutLabel'] : '';
+        } elseif ($this->type === self::TYPE_PAGE_TIMER) {
+            $timer = $this->getPageTimer();
+            $row['timer_visible'] = $timer['visible'] ? '1' : '';
+            $row['timer_direction'] = $timer['direction'];
+            $row['timer_limit'] = $timer['limitSeconds'];
+            $row['timer_align'] = $timer['align'];
+            $row['timer_caption'] = $timer['caption'];
+            $row['timer_format'] = $timer['format'];
         } elseif ($this->type === self::TYPE_PAGE_BREAK) {
             $cfg = $this->getPageBreakConfig();
             $row['page_key'] = $cfg['pageKey'];
@@ -3298,6 +3500,7 @@ class FormField extends ActiveRecord
             'number_max' => $payload['number_max'] ?? $payload['max'] ?? '',
             'prefill_profile' => (string)($payload['prefill_profile'] ?? $payload['prefillProfile'] ?? ''),
             'hidden' => !empty($payload['hidden']) ? '1' : '',
+            'block_back' => !empty($payload['block_back']) || !empty($payload['blockBack']) ? '1' : '',
             'default_value' => (string)($payload['default_value'] ?? $payload['defaultValue'] ?? ''),
             'meta_key' => (string)($payload['meta_key'] ?? $payload['metaKey'] ?? ''),
             'rating_min' => $payload['rating_min'] ?? 1,
@@ -3381,7 +3584,7 @@ class FormField extends ActiveRecord
         $field->internal_label = trim((string)($row['internal_label'] ?? ''));
         $field->help_text = $row['help_text'] ?? null;
         $field->required = !empty($row['required']);
-        if ($field->type === self::TYPE_RATING) {
+        if ($field->isRatingScale()) {
             $field->setRatingScale([
                 'min' => $row['rating_min'] ?? 1,
                 'max' => $row['rating_max'] ?? 5,
@@ -3389,6 +3592,17 @@ class FormField extends ActiveRecord
                 'lowLabel' => $row['rating_low_label'] ?? '',
                 'highLabel' => $row['rating_high_label'] ?? '',
                 'display' => $row['rating_display'] ?? self::RATING_DISPLAY_PILLS,
+                'optoutLabel' => $row['rating_optout'] ?? '',
+            ]);
+        } elseif ($field->type === self::TYPE_PAGE_TIMER) {
+            $field->required = false;
+            $field->setPageTimer([
+                'visible' => $row['timer_visible'] ?? '',
+                'direction' => $row['timer_direction'] ?? 'up',
+                'limitSeconds' => $row['timer_limit'] ?? 60,
+                'align' => $row['timer_align'] ?? 'start',
+                'caption' => $row['timer_caption'] ?? '',
+                'format' => $row['timer_format'] ?? 'hms',
             ]);
         } elseif ($field->type === self::TYPE_PAGE_BREAK) {
             $field->setPageBreakConfig([
@@ -3502,6 +3716,22 @@ class FormField extends ActiveRecord
                 (string)($row['formula_display'] ?? 'readonly'),
                 $row['formula_places'] ?? 6
             );
+        } elseif ($field->type === self::TYPE_RAND_BLOCK) {
+            // A published edition is rebuilt from this row. Without the block name, the
+            // saved page order is filed under block1, block2, … and the download column
+            // named after the block stays empty.
+            $blockShow = trim((string)($row['randomise_show'] ?? ''));
+            $field->options_json = json_encode([
+                'blockKey' => trim((string)($row['block_key'] ?? $row['page_key'] ?? '')),
+                'randomise' => [
+                    'enabled' => true,
+                    'method' => (($row['randomise_method'] ?? '') === 'rotate') ? 'rotate' : 'shuffle',
+                    'show' => $blockShow === '' ? null : max(1, (int)$blockShow),
+                ],
+            ], JSON_UNESCAPED_UNICODE);
+            $field->required = false;
+        } elseif ($field->type === self::TYPE_RAND_BLOCK_END) {
+            $field->required = false;
         }
         if ($field->type === self::TYPE_QUESTION_GROUP && (!empty($row['randomise_enabled']) || !empty($row['loop_enabled']))) {
             $options = [];
@@ -3553,6 +3783,7 @@ class FormField extends ActiveRecord
             $field->setInstrumentRole($role);
         }
         $field->setHiddenFromRespondent(!empty($row['hidden']) || $field->type === self::TYPE_RESPONDENT_META);
+        $field->setBlockBack(!empty($row['block_back']));
         $field->setDefaultValue((string)($row['default_value'] ?? ''));
         if ($field->type === self::TYPE_RESPONDENT_META) {
             $field->setRespondentMetaKey((string)($row['meta_key'] ?? ''));

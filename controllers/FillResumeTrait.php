@@ -251,6 +251,11 @@ trait FillResumeTrait
 
     protected function isStartNewRequest(): bool
     {
+        // The reload after the new response is saved still carries start=new from the
+        // address it was opened on. That reload continues the response just saved.
+        if ((string)Yii::$app->request->get('cfcontinue', '') === '1') {
+            return false;
+        }
         return (string)Yii::$app->request->get('start', Yii::$app->request->post('start', '')) === 'new';
     }
 
@@ -301,6 +306,24 @@ trait FillResumeTrait
      */
     protected function resolveFillExisting(CustomForm $form, SubmitForm $submit, bool $load = true): ?FormAnswer
     {
+        // "Start a new response" drops the draft this browser was holding, before the
+        // empty form is shown. Later saves in that same response still find the new draft.
+        if ($this->isStartNewRequest() && !Yii::$app->request->isPost) {
+            $this->forgetProgressDraft($form);
+        }
+
+        // The reload after a group is assigned must open the draft just saved, including
+        // for a guest, whose draft id is only in this session.
+        if ((string)Yii::$app->request->get('cfcontinue') === '1') {
+            $held = $this->sessionProgressAnswer($form, $this->isPreviewMode($form));
+            if ($held) {
+                if ($load) {
+                    $submit->loadFromAnswer($held);
+                }
+                return $held;
+            }
+        }
+
         if ($this->isPreviewMode($form)) {
             if (!$form->allowsResume() || !$this->hasResumeIntent($form)) {
                 if ($load) {
@@ -338,8 +361,11 @@ trait FillResumeTrait
             return $draft;
         }
 
-        if ($form->allowsResume() && $this->isContinueOwnRequest()) {
+        if ($this->isContinueOwnRequest() && ($form->allowsResume() || $form->keepsPartials())) {
             $own = $this->resolveOwnInProgress($form);
+            if (!$own) {
+                $own = $this->sessionProgressAnswer($form, false);
+            }
             if ($own) {
                 if ($load) {
                     $submit->loadFromAnswer($own);
@@ -403,6 +429,29 @@ trait FillResumeTrait
         return null;
     }
 
+    /**
+     * start=new has already created this response. Send the browser to the same
+     * address without that instruction, so a refresh does not open a blank copy.
+     *
+     * @return Response|null
+     */
+    protected function redirectIfStartConsumed(?FormAnswer $existing)
+    {
+        if (Yii::$app->request->isPost) {
+            return null;
+        }
+        if ((string)Yii::$app->request->get('start', '') !== 'new') {
+            return null;
+        }
+        if ((string)Yii::$app->request->get('cfcontinue', '') !== '1') {
+            return null;
+        }
+        if (!$existing || !$existing->isInProgress()) {
+            return null;
+        }
+        return $this->redirect(Url::withoutQueryParam((string)Yii::$app->request->url, 'start'));
+    }
+
     protected function canContinueDraft(CustomForm $form, ?FormAnswer $existing): bool
     {
         if ($this->isPreviewMode($form)) {
@@ -439,10 +488,36 @@ trait FillResumeTrait
             if ($ctx->member && (int)$existing->panel_member_id === (int)$ctx->member->id) {
                 return true;
             }
-            return false;
+            // An anonymous response has no owner. The session that saved it may finish it.
+            $held = $this->sessionProgressAnswer($form, $existing->isTest());
+            return $held !== null && (int)$held->id === (int)$existing->id;
         }
 
         return $form->canEditOwnAnswer($existing) || $form->canManage();
+    }
+
+    /**
+     * The draft a submit should write to: a posted resume code, the answer already on
+     * this page, or the in-progress response this session saved.
+     */
+    protected function draftForSubmit(CustomForm $form, ?FormAnswer $existing): ?FormAnswer
+    {
+        $posted = ($form->allowsResume() || $form->keepsPartials())
+            ? $this->resolveDraftFromRequest($form)
+            : null;
+        if ($posted) {
+            return $posted;
+        }
+        if ($existing && $existing->isInProgress()) {
+            return $existing;
+        }
+        if (Yii::$app->request->isPost) {
+            $held = $this->sessionProgressAnswer($form, $this->isPreviewMode($form));
+            if ($held) {
+                return $held;
+            }
+        }
+        return $existing;
     }
 
     /**
@@ -477,6 +552,24 @@ trait FillResumeTrait
         }
 
         return $this->resolveOwnInProgress($form);
+    }
+
+    /**
+     * In-progress draft id stored when progress was saved in this session.
+     */
+    protected function sessionProgressAnswer(CustomForm $form, bool $preview): ?FormAnswer
+    {
+        $key = $preview ? $this->previewAnswerSessionKey($form) : $this->partialAnswerSessionKey($form);
+        $sid = (int)Yii::$app->session->get($key, 0);
+        if ($sid <= 0) {
+            return null;
+        }
+        $answer = FormAnswer::findOne([
+            'id' => $sid,
+            'form_id' => (int)$form->id,
+            'is_test' => $preview ? 1 : 0,
+        ]);
+        return ($answer && $answer->isInProgress()) ? $answer : null;
     }
 
     protected function rememberProgressDraft(CustomForm $form, FormAnswer $answer): void
@@ -594,9 +687,11 @@ trait FillResumeTrait
 
         if (Yii::$app->request->isAjax) {
             Yii::$app->response->format = Response::FORMAT_JSON;
+            $assignedArm = (new \humhub\modules\thiscoveryForms\services\RandomisationService())->assignment($answer);
             return [
                 'success' => true,
                 'resume_code' => \humhub\modules\thiscoveryForms\services\ResumeService::plainFor($answer),
+                'arm_code' => (string)($assignedArm['arm_code'] ?? ''),
                 'quota_message' => (string)$submit->quotaMessage,
                 // A page-exit quota acts, not just notes (V3-47): end/redirect closes the response
                 // and the page moves to the closing page; goto moves to the quota's page.
@@ -702,6 +797,17 @@ trait FillResumeTrait
         }
 
         return $this->redirect(Url::toResume($form, $this->resumeService()->normalizeCode($code)));
+    }
+
+    /**
+     * A rejected submit stays on the form. The reason is kept on the model so the
+     * page can show it beside the button.
+     */
+    protected function rejectFill(SubmitForm $submit, string $message = ''): void
+    {
+        if ($message !== '') {
+            $submit->addError('values', $message);
+        }
     }
 
     /**

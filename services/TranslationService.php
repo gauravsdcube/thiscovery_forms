@@ -570,6 +570,9 @@ class TranslationService
         if (isset($overlay['highLabel']) && array_key_exists('highLabel', $decoded)) {
             $decoded['highLabel'] = $overlay['highLabel'];
         }
+        if (isset($overlay['optoutLabel']) && (array_key_exists('optoutLabel', $decoded) || ($decoded['__type'] ?? '') === FormField::TYPE_RATING_OPTION)) {
+            $decoded['optoutLabel'] = $overlay['optoutLabel'];
+        }
         $field->options_json = json_encode($decoded, JSON_UNESCAPED_UNICODE);
     }
 
@@ -598,6 +601,9 @@ class TranslationService
         }
         if (isset($data['rating_high_label']) && trim((string)$data['rating_high_label']) !== '') {
             $extra['highLabel'] = (string)$data['rating_high_label'];
+        }
+        if (isset($data['rating_optout']) && trim((string)$data['rating_optout']) !== '') {
+            $extra['optoutLabel'] = (string)$data['rating_optout'];
         }
         if (!empty($data['loop_items']) && is_array($data['loop_items'])) {
             $extra['loop_items'] = $this->stringMap($data['loop_items']);
@@ -901,6 +907,7 @@ class TranslationService
             'html_instructions' => (string)($overlay['html_instructions'] ?? ''),
             'rating_low_label' => (string)($overlay['lowLabel'] ?? ''),
             'rating_high_label' => (string)($overlay['highLabel'] ?? ''),
+            'rating_optout' => (string)($overlay['optoutLabel'] ?? ''),
             'rows' => is_array($overlay['rows'] ?? null) ? $overlay['rows'] : [],
             'columns' => is_array($overlay['columns'] ?? null) ? $overlay['columns'] : [],
             'items' => is_array($overlay['items'] ?? null) ? $overlay['items'] : [],

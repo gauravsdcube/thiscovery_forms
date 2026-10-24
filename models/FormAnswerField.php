@@ -4,6 +4,7 @@ namespace humhub\modules\thiscoveryForms\models;
 
 use humhub\components\ActiveRecord;
 use humhub\modules\file\models\File;
+use Yii;
 use yii\db\ActiveQuery;
 use yii\helpers\Html;
 
@@ -83,7 +84,26 @@ class FormAnswerField extends ActiveRecord
                 ->formatAnswer($decoded !== null && json_last_error() === JSON_ERROR_NONE ? $decoded : $this->value, $field, true);
         }
 
-        if ($field && $field->type === FormField::TYPE_RATING) {
+        if ($field && $field->type === FormField::TYPE_PAGE_TIMER) {
+            $timing = json_decode((string)$this->value, true);
+            if (!is_array($timing)) {
+                return '';
+            }
+            $parts = [Yii::t('ThiscoveryFormsModule.base', '{n} seconds on the page', ['n' => $timing['on_page'] ?? 0])];
+            if (isset($timing['until_first']) && $timing['until_first'] !== null && $timing['until_first'] !== '') {
+                $parts[] = Yii::t('ThiscoveryFormsModule.base', 'first interaction at {n}s', ['n' => $timing['until_first']]);
+            }
+            if (isset($timing['until_last']) && $timing['until_last'] !== null && $timing['until_last'] !== '') {
+                $parts[] = Yii::t('ThiscoveryFormsModule.base', 'last interaction at {n}s', ['n' => $timing['until_last']]);
+            }
+            $parts[] = Yii::t('ThiscoveryFormsModule.base', '{n} interactions', ['n' => (int)($timing['interactions'] ?? 0)]);
+            return implode(' · ', $parts);
+        }
+
+        if ($field && $field->isRatingScale()) {
+            if ((string)$this->value === FormField::RATING_OPTOUT) {
+                return (string)$field->getRatingScale()['optoutLabel'];
+            }
             return (string)$this->value;
         }
 

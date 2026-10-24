@@ -253,12 +253,12 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
 
             <section class="cf-settings-pane<?= $paneOpen('randomisation') ? ' is-active' : '' ?>" data-cf-settings-pane="randomisation" role="tabpanel"<?= $paneOpen('randomisation') ? '' : ' hidden' ?>>
                 <h3 class="cf-settings-pane__title"><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h3>
-                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'The server draws the order and the arm, and stores both on the response.') ?></p>
+                <p class="cf-settings-pane__lead"><?= Yii::t('ThiscoveryFormsModule.base', 'Place each person in one group, and choose the order of the pages they see. Both are stored on the response.') ?></p>
                 <input type="hidden" name="randomisation_present" value="1">
                 <?php ob_start(); ?>
                 <div class="form-group cf-field">
                     <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Use randomisation on this form') ?></label>
-                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The server draws option order, question order, page order, and arms, and stores them on the response. Randomisation must also be on under Administration. Each response gets its own option order.')]) ?>
+                    <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Turns group placement and page shuffling on for this form. Randomisation must also be on under Administration. A question that shuffles its options still gets a separate order for each response.')]) ?>
                     <?= Html::dropDownList('randomisation_enabled', $randOn ? '1' : '0', [
                         '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                         '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -270,61 +270,90 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     true,
                     Yii::t('ThiscoveryFormsModule.base', 'Off until this is on and an administrator has turned randomisation on.')
                 ) ?>
-                <?php ob_start(); ?>
+                <?php
+                $groupCfg = $rand->config($formModel);
+                $groupRows = $groupCfg['arms'];
+                if ($groupRows === []) {
+                    $groupRows = [['code' => '', 'name' => '', 'weight' => 1]];
+                }
+                $groupMethod = (string)$groupCfg['method'];
+                ob_start();
+                ?>
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Arm method') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Simple weighted draws from the weights. Block hands out a shuffled block in the weight ratio. Least filled prefers the arm with fewer assignments, with a random element so the next arm cannot be predicted. Stratified block does that inside each stratum.')]) ?>
-                        <?= Html::dropDownList('randomisation_method', $rand->config($formModel)['method'], [
-                            'simple' => Yii::t('ThiscoveryFormsModule.base', 'Simple weighted'),
-                            'block' => Yii::t('ThiscoveryFormsModule.base', 'Block'),
-                            'least_filled' => Yii::t('ThiscoveryFormsModule.base', 'Least filled'),
-                            'stratified' => Yii::t('ThiscoveryFormsModule.base', 'Stratified block'),
-                        ], ['class' => 'form-control']) ?>
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'How people are placed') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Random each time draws every person on their own, so one group can be used twice before another has been used. Shuffled list makes a list with one place per group, shuffles it, and hands the places out until the list is used up. Smallest group first prefers the group with fewer people, with a random element so the next group cannot be predicted. Shuffled list inside a category keeps a separate list for each answer you name below.')]) ?>
+                        <?= Html::dropDownList('randomisation_method', $groupMethod, [
+                            'simple' => Yii::t('ThiscoveryFormsModule.base', 'Random each time'),
+                            'block' => Yii::t('ThiscoveryFormsModule.base', 'Shuffled list'),
+                            'least_filled' => Yii::t('ThiscoveryFormsModule.base', 'Smallest group first'),
+                            'stratified' => Yii::t('ThiscoveryFormsModule.base', 'Shuffled list inside a category'),
+                        ], ['class' => 'form-control', 'data-cf-group-method' => '1']) ?>
+                        <p class="cf-hint<?= $groupMethod === 'simple' ? '' : ' d-none' ?>" data-cf-group-note="simple"><?= Yii::t('ThiscoveryFormsModule.base', 'Each person is drawn on their own. A group can come up again before every group has been used.') ?></p>
+                        <p class="cf-hint<?= $groupMethod === 'block' ? '' : ' d-none' ?>" data-cf-group-note="block"><?= Yii::t('ThiscoveryFormsModule.base', 'A list is shuffled so each group is used once. The first person might get group 7 and the next person group 2. When the list is used up, a new one is shuffled.') ?></p>
+                        <p class="cf-hint<?= $groupMethod === 'least_filled' ? '' : ' d-none' ?>" data-cf-group-note="least_filled"><?= Yii::t('ThiscoveryFormsModule.base', 'The group with fewer people is preferred. A random element means the next group cannot be worked out from the counts.') ?></p>
+                        <p class="cf-hint<?= $groupMethod === 'stratified' ? '' : ' d-none' ?>" data-cf-group-note="stratified"><?= Yii::t('ThiscoveryFormsModule.base', 'The same shuffled list is kept separately for each answer you name under Keep a separate list.') ?></p>
                     </div>
-                    <div class="col-md-6 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Block size') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Used by block and stratified methods. It must be a multiple of the total arm weight so every block keeps the ratio.')]) ?>
-                        <?= Html::textInput('randomisation_block_size', (string)$rand->config($formModel)['block_size'], ['class' => 'form-control']) ?>
+                    <div class="col-md-6 form-group cf-field<?= in_array($groupMethod, ['block', 'stratified'], true) ? '' : ' d-none' ?>" data-cf-round-size>
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'People in each round') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'How many people are placed before a new shuffled list starts. For equal groups, use the number of groups. It must be a multiple of the weights added together. With every weight set to 1, that total is the number of groups.')]) ?>
+                        <?= Html::textInput('randomisation_block_size', (string)$groupCfg['block_size'], ['class' => 'form-control', 'inputmode' => 'numeric']) ?>
+                        <p class="cf-hint"><?= Yii::t('ThiscoveryFormsModule.base', 'For 24 equal groups, enter 24.') ?></p>
                     </div>
-                    <div class="col-md-6 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Arms') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'One arm per line: code|name|weight. Example: usual|Usual leaflet|1')]) ?>
-                        <?= Html::textarea('randomisation_arms', $rand->armsText($formModel), ['class' => 'form-control', 'rows' => 4]) ?>
+                    <div class="col-md-12 form-group cf-field">
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Groups') ?></label>
+                        <?= $this->render('_setting_guide', ['html' => '<p>' . Yii::t('ThiscoveryFormsModule.base', 'The code is stored on the response and used in logic. A page that should appear only for group g01 uses “show if arm equals g01”. In question text, {{arm}} inserts the name and {{arm_code}} inserts the code. The answer download columns are arm_code and arm_name.') . '</p><p>' . Yii::t('ThiscoveryFormsModule.base', 'Weight is how many places that group has in each round. Leave every weight at 1 when the groups should be equal.') . '</p>']) ?>
+                        <div class="cf-group-rows" data-cf-group-rows>
+                            <div class="cf-group-row cf-group-row--head" aria-hidden="true">
+                                <span><?= Yii::t('ThiscoveryFormsModule.base', 'Code') ?></span>
+                                <span><?= Yii::t('ThiscoveryFormsModule.base', 'Name') ?></span>
+                                <span><?= Yii::t('ThiscoveryFormsModule.base', 'Weight') ?></span>
+                                <span></span>
+                            </div>
+                            <?php foreach ($groupRows as $groupRow): ?>
+                                <div class="cf-group-row" data-cf-group-row>
+                                    <?= Html::textInput('randomisation_arm_code[]', (string)$groupRow['code'], ['class' => 'form-control', 'placeholder' => 'g01', 'aria-label' => Yii::t('ThiscoveryFormsModule.base', 'Code')]) ?>
+                                    <?= Html::textInput('randomisation_arm_name[]', (string)$groupRow['name'], ['class' => 'form-control', 'placeholder' => Yii::t('ThiscoveryFormsModule.base', 'Group 1'), 'aria-label' => Yii::t('ThiscoveryFormsModule.base', 'Name')]) ?>
+                                    <?= Html::textInput('randomisation_arm_weight[]', (string)$groupRow['weight'], ['class' => 'form-control', 'inputmode' => 'numeric', 'data-cf-group-weight' => '1', 'aria-label' => Yii::t('ThiscoveryFormsModule.base', 'Weight')]) ?>
+                                    <button type="button" class="btn btn-light btn-sm" data-cf-group-remove><?= Yii::t('ThiscoveryFormsModule.base', 'Remove') ?></button>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <button type="button" class="btn btn-default btn-sm cf-group-add" data-cf-group-add><?= Yii::t('ThiscoveryFormsModule.base', 'Add a group') ?></button>
                     </div>
-                    <div class="col-md-6 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Stratify by') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'One factor per line: field:variable or panel:attribute. A fully anonymous form cannot use a panel attribute.')]) ?>
-                        <?= Html::textarea('randomisation_strata', $rand->strataText($formModel), ['class' => 'form-control', 'rows' => 4]) ?>
+                    <div class="col-md-12 form-group cf-field<?= $groupMethod === 'stratified' ? '' : ' d-none' ?>" data-cf-balance>
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Keep a separate list') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'One line for each question that should have its own shuffled list. Write field: and then the question variable, for example field:site. For a panel field write panel: and then the attribute, for example panel:site. A fully anonymous form cannot use a panel field.')]) ?>
+                        <?= Html::textarea('randomisation_strata', $rand->strataText($formModel), ['class' => 'form-control', 'rows' => 3, 'placeholder' => 'field:site']) ?>
                     </div>
                 </div>
                 <?= $fold(
-                    Yii::t('ThiscoveryFormsModule.base', 'Arms'),
+                    Yii::t('ThiscoveryFormsModule.base', 'Groups'),
                     ob_get_clean(),
                     $randOn,
-                    Yii::t('ThiscoveryFormsModule.base', 'Method, block size, arm list, and strata.')
+                    Yii::t('ThiscoveryFormsModule.base', 'How people are placed, and the list of groups.')
                 ) ?>
                 <?php ob_start(); ?>
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Assign the arm when the response starts, or after the respondent leaves the page whose key you set.')]) ?>
-                        <?= Html::dropDownList('randomisation_assign', $rand->config($formModel)['assign'], [
-                            'start' => Yii::t('ThiscoveryFormsModule.base', 'When the response starts'),
-                            'after_page' => Yii::t('ThiscoveryFormsModule.base', 'After a page'),
-                        ], ['class' => 'form-control']) ?>
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'When') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Place someone when the form opens, so later pages can depend on the group. Or place them after they leave a page whose key you set.')]) ?>
+                        <?= Html::dropDownList('randomisation_assign', $groupCfg['assign'], [
+                            'start' => Yii::t('ThiscoveryFormsModule.base', 'When the form opens'),
+                            'after_page' => Yii::t('ThiscoveryFormsModule.base', 'After they leave a page'),
+                        ], ['class' => 'form-control', 'data-cf-assign-when' => '1']) ?>
                     </div>
-                    <div class="col-md-6 form-group cf-field">
+                    <div class="col-md-6 form-group cf-field<?= $groupCfg['assign'] === 'after_page' ? '' : ' d-none' ?>" data-cf-assign-page>
                         <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Page key') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The page key from the builder. The arm is assigned when the respondent leaves that page. Used only when Assign is After a page.')]) ?>
-                        <?= Html::textInput('randomisation_assign_page', $rand->config($formModel)['assign_page'], ['class' => 'form-control']) ?>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'The page key from the builder. The group is chosen when the person leaves that page.')]) ?>
+                        <?= Html::textInput('randomisation_assign_page', $groupCfg['assign_page'], ['class' => 'form-control']) ?>
                     </div>
                 </div>
                 <?= $fold(
-                    Yii::t('ThiscoveryFormsModule.base', 'When to assign'),
+                    Yii::t('ThiscoveryFormsModule.base', 'When someone is placed'),
                     ob_get_clean(),
                     false,
-                    Yii::t('ThiscoveryFormsModule.base', 'Start of the response, or after a page.')
+                    Yii::t('ThiscoveryFormsModule.base', 'When the form opens, or after a page.')
                 ) ?>
             </section>
 
@@ -350,8 +379,8 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                 <?php ob_start(); ?>
                 <div class="row g-3">
                     <div class="col-md-6 form-group cf-field">
-                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Assign the least-filled open arm') ?></label>
-                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Places the respondent in the open arm they qualify for that has the most room. If every qualifying arm is full, that quota’s action runs and no arm is kept.')]) ?>
+                        <label class="cf-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Place people in the group with the most room') ?></label>
+                        <?= $this->render('_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Places the person in the open group they qualify for that has the most room. If every qualifying group is full, that quota’s action runs and no group is kept.')]) ?>
                         <?= Html::dropDownList('quota_assign_arm', (string)$formModel->getSetting('quota_assign_arm', '0') === '1' ? '1' : '0', [
                             '0' => Yii::t('ThiscoveryFormsModule.base', 'Off'),
                             '1' => Yii::t('ThiscoveryFormsModule.base', 'On'),
@@ -372,7 +401,7 @@ $paneOpen = static function (string $id) use ($activeSection): bool {
                     Yii::t('ThiscoveryFormsModule.base', 'When a quota fills'),
                     ob_get_clean(),
                     $quotaOn,
-                    Yii::t('ThiscoveryFormsModule.base', 'Least-filled arm, notification email, and the quota editor.')
+                    Yii::t('ThiscoveryFormsModule.base', 'Group with the most room, notification email, and the quota editor.')
                 ) ?>
             </section>
 

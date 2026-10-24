@@ -49,7 +49,7 @@ class GlobalController extends Controller
     {
         return [
             ['login', 'actions' => [
-                'index', 'create', 'edit', 'edit-answer', 'answers',
+                'index', 'create', 'edit', 'field-card', 'edit-answer', 'answers',
                 'dashboard', 'overview', 'export', 'delete',
                 'integrity', 'integrity-status', 'integrity-note', 'access-tokens', 'arm-override',
                 'save-template', 'export-questions', 'import-questions', 'sample-questions',
@@ -219,6 +219,10 @@ class GlobalController extends Controller
         $submit = new SubmitForm(['form' => $form]);
         $existing = $this->resolveFillExisting($form, $submit);
 
+        if ($redirect = $this->redirectIfStartConsumed($existing)) {
+            return $redirect;
+        }
+
         if (Yii::$app->request->isPost && !Yii::$app->request->post('integrity_open_challenge')) {
             return $this->handleSubmit($form, $submit, $existing);
         }
@@ -320,12 +324,7 @@ class GlobalController extends Controller
 
     protected function handleSubmit(CustomForm $form, SubmitForm $submit, ?FormAnswer $existing)
     {
-        $draft = ($form->allowsResume() || $form->keepsPartials())
-            ? $this->resolveDraftFromRequest($form)
-            : null;
-        if ($draft) {
-            $existing = $draft;
-        }
+        $existing = $this->draftForSubmit($form, $existing);
 
         $this->applyEditionForFill($form, $existing, (bool)$existing);
         $submit->form = $form;
@@ -342,7 +341,7 @@ class GlobalController extends Controller
         if (!$isPreview) {
             $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx);
             if ($gate) {
-                Yii::$app->session->setFlash('error', $gate);
+                $this->rejectFill($submit, $gate);
                 return $this->renderFillView($form, $submit, $existing, [
                     'editingAnswer' => $existing && $existing->isComplete(),
                 ]);
@@ -354,7 +353,7 @@ class GlobalController extends Controller
 
         if (!$answer) {
             (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->refundAccessToken($form, $ctx);
-            Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
+            $this->rejectFill($submit);
             return $this->renderFillView($form, $submit, $existing, [
                 'editingAnswer' => $existing && $existing->isComplete(),
             ]);

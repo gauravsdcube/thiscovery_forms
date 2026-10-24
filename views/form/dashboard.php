@@ -79,7 +79,7 @@ JS
                     'exportParams' => ['allocation' => 1],
                     'style' => 'info',
                     'showIcon' => false,
-                    'label' => Yii::t('ThiscoveryFormsModule.base', 'Allocation log'),
+                    'label' => Yii::t('ThiscoveryFormsModule.base', 'Group list'),
                 ]) ?>
                 <?php if (\humhub\modules\thiscoveryForms\services\LoopService::active($formModel)): ?>
                     <?= $this->render('_export_csv_button', [
@@ -135,12 +135,12 @@ JS
 
     <?php if (!empty($stats['arms'])): ?>
         <div class="cf-dash-panel">
-            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Arms') ?></h3>
+            <h3><?= Yii::t('ThiscoveryFormsModule.base', 'Groups') ?></h3>
             <table class="table">
                 <thead>
                 <tr>
-                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Arm') ?></th>
-                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Stratum') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Group') ?></th>
+                    <th><?= Yii::t('ThiscoveryFormsModule.base', 'Category') ?></th>
                     <th><?= Yii::t('ThiscoveryFormsModule.base', 'Assigned') ?></th>
                     <th><?= Yii::t('ThiscoveryFormsModule.base', 'Completed') ?></th>
                 </tr>

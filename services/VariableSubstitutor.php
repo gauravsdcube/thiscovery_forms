@@ -21,6 +21,10 @@ class VariableSubstitutor
      */
     public function substitute(string $html, ?User $user, CustomForm $form, array $answers = [], array $fields = [], bool $escape = true, array $vars = [], ?FormPanelMember $member = null): string
     {
+        // A long form calls this for every question. Text with no placeholder has nothing to replace.
+        if ($html === '' || !str_contains($html, '{{')) {
+            return $html;
+        }
         $map = $this->tokenMap($user, $form, $member, $escape);
         $current = RandomisationService::$current;
         if ($current) {

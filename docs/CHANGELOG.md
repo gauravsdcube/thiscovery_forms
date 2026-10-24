@@ -2,6 +2,27 @@
 
 All notable changes to this module are documented in this file.
 
+## 1.43.0 (October 24, 2026)
+
+- Submit on the last page shows the reason when the response cannot be saved. The message stays on the form, beside the button.
+- Opening the form link again asks whether to resume a saved response or start a new one. Starting a new response does not continue the one this browser had saved. Once that new response is saved, start=new is dropped, the group is kept, and a refresh stays on the same response.
+- A rich text block, a page, a page timer, and a shuffled-pages marker can be saved with no question label. The wording lives in the block itself.
+- A YouTube or Vimeo video in a question plays on the participant form. The form still does not send the page address to other sites. The video player is told only the site name, which YouTube requires.
+- In the studio, the setting that defines a question comes first. A radio question opens on Choices, and Comment sits inside that group. Logic and Actions come next. Required, Block the Back button, and Help text stay open in a column beside the question.
+- A question, page, or question group can block the Back button, so an attention check cannot be left for an earlier page. Question settings open in collapsed groups. Add fields stays on screen and scrolls on its own, with Content open and the other field groups closed. Answer labels show the words, not the editor markup.
+- The response download fills the shuffled-pages order column for the group that person was placed in. The other groups' order columns stay empty. A published form keeps the block name, and an order saved under an older name is written into that column.
+- Submitting a saved anonymous response is allowed for the session that saved it. The participant form posts to the form address, without the continue flag. A response that already has a group is checked against that group's questions, so blank required answers are not accepted.
+- The participant page sends only the group that person is in. Pages shown for another group are not built, and they load after the group is assigned on the first page. A form with no group rules is unchanged. Saving that first page no longer rechecks every other group's rules one by one.
+- A long form opens in the builder. Each saved question is a short row until it is opened, and saving without opening it leaves that question as it was.
+- Preview of a form with no unsaved changes opens the test page directly. Opening a long form no longer counts as an unsaved edit. The participant page no longer rebuilds the question list for every question that has no placeholder.
+- A form that places someone in a group when it opens does that when they leave the first page, before the next page is chosen. Pages that depend on the group can then open.
+- Randomisation settings call the allocation a **group**. **How people are placed** replaces the old method names, and each group is a code, name, and weight row. **Shuffled pages** is the builder item that randomises page order. The stored logic name is still `arm`, and the download columns are still `arm_code` and `arm_name`.
+- **Page timer** records how long its page stays open, the time until the first and last interaction, and the number of interactions. It is hidden unless you show a clock. It does not use response integrity.
+- A rating scale can be **Fixed points**, **Anywhere on the scale**, or a vertical thermometer. Anywhere keeps the point numbers on the scale and records the position someone stops at, including between those points, to two decimal places.
+- **Rating with an option** is a rating scale plus one extra choice, such as “I don’t know”. Choosing that choice clears the scale. Choosing the scale clears the choice.
+- Dropping a question into the gap between two questions inserts it there. A line shows the place before you let go.
+- A question group keeps its questions when a save is refused. The group’s end marker stays a group end.
+
 ## 1.42.0 (October 22, 2026)
 
 - **Export CSV** quotes cells the way a spreadsheet does, so a file that is opened and saved in Excel or Google Sheets still has valid settings JSON. Importing that file copies the form settings again. A CSV exported by 1.41.0 still imports when it has not been rewritten by a spreadsheet. If the settings cell cannot be read, the questions are imported and the form settings are left as they are.

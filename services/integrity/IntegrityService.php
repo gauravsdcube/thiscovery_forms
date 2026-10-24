@@ -1170,7 +1170,7 @@ class IntegrityService
                 continue;
             }
             $v = $values[$field->id] ?? '';
-            if ($field->type !== FormField::TYPE_RATING || $field->isStraightlineExempt() || $v === '' || $v === null || is_array($v)) {
+            if (!$field->isRatingScale() || $field->isAnywhereRating() || $field->isStraightlineExempt() || $v === '' || $v === null || is_array($v) || !is_numeric($v)) {
                 if ($ratingRuns[count($ratingRuns) - 1] !== []) {
                     $ratingRuns[] = [];
                 }

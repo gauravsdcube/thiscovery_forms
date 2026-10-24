@@ -26,10 +26,13 @@ Each question can also have:
 | Dropdown | One choice from a list |
 | Radio | One choice, all options visible |
 | Checkbox | One or more choices |
-| Rating scale | Stars, numbers, or a **vertical thermometer** (0–100) |
+| Rating scale | Fixed points, anywhere on the scale, or a **vertical thermometer** (0–100) |
+| Rating with an option | The same scale, plus one extra choice such as “I don’t know”. That choice clears the scale |
 | Ranking (drag & drop) | Put items in order |
 | File upload | Attach a file |
 | Page break | Start a new page (title and page key) |
+| Page timer | Records how long that page stays open, plus the first and last interaction and how many interactions there were. Hidden unless you show a clock |
+| Shuffled pages | Shows the following pages in a random order, until **End of shuffled pages**. Questions on each page stay in the built order. The name is the download column `rand.<name>.order` |
 | Question group | A nest of questions shown or hidden together by Logic |
 | Rich text section | Instructions or content; not an answer |
 | HTML / custom block | Custom markup when you need more than rich text |

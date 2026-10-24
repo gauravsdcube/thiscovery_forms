@@ -112,14 +112,14 @@ $themes = $themes ?? FormTheme::find()->orderBy(['is_default' => SORT_DESC, 'nam
         <hr>
         <h4><?= Yii::t('ThiscoveryFormsModule.base', 'Randomisation') ?></h4>
         <p class="help-block">
-            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn randomisation on before the server shuffles pages, questions, or options, or assigns an arm.') ?>
+            <?= Yii::t('ThiscoveryFormsModule.base', 'Off by default. A form also has to turn randomisation on before the server shuffles pages, questions, or options, or places someone in a group.') ?>
         </p>
         <div class="cf-check-setting">
             <label>
                 <?= Html::checkbox('ModuleSettings[randomisationEnabled]', !empty($model->randomisationEnabled), ['value' => 1, 'uncheck' => 0]) ?>
                 <?= Html::encode($model->getAttributeLabel('randomisationEnabled')) ?>
             </label>
-            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Lets the server shuffle order and assign arms. Each form still has to turn randomisation on. Each response gets its own option order.')]) ?>
+            <?= $this->render('@thiscovery-forms/views/form/_setting_guide', ['text' => Yii::t('ThiscoveryFormsModule.base', 'Lets the server shuffle order and place each person in a group. Each form still has to turn randomisation on. Each response gets its own option order.')]) ?>
         </div>
 
         <hr>

@@ -562,15 +562,33 @@ class LogicEngine
     }
 
     /** @param array<int|string,mixed> $fields */
+    /** @var array<string, string> */
+    private static array $structureKeys = [];
+
     private static function structureKey(array $fields): string
     {
+        // The same question list is checked once per rule. Hashing every question's
+        // options on every check dominated a long form (several seconds per save).
+        $first = 0;
+        foreach ($fields as $field) {
+            if ($field instanceof FormField) {
+                $first = spl_object_id($field);
+                break;
+            }
+        }
+        $end = $fields === [] ? null : $fields[array_key_last($fields)];
+        $last = $end instanceof FormField ? spl_object_id($end) : 0;
+        $idKey = count($fields) . ':' . $first . ':' . $last;
+        if (isset(self::$structureKeys[$idKey])) {
+            return self::$structureKeys[$idKey];
+        }
         $parts = [];
         foreach ($fields as $field) {
             if ($field instanceof FormField) {
                 $parts[] = (int)$field->id . ':' . md5((string)$field->logic_json . '|' . (string)$field->options_json);
             }
         }
-        return md5(implode(',', $parts));
+        return self::$structureKeys[$idKey] = md5(implode(',', $parts));
     }
 
     /** For tests that change questions between checks in one request. */
@@ -578,6 +596,7 @@ class LogicEngine
     {
         self::$contexts = [];
         self::$effective = [];
+        self::$structureKeys = [];
     }
 
     public function rulesMet(array $logic, array $values, array $fields = []): bool

@@ -255,9 +255,26 @@ class ExportService
             }
         }
         $orders = $rand->orders($answer);
+        $blockFields = array_values($form->fields);
+        if ($answer->form) {
+            $orders = $rand->withNamedPageOrders($orders, $blockFields);
+        }
+        $blocksByKey = [];
+        foreach ($rand->blocks($blockFields) as $block) {
+            $blocksByKey[(string)$block['key']] = $block;
+        }
+        $armCode = trim((string)($assigned['arm_code'] ?? ''));
         foreach (['options', 'questions', 'pages', 'shown'] as $bucket) {
             foreach ($orders[$bucket] as $key => $list) {
                 $suffix = $bucket === 'shown' ? 'shown' : 'order';
+                if ($bucket === 'pages') {
+                    $block = $blocksByKey[(string)$key] ?? null;
+                    $gate = is_array($block) ? FormPager::blockArmShowCodes($block['fields'] ?? []) : null;
+                    // A block shown only for another group was not seen. Leave that column empty.
+                    if ($gate !== null && !in_array($armCode, $gate, true)) {
+                        continue;
+                    }
+                }
                 if ($bucket === 'questions' && $suffix === 'order') {
                     $cells['rand.' . $key . '.order'] = implode('|', array_map('strval', $list));
                 } elseif ($bucket === 'shown') {
@@ -339,6 +356,14 @@ class ExportService
                 $formatted = $this->formatCell($val);
             }
             $cells[ExportSettings::fieldColumnKey($field)] = $formatted;
+            if ($field->type === FormField::TYPE_PAGE_TIMER) {
+                $timing = is_array($val) ? $val : json_decode((string)$val, true);
+                $timing = is_array($timing) ? $timing : [];
+                $cells[ExportSettings::fieldColumnKey($field)] = isset($timing['on_page']) ? (string)$timing['on_page'] : '';
+                $cells[ExportSettings::fieldColumnKey($field) . '.until_first'] = isset($timing['until_first']) && $timing['until_first'] !== null ? (string)$timing['until_first'] : '';
+                $cells[ExportSettings::fieldColumnKey($field) . '.until_last'] = isset($timing['until_last']) && $timing['until_last'] !== null ? (string)$timing['until_last'] : '';
+                $cells[ExportSettings::fieldColumnKey($field) . '.interactions'] = isset($timing['interactions']) ? (string)(int)$timing['interactions'] : '';
+            }
             if ($field->supportsJustification()) {
                 $cells[ExportSettings::commentColumnKey($field)] = (string)($just[$field->id] ?? '');
             }

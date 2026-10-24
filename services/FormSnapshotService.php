@@ -247,11 +247,14 @@ class FormSnapshotService
                     (string)($row['logic_goto'] ?? '')
                 ));
             }
-            $fields[] = $field;
+            $fields[] = ['field' => $field, 'seq' => $i];
             $i++;
         }
-        usort($fields, static fn(FormField $a, FormField $b): int => (int)$a->sort_order <=> (int)$b->sort_order);
-        return $fields;
+        usort($fields, static function (array $a, array $b): int {
+            $byOrder = (int)$a['field']->sort_order <=> (int)$b['field']->sort_order;
+            return $byOrder !== 0 ? $byOrder : ($a['seq'] <=> $b['seq']);
+        });
+        return array_map(static fn(array $item): FormField => $item['field'], $fields);
     }
 
     /**

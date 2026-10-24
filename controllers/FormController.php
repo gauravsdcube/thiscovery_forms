@@ -157,6 +157,10 @@ class FormController extends ContentContainerController
         $submit = new SubmitForm(['form' => $form]);
         $existing = $this->resolveFillExisting($form, $submit);
 
+        if ($redirect = $this->redirectIfStartConsumed($existing)) {
+            return $redirect;
+        }
+
         if (Yii::$app->request->isPost && !Yii::$app->request->post('integrity_open_challenge')) {
             return $this->handleSubmit($form, $submit, $existing);
         }
@@ -259,12 +263,7 @@ class FormController extends ContentContainerController
 
     protected function handleSubmit(CustomForm $form, SubmitForm $submit, ?FormAnswer $existing)
     {
-        $draft = ($form->allowsResume() || $form->keepsPartials())
-            ? $this->resolveDraftFromRequest($form)
-            : null;
-        if ($draft) {
-            $existing = $draft;
-        }
+        $existing = $this->draftForSubmit($form, $existing);
 
         $this->applyEditionForFill($form, $existing, (bool)$existing);
         $submit->form = $form;
@@ -281,7 +280,7 @@ class FormController extends ContentContainerController
         if (!$isPreview) {
             $gate = (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->gateSubmit($form, Yii::$app->request->post(), $ctx);
             if ($gate) {
-                Yii::$app->session->setFlash('error', $gate);
+                $this->rejectFill($submit, $gate);
                 return $this->renderFillView($form, $submit, $existing, [
                     'editingAnswer' => $existing && $existing->isComplete(),
                 ]);
@@ -293,7 +292,7 @@ class FormController extends ContentContainerController
 
         if (!$answer) {
             (new \humhub\modules\thiscoveryForms\services\integrity\IntegrityService())->refundAccessToken($form, $ctx);
-            Yii::$app->session->setFlash('error', implode(' ', $submit->getErrorSummary(true)));
+            $this->rejectFill($submit);
             return $this->renderFillView($form, $submit, $existing, [
                 'editingAnswer' => $existing && $existing->isComplete(),
             ]);

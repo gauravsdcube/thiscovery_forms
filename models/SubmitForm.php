@@ -183,8 +183,22 @@ class SubmitForm extends Model
             case FormField::TYPE_RADIO:
             case FormField::TYPE_DROPDOWN:
                 return $this->sanitizeChoiceValue($field, $raw ?? '');
+            case FormField::TYPE_PAGE_TIMER:
+                return FormField::normalizePageTimerValue($raw);
             case FormField::TYPE_RATING:
-                return ($raw === '' || $raw === null || $raw === []) ? '' : $raw;
+            case FormField::TYPE_RATING_OPTION:
+                if ($raw === '' || $raw === null || $raw === []) {
+                    return '';
+                }
+                if ((string)$raw === FormField::RATING_OPTOUT) {
+                    return $field->type === FormField::TYPE_RATING_OPTION ? FormField::RATING_OPTOUT : '';
+                }
+                if (!is_numeric($raw)) {
+                    return '';
+                }
+                return $field->isAnywhereRating()
+                    ? rtrim(rtrim(number_format(round((float)$raw, 2), 2, '.', ''), '0'), '.')
+                    : (string)(int)$raw;
         }
         return $raw ?? '';
     }
@@ -775,15 +789,24 @@ class SubmitForm extends Model
                     }
                     break;
                 case FormField::TYPE_RATING:
+                case FormField::TYPE_RATING_OPTION:
                     $scale = $field->getRatingScale();
+                    if ((string)$value === FormField::RATING_OPTOUT) {
+                        if ($field->type !== FormField::TYPE_RATING_OPTION) {
+                            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid rating value.', [
+                                'label' => $field->plainLabel(),
+                            ]));
+                        }
+                        break;
+                    }
                     if (!is_numeric($value)) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be a valid rating value.', [
                             'label' => $field->plainLabel(),
                         ]));
                         break;
                     }
-                    $numeric = (int)$value;
-                    if ($numeric < (int)$scale['min'] || $numeric > (int)$scale['max']) {
+                    $numeric = (float)$value;
+                    if ($numeric < (float)$scale['min'] || $numeric > (float)$scale['max']) {
                         $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must be between {min} and {max}.', [
                             'label' => $field->plainLabel(),
                             'min' => $scale['min'],
@@ -791,11 +814,14 @@ class SubmitForm extends Model
                         ]));
                         break;
                     }
-                    $step = max(1, (int)$scale['step']);
-                    if ((($numeric - (int)$scale['min']) % $step) !== 0) {
-                        $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must follow the configured scale step.', [
-                            'label' => $field->plainLabel(),
-                        ]));
+                    if (!$field->isAnywhereRating()) {
+                        $step = max(1, (int)$scale['step']);
+                        $asInt = (int)$numeric;
+                        if ((float)$asInt !== $numeric || (($asInt - (int)$scale['min']) % $step) !== 0) {
+                            $this->addError('values', Yii::t('ThiscoveryFormsModule.base', '"{label}" must follow the configured scale step.', [
+                                'label' => $field->plainLabel(),
+                            ]));
+                        }
                     }
                     break;
                 case FormField::TYPE_GRID_SINGLE:
@@ -940,7 +966,12 @@ class SubmitForm extends Model
         if ($existing && !$existing->isNewRecord) {
             $existing->populateRelation('form', $this->form);
             \humhub\modules\thiscoveryForms\services\RandomisationService::$current = $existing;
-            (new \humhub\modules\thiscoveryForms\services\RandomisationService())->materialise($existing);
+            $rand = new \humhub\modules\thiscoveryForms\services\RandomisationService();
+            $rand->materialise($existing);
+            $assigned = $rand->assignment($existing);
+            if ($assigned) {
+                $this->values['arm'] = (string)$assigned['arm_code'];
+            }
             $this->editingAnswer = $existing;
             $this->onPathFieldIds = null;
         }

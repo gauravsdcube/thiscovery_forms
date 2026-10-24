@@ -445,10 +445,13 @@ class TranslationImportExportService
                 $this->pushUnit($units, "field.$id.html_content", $type, 'html_content', (string)$html['html'], $id, false);
                 $this->pushUnit($units, "field.$id.html_instructions", $type, 'html_instructions', (string)$html['instructions'], $id, false);
             }
-            if ($field->type === FormField::TYPE_RATING) {
+            if ($field->isRatingScale()) {
                 $scale = $field->getRatingScale();
                 $this->pushUnit($units, "field.$id.rating_low_label", $type, 'rating_low_label', (string)$scale['lowLabel'], $id, false);
                 $this->pushUnit($units, "field.$id.rating_high_label", $type, 'rating_high_label', (string)$scale['highLabel'], $id, false);
+                if ($field->type === FormField::TYPE_RATING_OPTION) {
+                    $this->pushUnit($units, "field.$id.rating_optout", $type, 'rating_optout', (string)$scale['optoutLabel'], $id, false);
+                }
             }
             if ($field->type === FormField::TYPE_GRID_SINGLE || $field->type === FormField::TYPE_GRID_MULTI) {
                 $grid = $field->getGridConfig();
@@ -586,6 +589,9 @@ class TranslationImportExportService
             if (!empty($overlay['highLabel'])) {
                 $map[$lang]["field.$id.rating_high_label"] = (string)$overlay['highLabel'];
             }
+            if (!empty($overlay['optoutLabel'])) {
+                $map[$lang]["field.$id.rating_optout"] = (string)$overlay['optoutLabel'];
+            }
             foreach ($this->overlayEntries($overlay['rows'] ?? []) as $key => $val) {
                 $map[$lang]["field.$id.grid_row.$key"] = (string)$val;
             }
@@ -622,7 +628,7 @@ class TranslationImportExportService
             $part = $m[1] === 'thank_you' ? 'thank_you_content' : $m[1];
             return ['kind' => 'form', 'part' => $part];
         }
-        if (preg_match('/^field\.(\d+)\.(label|help_text|help|page_title|rich_content|html_content|html_instructions|rating_low_label|rating_high_label)$/', $key, $m)) {
+        if (preg_match('/^field\.(\d+)\.(label|help_text|help|page_title|rich_content|html_content|html_instructions|rating_low_label|rating_high_label|rating_optout)$/', $key, $m)) {
             $part = $m[2] === 'help' ? 'help_text' : $m[2];
             return ['kind' => 'field', 'field_id' => (int)$m[1], 'part' => $part];
         }
@@ -675,6 +681,7 @@ class TranslationImportExportService
             'html_instructions' => '',
             'rating_low_label' => '',
             'rating_high_label' => '',
+            'rating_optout' => '',
             'rows' => [],
             'columns' => [],
             'items' => [],
@@ -717,7 +724,7 @@ class TranslationImportExportService
             return;
         }
 
-        if (in_array($part, ['label', 'help_text', 'page_title', 'rich_content', 'html_content', 'html_instructions', 'rating_low_label', 'rating_high_label'], true)) {
+        if (in_array($part, ['label', 'help_text', 'page_title', 'rich_content', 'html_content', 'html_instructions', 'rating_low_label', 'rating_high_label', 'rating_optout'], true)) {
             $data[$part] = $value;
             return;
         }

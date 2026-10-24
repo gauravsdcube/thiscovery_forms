@@ -41,7 +41,7 @@ $navItem = static function (string $section, string $title, string $icon, string
             <div class="cf-palette__group-label"><?= Yii::t('ThiscoveryFormsModule.base', 'Features') ?></div>
             <?= $navItem('consent', Yii::t('ThiscoveryFormsModule.base', 'Consent'), 'fa-check-square-o', Yii::t('ThiscoveryFormsModule.base', 'Statement before the form starts')) ?>
             <?= $navItem('loops', Yii::t('ThiscoveryFormsModule.base', 'Loops'), 'fa-repeat', Yii::t('ThiscoveryFormsModule.base', 'Repeat a group of questions')) ?>
-            <?= $navItem('randomisation', Yii::t('ThiscoveryFormsModule.base', 'Randomisation'), 'fa-random', Yii::t('ThiscoveryFormsModule.base', 'Arms, order, and screen-out')) ?>
+            <?= $navItem('randomisation', Yii::t('ThiscoveryFormsModule.base', 'Randomisation'), 'fa-random', Yii::t('ThiscoveryFormsModule.base', 'Groups, page order, and screen-out')) ?>
             <?= $navItem('quotas', Yii::t('ThiscoveryFormsModule.base', 'Quotas'), 'fa-tachometer', Yii::t('ThiscoveryFormsModule.base', 'Targets and who counts')) ?>
         </div>
 

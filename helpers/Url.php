@@ -42,6 +42,47 @@ class Url
     }
 
     /**
+     * The same address with one query parameter removed. Used when start=new has
+     * already been acted on and must not survive the next load.
+     */
+    public static function withoutQueryParam(string $url, string $name): string
+    {
+        $parts = parse_url($url);
+        if ($parts === false) {
+            return $url;
+        }
+        $query = [];
+        parse_str((string)($parts['query'] ?? ''), $query);
+        unset($query[$name]);
+
+        $rebuilt = '';
+        if (!empty($parts['scheme'])) {
+            $rebuilt .= $parts['scheme'] . '://';
+        }
+        if (!empty($parts['user'])) {
+            $rebuilt .= $parts['user'];
+            if (isset($parts['pass'])) {
+                $rebuilt .= ':' . $parts['pass'];
+            }
+            $rebuilt .= '@';
+        }
+        if (isset($parts['host'])) {
+            $rebuilt .= $parts['host'];
+        }
+        if (isset($parts['port'])) {
+            $rebuilt .= ':' . $parts['port'];
+        }
+        $rebuilt .= $parts['path'] ?? '';
+        if ($query !== []) {
+            $rebuilt .= '?' . http_build_query($query);
+        }
+        if (isset($parts['fragment']) && $parts['fragment'] !== '') {
+            $rebuilt .= '#' . $parts['fragment'];
+        }
+        return $rebuilt;
+    }
+
+    /**
      * Keep panel token and language on fill-page links.
      */
     protected static function withFillContext(string $url, array $extra = []): string
@@ -121,6 +162,15 @@ class Url
             return 'https://' . substr($url, 7);
         }
         return $url;
+    }
+
+    public static function toFieldCard(CustomForm $form): string
+    {
+        if ($form->isGlobal()) {
+            return BaseUrl::to(['/thiscovery-forms/global/field-card', 'id' => (int)$form->id]);
+        }
+
+        return $form->content->container->createUrl('/thiscovery-forms/form/field-card', ['id' => (int)$form->id]);
     }
 
     public static function toEdit(CustomForm $form, array $params = []): string

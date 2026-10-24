@@ -524,4 +524,200 @@ class FormPager
         }
         return ['pages' => $pages, 'pageKeyIndex' => $pageKeyIndex];
     }
+
+    /**
+     * Drop pages that are shown only for a group the respondent is not in.
+     * A page is dropped only when every question on it is "show if arm equals …".
+     * Anything else stays, so a rule that depends on an answer is still in the page.
+     * With no group yet, those pages are left out and armDeferred is set, so the
+     * browser can load them once the group is known.
+     *
+     * @param array{pages:array,pageKeyIndex:array} $built
+     * @return array{pages:array,pageKeyIndex:array,armDeferred:bool}
+     */
+    public static function forAssignedArm(array $built, string $armCode): array
+    {
+        $pages = array_values($built['pages'] ?? []);
+        $armCode = trim($armCode);
+        $kept = [];
+        $omitted = false;
+        foreach ($pages as $page) {
+            $codes = self::pageArmShowCodes($page);
+            if ($codes === null) {
+                $kept[] = $page;
+                continue;
+            }
+            if ($armCode !== '' && in_array($armCode, $codes, true)) {
+                $kept[] = $page;
+                continue;
+            }
+            $omitted = true;
+        }
+        if ($kept === [] || !$omitted) {
+            $built['armDeferred'] = false;
+            return $built;
+        }
+        $pageKeyIndex = [];
+        foreach ($kept as $i => $page) {
+            $kept[$i]['index'] = $i;
+            $pageKeyIndex[(string)($page['pageKey'] ?? '')] = $i;
+        }
+        return [
+            'pages' => $kept,
+            'pageKeyIndex' => $pageKeyIndex,
+            'armDeferred' => $armCode === '',
+        ];
+    }
+
+    /**
+     * Arm codes for which this page is shown, or null when the page is not a pure group gate.
+     *
+     * @param array{items?:array} $page
+     * @return string[]|null
+     */
+    private static function pageArmShowCodes(array $page): ?array
+    {
+        $codes = [];
+        $saw = false;
+        foreach ($page['items'] ?? [] as $field) {
+            if (!$field instanceof FormField || $field->type === FormField::TYPE_GROUP_END) {
+                continue;
+            }
+            $gate = self::fieldArmShowCodes($field);
+            if ($gate === null) {
+                return null;
+            }
+            $saw = true;
+            foreach ($gate as $code) {
+                $codes[$code] = true;
+            }
+        }
+        if (!$saw) {
+            return null;
+        }
+        return array_keys($codes);
+    }
+
+    /**
+     * Groups a shuffled block is shown for, or null when it is not limited to a group.
+     * A field with no rule does not widen the block. A rule that is not a group check
+     * means the block is not group-only.
+     *
+     * @param FormField[] $fields
+     * @return string[]|null
+     */
+    public static function blockArmShowCodes(array $fields): ?array
+    {
+        $codes = [];
+        foreach ($fields as $field) {
+            if (!$field instanceof FormField || $field->type === FormField::TYPE_GROUP_END) {
+                continue;
+            }
+            $logic = $field->getLogic();
+            $when = $logic['when'] ?? null;
+            if (!is_array($when) || $when === []) {
+                continue;
+            }
+            $gate = self::fieldArmShowCodes($field);
+            if ($gate === null) {
+                return null;
+            }
+            foreach ($gate as $code) {
+                $codes[$code] = true;
+            }
+        }
+        return $codes === [] ? null : array_keys($codes);
+    }
+
+    /**
+     * @return string[]|null null when the question is not "show if the group is one of these"
+     */
+    private static function fieldArmShowCodes(FormField $field): ?array
+    {
+        $logic = $field->getLogic();
+        $action = (string)($logic['action'] ?? LogicEngine::ACTION_SHOW);
+        if ($action !== LogicEngine::ACTION_SHOW) {
+            return null;
+        }
+        $when = $logic['when'] ?? null;
+        if (!is_array($when) || $when === []) {
+            return null;
+        }
+        return self::armEqualityCodes($when);
+    }
+
+    /**
+     * @param array<string,mixed> $node
+     * @return string[]|null
+     */
+    private static function armEqualityCodes(array $node): ?array
+    {
+        $op = (string)($node['op'] ?? '');
+        if ($op === 'eq') {
+            $code = self::armEqLiteral($node['args'] ?? []);
+            return $code === null ? null : [$code];
+        }
+        if ($op === 'or') {
+            $codes = [];
+            foreach ($node['args'] ?? [] as $arg) {
+                if (!is_array($arg)) {
+                    return null;
+                }
+                $part = self::armEqualityCodes($arg);
+                if ($part === null) {
+                    return null;
+                }
+                foreach ($part as $code) {
+                    $codes[$code] = true;
+                }
+            }
+            return $codes === [] ? null : array_keys($codes);
+        }
+        if ($op === 'and') {
+            $codes = [];
+            foreach ($node['args'] ?? [] as $arg) {
+                if (!is_array($arg)) {
+                    return null;
+                }
+                $part = self::armEqualityCodes($arg);
+                if ($part === null) {
+                    return null;
+                }
+                foreach ($part as $code) {
+                    $codes[$code] = true;
+                }
+            }
+            $codes = array_keys($codes);
+            return count($codes) === 1 ? $codes : null;
+        }
+        return null;
+    }
+
+    /** @param mixed $args */
+    private static function armEqLiteral($args): ?string
+    {
+        if (!is_array($args) || count($args) !== 2) {
+            return null;
+        }
+        $arm = false;
+        $lit = null;
+        foreach ($args as $arg) {
+            if (!is_array($arg)) {
+                return null;
+            }
+            if (($arg['op'] ?? '') === 'ref' && ($arg['ref'] ?? '') === 'arm') {
+                $arm = true;
+                continue;
+            }
+            if (($arg['op'] ?? '') === 'lit' && ($arg['lit'] ?? '') === 'text') {
+                $lit = trim((string)($arg['v'] ?? ''));
+                continue;
+            }
+            return null;
+        }
+        if (!$arm || $lit === null || $lit === '') {
+            return null;
+        }
+        return $lit;
+    }
 }
